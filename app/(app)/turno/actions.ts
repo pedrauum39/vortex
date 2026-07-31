@@ -87,11 +87,16 @@ export async function statementAnterior(shiftId: string): Promise<Anterior> {
     .eq('funcao', 'regular');
 
   for (const turno of candidatos ?? []) {
-    const log = (turno.shift_logs as { model_id_real: string | null; statements: unknown[] }[])[0];
+    // `shift_logs` é lista (vários reps podem logar no mesmo shift), mas
+    // `statements` volta como OBJETO: o unique(shift_log_id) faz o PostgREST
+    // tratar como um-para-um. Tratar como lista devolveria sempre 'pendente'.
+    const log = (
+      turno.shift_logs as { model_id_real: string | null; statements: unknown }[]
+    )[0];
     const modelo = log?.model_id_real ?? turno.model_id;
     if (modelo !== minhaModelo) continue;
 
-    const st = (log?.statements as Record<string, number>[] | undefined)?.[0];
+    const st = log?.statements as Record<string, number> | null;
     if (!st) return { tipo: 'pendente' };
 
     return {

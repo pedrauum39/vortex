@@ -17,10 +17,12 @@ export default async function Dashboard() {
   const hoje = dataBRT();
   const supabase = await criarClienteServidor();
 
-  // O RLS já limita a `shifts` do próprio rep.
+  // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
+  // isto o dashboard do admin mostraria os turnos do time inteiro.
   const { data } = await supabase
     .from('shifts')
     .select('id, data, bloco, funcao, models(nome)')
+    .eq('rep_id', rep.id)
     .gte('data', hoje)
     .order('data')
     .limit(6);

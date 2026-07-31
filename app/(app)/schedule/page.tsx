@@ -60,7 +60,7 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
       {aba === 'time' ? (
         <AbaTime dias={dias} admin={rep.role === 'admin'} inicio={inicio} fim={fim} />
       ) : (
-        <AbaMeus inicio={inicio} fim={fim} admin={rep.role === 'admin'} />
+        <AbaMeus repId={rep.id} inicio={inicio} fim={fim} admin={rep.role === 'admin'} />
       )}
     </div>
   );
@@ -80,18 +80,23 @@ type MeuTurno = {
 };
 
 async function AbaMeus({
+  repId,
   inicio,
   fim,
   admin,
 }: {
+  repId: string;
   inicio: string;
   fim: string;
   admin: boolean;
 }) {
   const supabase = await criarClienteServidor();
+  // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
+  // isto "Meus turnos" mostraria o time inteiro para o admin.
   const { data } = await supabase
     .from('shifts')
     .select('id, data, turno, bloco, funcao, origem, models(nome), shift_logs(clock_in_at, clock_out_at)')
+    .eq('rep_id', repId)
     .gte('data', inicio)
     .lte('data', fim)
     .order('data');

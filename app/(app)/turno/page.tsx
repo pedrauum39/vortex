@@ -31,7 +31,10 @@ export default async function TurnoPage() {
       .select(
         'id, data, bloco, funcao, model_id, models(nome), shift_logs(id, clock_in_at, clock_out_at, model_id_real)',
       )
-      .eq('data', data),
+      // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
+      // sem isto ele cairia no turno de outra pessoa.
+      .eq('data', data)
+      .eq('rep_id', rep.id),
     supabase.from('models').select('id, nome').order('nome'),
   ]);
 
