@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ESQUEMA, INSTRUCAO, type LidoDoPrint } from '../lib/ocrPrompt';
+import { INSTRUCAO, opcoesOcr, type LidoDoPrint } from '../lib/ocrPrompt';
 import { LINHAS } from '../lib/statement';
 
 const PASTA = join(process.cwd(), 'evals', 'statements');
@@ -62,10 +62,7 @@ for (const modelo of modelos) {
     const tipo = nome.endsWith('.png') ? 'image/png' : 'image/jpeg';
 
     const resposta = await cliente.messages.create({
-      model: modelo,
-      max_tokens: 2000,
-      thinking: { type: 'disabled' },
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA } },
+      ...opcoesOcr(modelo),
       messages: [
         {
           role: 'user',

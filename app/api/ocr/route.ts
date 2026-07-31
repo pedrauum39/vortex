@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import { repAtual } from '@/lib/auth';
-import { ESQUEMA, INSTRUCAO } from '@/lib/ocrPrompt';
+import { INSTRUCAO, opcoesOcr } from '@/lib/ocrPrompt';
 
 export async function POST(request: Request) {
   const rep = await repAtual();
@@ -19,11 +19,7 @@ export async function POST(request: Request) {
   try {
     const resposta = await new Anthropic().messages.create({
       // Trocável sem mexer em código — ver evals/ocr.ts para o comparativo.
-      model: process.env.OCR_MODEL ?? 'claude-opus-5',
-      max_tokens: 2000,
-      // Extração pura, sem ferramentas: raciocínio aqui só custaria tokens.
-      thinking: { type: 'disabled' },
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA } },
+      ...opcoesOcr(process.env.OCR_MODEL ?? 'claude-opus-5'),
       messages: [
         {
           role: 'user',

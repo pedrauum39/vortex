@@ -28,6 +28,22 @@ export const ESQUEMA = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Parâmetros da chamada por modelo. O Haiku 4.5 não aceita `effort` — mandar
+ * dá 400 —, então ele só entra nos modelos que suportam.
+ */
+export function opcoesOcr(modelo: string) {
+  const formato = { type: 'json_schema' as const, schema: ESQUEMA };
+
+  return {
+    model: modelo,
+    max_tokens: 2000,
+    // Extração pura, sem ferramentas: raciocínio aqui só custaria tokens.
+    thinking: { type: 'disabled' as const },
+    output_config: modelo.includes('haiku') ? { format: formato } : { effort: 'low' as const, format: formato },
+  };
+}
+
 export type LidoDoPrint = {
   periodo_de: string;
   periodo_ate: string;
