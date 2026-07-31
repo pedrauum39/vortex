@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prints reais do statement — dado de negócio, não vai para o repo
+/evals/statements/*.png
+/evals/statements/*.jpg
+/evals/statements/*.jpeg

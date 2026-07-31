@@ -1,44 +1,11 @@
 {
-  "_leia": "Gabarito dos prints, lido à mão. O nome do arquivo é o TOTAL líquido do print — assim não tem como trocar um pelo outro na hora de salvar.",
+  "_leia": "Gabarito dos prints, lido à mão. A chave é o TOTAL líquido — o comparativo casa cada arquivo pelo total que leu, então o nome do arquivo não importa.",
 
-  "1805.91.png": {
-    "idioma": "pt",
-    "tema": "claro",
-    "net": { "assinaturas": 19.14, "gorjetas": 184.0, "publicacoes": 0, "mensagens": 1602.77, "indicacoes": 0, "total": 1805.91 }
-  },
-  "4138.31.png": {
-    "idioma": "pt",
-    "tema": "escuro",
-    "net": { "assinaturas": 22.01, "gorjetas": 200.0, "publicacoes": 0, "mensagens": 3916.3, "indicacoes": 0, "total": 4138.31 }
-  },
-  "6423.93-claro.png": {
-    "idioma": "pt",
-    "tema": "claro",
-    "net": { "assinaturas": 41.17, "gorjetas": 408.36, "publicacoes": 0, "mensagens": 5974.4, "indicacoes": 0, "total": 6423.93 }
-  },
-  "6423.93-escuro.png": {
-    "idioma": "pt",
-    "tema": "escuro",
-    "net": { "assinaturas": 41.17, "gorjetas": 408.36, "publicacoes": 0, "mensagens": 5974.4, "indicacoes": 0, "total": 6423.93 }
-  },
-  "1573.44.png": {
-    "idioma": "pt",
-    "tema": "claro",
-    "net": { "assinaturas": 139.68, "gorjetas": 39.2, "publicacoes": 0, "mensagens": 1394.56, "indicacoes": 0, "total": 1573.44 }
-  },
-  "2670.44.png": {
-    "idioma": "es",
-    "tema": "escuro",
-    "net": { "assinaturas": 288.0, "gorjetas": 58.4, "publicacoes": 0, "mensagens": 2324.04, "indicacoes": 0, "total": 2670.44 }
-  },
-  "1663.59.png": {
-    "idioma": "es",
-    "tema": "escuro",
-    "net": { "assinaturas": 143.89, "gorjetas": 94.4, "publicacoes": 0, "mensagens": 1425.3, "indicacoes": 0, "total": 1663.59 }
-  },
-  "2115.06.png": {
-    "idioma": "es",
-    "tema": "escuro",
-    "net": { "assinaturas": 226.08, "gorjetas": 39.2, "publicacoes": 0, "mensagens": 1849.78, "indicacoes": 0, "total": 2115.06 }
-  }
+  "1805.91": { "idioma": "pt", "tema": "claro", "assinaturas": 19.14, "gorjetas": 184.0, "publicacoes": 0, "mensagens": 1602.77, "indicacoes": 0 },
+  "4138.31": { "idioma": "pt", "tema": "escuro", "assinaturas": 22.01, "gorjetas": 200.0, "publicacoes": 0, "mensagens": 3916.3, "indicacoes": 0 },
+  "6423.93": { "idioma": "pt", "tema": "claro e escuro", "assinaturas": 41.17, "gorjetas": 408.36, "publicacoes": 0, "mensagens": 5974.4, "indicacoes": 0 },
+  "1573.44": { "idioma": "pt", "tema": "claro", "assinaturas": 139.68, "gorjetas": 39.2, "publicacoes": 0, "mensagens": 1394.56, "indicacoes": 0 },
+  "2670.44": { "idioma": "es", "tema": "escuro", "assinaturas": 288.0, "gorjetas": 58.4, "publicacoes": 0, "mensagens": 2324.04, "indicacoes": 0 },
+  "1663.59": { "idioma": "es", "tema": "escuro", "assinaturas": 143.89, "gorjetas": 94.4, "publicacoes": 0, "mensagens": 1425.3, "indicacoes": 0 },
+  "2115.06": { "idioma": "es", "tema": "escuro", "assinaturas": 226.08, "gorjetas": 39.2, "publicacoes": 0, "mensagens": 1849.78, "indicacoes": 0 }
 }
