@@ -2,7 +2,13 @@ import { exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, horaBRT } from '@/lib/tempo';
 import { HORARIOS, rotuloTurno, type Bloco, type Funcao, type Model } from '@/lib/tipos';
-import { dataDoTurnoAtual } from '@/lib/turno';
+import {
+  MINUTOS_DE_ANTECEDENCIA,
+  dataDoTurnoAtual,
+  horasDoTurno,
+  janelaDoTurno,
+  podeIniciar,
+} from '@/lib/turno';
 import { Painel } from './painel';
 
 type TurnoDoDia = {
@@ -71,11 +77,26 @@ export default async function TurnoPage() {
                     ? horaBRT(new Date(turno.shift_logs[0].clock_out_at))
                     : null,
                   modelIdReal: turno.shift_logs[0].model_id_real,
+                  horas: horasDoTurno(
+                    rep.turno,
+                    data,
+                    new Date(turno.shift_logs[0].clock_in_at),
+                    turno.shift_logs[0].clock_out_at
+                      ? new Date(turno.shift_logs[0].clock_out_at)
+                      : null,
+                  ),
                 }
               : null
           }
           models={(models ?? []) as Model[]}
           repId={rep.id}
+          podeIniciar={podeIniciar(rep.turno, data)}
+          abreAs={horaBRT(
+            new Date(
+              janelaDoTurno(rep.turno, data).inicio.getTime() -
+                MINUTOS_DE_ANTECEDENCIA * 60_000,
+            ),
+          )}
         />
       )}
     </div>

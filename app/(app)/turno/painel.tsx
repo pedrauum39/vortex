@@ -7,12 +7,20 @@ import { ModalReport } from './modal-report';
 
 type Props = {
   turno: { id: string; modelo: string; modelId: string | null; assist: boolean };
-  log: { id: string; entrada: string; saida: string | null; modelIdReal: string | null } | null;
+  log: {
+    id: string;
+    entrada: string;
+    saida: string | null;
+    modelIdReal: string | null;
+    horas: number;
+  } | null;
   models: Model[];
   repId: string;
+  podeIniciar: boolean;
+  abreAs: string;
 };
 
-export function Painel({ turno, log, models, repId }: Props) {
+export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [modelo, setModelo] = useState(log?.modelIdReal ?? turno.modelId ?? '');
@@ -40,7 +48,7 @@ export function Painel({ turno, log, models, repId }: Props) {
         {log && (
           <span className="ml-auto text-sm text-texto-fraco">
             entrada {log.entrada}
-            {log.saida && ` · saída ${log.saida}`}
+            {log.saida && ` · saída ${log.saida}`} · {log.horas.toFixed(2)}h
           </span>
         )}
       </div>
@@ -73,14 +81,21 @@ export function Painel({ turno, log, models, repId }: Props) {
       )}
 
       {!log && (
-        <button
-          type="button"
-          disabled={pendente}
-          onClick={() => rodar(() => iniciarTurno(turno.id, modelo || null))}
-          className="mt-6 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
-        >
-          {pendente ? 'Iniciando…' : 'Iniciar turno'}
-        </button>
+        <div className="mt-6">
+          <button
+            type="button"
+            disabled={pendente || !podeIniciar}
+            onClick={() => rodar(() => iniciarTurno(turno.id, modelo || null))}
+            className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-40"
+          >
+            {pendente ? 'Iniciando…' : 'Iniciar turno'}
+          </button>
+          {!podeIniciar && (
+            <p className="mt-2 text-sm text-texto-fraco">
+              O ponto abre às {abreAs}, 15 minutos antes do turno.
+            </p>
+          )}
+        </div>
       )}
 
       {log && !log.saida && (

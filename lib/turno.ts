@@ -20,6 +20,40 @@ export function dataDoTurnoAtual(turno: Turno, agora: Date = new Date()): string
   return relogioBRT(agora).hora < horaFim ? somarDias(hoje, -1) : hoje;
 }
 
+/** Quanto antes do turno o clock in fica liberado. */
+export const MINUTOS_DE_ANTECEDENCIA = 15;
+
+/**
+ * O clock in abre 15 minutos antes e fecha no fim do turno. Antes disso o rep
+ * ainda não está no turno; depois, o turno já passou.
+ */
+export function podeIniciar(turno: Turno, data: string, agora: Date = new Date()): boolean {
+  const { inicio, fim } = janelaDoTurno(turno, data);
+  const abre = inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000;
+
+  return agora.getTime() >= abre && agora.getTime() <= fim.getTime();
+}
+
+/**
+ * Horas contadas do turno, sempre dentro da janela oficial: entrar adiantado
+ * não começa a contar antes da hora, e sair atrasado não conta depois do fim.
+ * Turno em andamento (sem saída) conta até agora.
+ */
+export function horasDoTurno(
+  turno: Turno,
+  data: string,
+  entrada: Date,
+  saida: Date | null,
+  agora: Date = new Date(),
+): number {
+  const { inicio, fim } = janelaDoTurno(turno, data);
+
+  const de = Math.max(entrada.getTime(), inicio.getTime());
+  const ate = Math.min((saida ?? agora).getTime(), fim.getTime());
+
+  return Math.max(0, Math.round(((ate - de) / 3_600_000) * 100) / 100);
+}
+
 /** Início e fim previstos de um turno, como instantes UTC. */
 export function janelaDoTurno(turno: Turno, data: string): { inicio: Date; fim: Date } {
   const [ano, mes, dia] = data.split('-').map(Number);

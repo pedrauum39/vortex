@@ -6,6 +6,7 @@ import type { LinhasNet } from '@/lib/statement';
 import { turnoAnterior } from '@/lib/statement';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import type { Turno } from '@/lib/tipos';
+import { MINUTOS_DE_ANTECEDENCIA, podeIniciar } from '@/lib/turno';
 
 function revalidar() {
   revalidatePath('/turno');
@@ -16,6 +17,22 @@ function revalidar() {
 export async function iniciarTurno(shiftId: string, modelIdReal: string | null) {
   const rep = await exigirRep();
   const supabase = await criarClienteServidor();
+
+  // A trava vale no servidor, não só no botão: a tela pode estar aberta desde
+  // antes da janela abrir, ou a ação pode ser chamada direto.
+  const { data: shift } = await supabase
+    .from('shifts')
+    .select('data, turno')
+    .eq('id', shiftId)
+    .eq('rep_id', rep.id)
+    .single();
+  if (!shift) throw new Error('Turno não encontrado.');
+
+  if (!podeIniciar(shift.turno as Turno, shift.data as string)) {
+    throw new Error(
+      `O ponto abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno e fecha quando ele termina.`,
+    );
+  }
 
   const { error } = await supabase.from('shift_logs').insert({
     shift_id: shiftId,
