@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import {
   LINHAS,
   baseComissao,
@@ -33,7 +33,7 @@ const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
 /** Reduz para 1568px no lado maior — o statement continua legível e custa metade. */
-async function reduzir(arquivo: File): Promise<{ blob: Blob; base64: string }> {
+async function reduzir(arquivo: Blob): Promise<{ blob: Blob; base64: string }> {
   const bitmap = await createImageBitmap(arquivo);
   const escala = Math.min(1, 1568 / Math.max(bitmap.width, bitmap.height));
 
@@ -68,6 +68,7 @@ export function ModalReport({ logId, shiftId, repId, aoFechar }: Props) {
   const [editou, setEditou] = useState(false);
 
   const [blob, setBlob] = useState<Blob | null>(null);
+  const [previa, setPrevia] = useState<string | null>(null);
   const [ocrRaw, setOcrRaw] = useState<unknown>(null);
   const [lendo, setLendo] = useState(false);
   const [avisoOcr, setAvisoOcr] = useState<string | null>(null);
@@ -98,12 +99,15 @@ export function ModalReport({ logId, shiftId, repId, aoFechar }: Props) {
   const preenchido = totalDasLinhas(linhas) > 0;
   const travado = (caiu.length > 0 && !refundConfirmado) || (saiuAntes && !motivo.trim());
 
-  async function lerPrint(arquivo: File) {
+  // Só usa setState, que o React garante estável — pode ter deps vazias e
+  // servir de handler fixo para o listener de colar.
+  const lerPrint = useCallback(async (arquivo: Blob) => {
     setLendo(true);
     setAvisoOcr(null);
     try {
       const { blob, base64 } = await reduzir(arquivo);
       setBlob(blob);
+      setPrevia(`data:image/jpeg;base64,${base64}`);
 
       const resposta = await fetch('/api/ocr', {
         method: 'POST',
@@ -132,7 +136,23 @@ export function ModalReport({ logId, shiftId, repId, aoFechar }: Props) {
     } finally {
       setLendo(false);
     }
-  }
+  }, []);
+
+  // Ctrl+V em qualquer lugar do modal.
+  useEffect(() => {
+    function aoColar(evento: ClipboardEvent) {
+      const imagem = [...(evento.clipboardData?.items ?? [])]
+        .find((item) => item.type.startsWith('image/'))
+        ?.getAsFile();
+      if (imagem) {
+        evento.preventDefault();
+        lerPrint(imagem);
+      }
+    }
+
+    window.addEventListener('paste', aoColar);
+    return () => window.removeEventListener('paste', aoColar);
+  }, [lerPrint]);
 
   function confirmar() {
     gravar(async () => {
@@ -174,17 +194,43 @@ export function ModalReport({ logId, shiftId, repId, aoFechar }: Props) {
       <div className="w-full max-w-lg rounded-2xl border border-borda bg-superficie p-6 shadow-2xl">
         <h2 className="text-lg font-medium">Finalizar turno</h2>
 
-        {/* 1. print */}
-        <label className="mt-5 block text-sm text-texto-fraco" htmlFor="print">
-          Print do statement
-        </label>
-        <input
-          id="print"
-          type="file"
-          accept="image/*"
-          onChange={(e) => e.target.files?.[0] && lerPrint(e.target.files[0])}
-          className="mt-1.5 w-full rounded-lg border border-borda bg-fundo px-3 py-2.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-superficie-alta file:px-3 file:py-1 file:text-sm file:text-texto"
-        />
+        {/* 1. print — colar ou escolher arquivo */}
+        <p className="mt-5 text-sm text-texto-fraco">Print do statement</p>
+
+        <div
+          onDrop={(e) => {
+            e.preventDefault();
+            const arquivo = e.dataTransfer.files?.[0];
+            if (arquivo?.type.startsWith('image/')) lerPrint(arquivo);
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          className="mt-1.5 rounded-lg border border-dashed border-borda bg-fundo p-4 text-center"
+        >
+          {previa ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previa}
+              alt="Print do statement"
+              className="mx-auto max-h-40 rounded border border-borda"
+            />
+          ) : (
+            <p className="text-sm text-texto-fraco">
+              Cole com <kbd className="rounded bg-superficie-alta px-1.5 py-0.5 text-xs">Ctrl+V</kbd>{' '}
+              ou arraste a imagem aqui
+            </p>
+          )}
+
+          <label className="mt-3 inline-block cursor-pointer text-sm text-accent hover:underline">
+            {previa ? 'trocar imagem' : 'escolher arquivo'}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => e.target.files?.[0] && lerPrint(e.target.files[0])}
+              className="hidden"
+            />
+          </label>
+        </div>
+
         {lendo && <p className="mt-2 text-sm text-accent">Lendo o print…</p>}
         {avisoOcr && <p className="mt-2 text-sm text-amber-300">{avisoOcr}</p>}
 
