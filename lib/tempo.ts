@@ -90,6 +90,13 @@ export function somarDias(data: string, dias: number): string {
   return new Date(Date.UTC(ano, mes - 1, dia + dias)).toISOString().slice(0, 10);
 }
 
+/** A segunda-feira da semana de uma data. As abas da planilha vão de seg a dom. */
+export function segundaDaSemana(data: string): string {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  const diaSemana = new Date(Date.UTC(ano, mes - 1, dia)).getUTCDay();
+  return somarDias(data, diaSemana === 0 ? -6 : 1 - diaSemana);
+}
+
 const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
 /** 'YYYY-MM-DD' → 'seg 10/08'. */
