@@ -9,6 +9,9 @@ export type Origem = 'gerado' | 'manual';
 
 export const TURNOS: Turno[] = ['T2T3', 'T4T5', 'T6T1'];
 
+/** 'T2T3' → 'T2/T3', como aparece na planilha. */
+export const rotuloTurno = (turno: Turno) => `${turno.slice(0, 2)}/${turno.slice(2)}`;
+
 /** Horários de cada turno em BRT, como definidos no template oficial. */
 export const HORARIOS: Record<Turno, { inicio: string; fim: string }> = {
   T2T3: { inicio: '05:00', fim: '13:00' },

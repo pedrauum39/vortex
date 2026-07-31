@@ -84,6 +84,21 @@ export function formatarBRT(instante: Date): string {
   return `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')} ${horaBRT(instante)}`;
 }
 
+/** Soma dias a uma data 'YYYY-MM-DD'. Aritmética em UTC puro, sem fuso. */
+export function somarDias(data: string, dias: number): string {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  return new Date(Date.UTC(ano, mes - 1, dia + dias)).toISOString().slice(0, 10);
+}
+
+const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/** 'YYYY-MM-DD' → 'seg 10/08'. */
+export function diaLegivel(data: string): string {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  const semana = SEMANA[new Date(Date.UTC(ano, mes - 1, dia)).getUTCDay()];
+  return `${semana} ${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}`;
+}
+
 /** Meia-noite BRT de uma data 'YYYY-MM-DD', como instante UTC. */
 export function inicioDoDiaBRT(data: string): Date {
   const [ano, mes, dia] = data.split('-').map(Number);

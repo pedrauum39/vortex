@@ -1,26 +1,37 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Tema escuro fixo com accent azul claro. */
+@theme {
+  --color-fundo: #070b12;
+  --color-superficie: #0e1520;
+  --color-superficie-alta: #151e2c;
+  --color-borda: #1e2a3a;
+  --color-texto: #e6edf5;
+  --color-texto-fraco: #8496ad;
+  --color-accent: #38bdf8;
+  --color-accent-forte: #0ea5e9;
+  --color-accent-fraco: #0b2b3d;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-fundo);
+  color: var(--color-texto);
+}
+
+/* Brilho azul de fundo, o mesmo espírito do dashboard de referência. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, rgb(56 189 248 / 0.10), transparent 70%),
+    radial-gradient(50rem 35rem at 95% 0%, rgb(14 165 233 / 0.07), transparent 70%);
 }
