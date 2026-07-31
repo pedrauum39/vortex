@@ -72,6 +72,7 @@ export default async function TurnoPage() {
               : null
           }
           models={(models ?? []) as Model[]}
+          repId={rep.id}
         />
       )}
     </div>

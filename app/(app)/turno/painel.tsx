@@ -2,20 +2,21 @@
 
 import { useState, useTransition } from 'react';
 import type { Model } from '@/lib/tipos';
-import { finalizarTurno, iniciarTurno, trocarModelo } from './actions';
+import { iniciarTurno, trocarModelo } from './actions';
+import { ModalReport } from './modal-report';
 
 type Props = {
   turno: { id: string; modelo: string; modelId: string | null; assist: boolean };
   log: { id: string; entrada: string; saida: string | null; modelIdReal: string | null } | null;
   models: Model[];
+  repId: string;
 };
 
-export function Painel({ turno, log, models }: Props) {
+export function Painel({ turno, log, models, repId }: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [modelo, setModelo] = useState(log?.modelIdReal ?? turno.modelId ?? '');
-  const [saiuAntes, setSaiuAntes] = useState(false);
-  const [motivo, setMotivo] = useState('');
+  const [fechando, setFechando] = useState(false);
 
   const rodar = (acao: () => Promise<void>) =>
     executar(async () => {
@@ -84,36 +85,22 @@ export function Painel({ turno, log, models }: Props) {
 
       {log && !log.saida && (
         <div className="mt-6 border-t border-borda pt-6">
-          <label className="flex items-center gap-2.5 text-sm">
-            <input
-              type="checkbox"
-              checked={saiuAntes}
-              onChange={(e) => setSaiuAntes(e.target.checked)}
-              className="size-4 accent-[var(--color-accent)]"
-            />
-            Finalizei antes da hora
-          </label>
-
-          {saiuAntes && (
-            <textarea
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Motivo da saída antecipada"
-              rows={2}
-              className="mt-3 w-full rounded-lg border border-borda bg-fundo px-3 py-2.5 text-sm outline-none focus:border-accent"
-            />
-          )}
-
           <button
             type="button"
-            disabled={pendente || (saiuAntes && motivo.trim() === '')}
-            onClick={() =>
-              rodar(() => finalizarTurno(log.id, { saiuAntes, motivoSaida: motivo.trim() || null }))
-            }
-            className="mt-4 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
+            onClick={() => setFechando(true)}
+            className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-fundo transition hover:bg-accent-forte"
           >
-            {pendente ? 'Finalizando…' : 'Finalizar turno'}
+            Finalizar turno
           </button>
+
+          {fechando && (
+            <ModalReport
+              logId={log.id}
+              shiftId={turno.id}
+              repId={repId}
+              aoFechar={() => setFechando(false)}
+            />
+          )}
         </div>
       )}
 
