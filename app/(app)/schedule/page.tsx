@@ -172,11 +172,16 @@ async function AbaTime({
   fim: string;
 }) {
   const supabase = await criarClienteServidor();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('escala_time')
     .select('data, turno, bloco, funcao, rep_nome, modelos_nome')
     .gte('data', inicio)
     .lte('data', fim);
+
+  // Erro de consulta (ex.: coluna que ainda não existe porque uma migração
+  // não rodou) não pode virar silenciosamente "nenhum turno" — isso já
+  // escondeu um problema real uma vez.
+  if (error) console.error('escala_time:', error.message);
 
   const linhas = (data ?? []) as LinhaTime[];
   if (linhas.length === 0) return <Vazia admin={admin} inicio={inicio} fim={fim} />;
