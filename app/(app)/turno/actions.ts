@@ -3,10 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { exigirRep } from '@/lib/auth';
 import type { LinhasNet } from '@/lib/statement';
-import { turnoAnterior } from '@/lib/statement';
+import { buscarAnterior, type Anterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import type { Turno } from '@/lib/tipos';
 import { MINUTOS_DE_ANTECEDENCIA, podeIniciar } from '@/lib/turno';
+
+export type { Anterior };
 
 function revalidar() {
   revalidatePath('/turno');
@@ -59,16 +61,6 @@ export async function trocarModelo(logId: string, modelIdReal: string | null) {
 }
 
 /**
- * `primeiro` abre o dia e vale o statement inteiro. `pendente` é o turno
- * anterior que ainda não mandou o print — descontar zero aí inflaria o valor
- * deste turno, então o cálculo fica em aberto até o print chegar.
- */
-export type Anterior =
-  | { tipo: 'primeiro' }
-  | { tipo: 'pendente' }
-  | { tipo: 'ok'; linhas: LinhasNet };
-
-/**
  * As linhas net do statement do turno anterior na cadeia do dia, para descontar
  * do acumulado deste turno.
  *
@@ -88,49 +80,10 @@ export async function statementAnterior(shiftId: string): Promise<Anterior> {
     .single();
   if (!meu) throw new Error('Turno não encontrado.');
 
-  const anterior = turnoAnterior(meu.turno as Turno, meu.data as string);
-  if (!anterior) return { tipo: 'primeiro' };
-
   const logs = meu.shift_logs as { model_id_real: string | null }[];
   const minhaModelo = logs[0]?.model_id_real ?? (meu.model_id as string | null);
 
-  const { data: candidatos } = await criarClienteAdmin()
-    .from('shifts')
-    .select(
-      'model_id, shift_logs(model_id_real, statements(net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
-    )
-    .eq('data', anterior.data)
-    .eq('turno', anterior.turno)
-    .eq('funcao', 'regular');
-
-  for (const turno of candidatos ?? []) {
-    // `shift_logs` é lista (vários reps podem logar no mesmo shift), mas
-    // `statements` volta como OBJETO: o unique(shift_log_id) faz o PostgREST
-    // tratar como um-para-um. Tratar como lista devolveria sempre 'pendente'.
-    const log = (
-      turno.shift_logs as { model_id_real: string | null; statements: unknown }[]
-    )[0];
-    const modelo = log?.model_id_real ?? turno.model_id;
-    if (modelo !== minhaModelo) continue;
-
-    const st = log?.statements as Record<string, number> | null;
-    if (!st) return { tipo: 'pendente' };
-
-    return {
-      tipo: 'ok',
-      linhas: {
-        assinaturas: Number(st.net_assinaturas),
-        gorjetas: Number(st.net_gorjetas),
-        publicacoes: Number(st.net_publicacoes),
-        mensagens: Number(st.net_mensagens),
-        indicacoes: Number(st.net_indicacoes),
-      },
-    };
-  }
-
-  // Nenhum turno da mesma modelo antes deste — ninguém trabalhou ou o print
-  // ainda não veio. Nos dois casos o desconto fica em aberto.
-  return { tipo: 'pendente' };
+  return buscarAnterior(criarClienteAdmin(), meu.turno as Turno, meu.data as string, minhaModelo);
 }
 
 export type DadosReport = {

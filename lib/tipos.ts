@@ -76,8 +76,14 @@ export type Statement = {
   shift_log_id: string;
   imagem_path: string | null;
   ocr_raw: unknown;
-  valor_confirmado: number | null;
+  net_total: number;
+  net_assinaturas: number;
+  net_gorjetas: number;
+  net_publicacoes: number;
+  net_mensagens: number;
+  net_indicacoes: number;
   corrigido_manualmente: boolean;
+  refund_confirmado: boolean;
 };
 
 export type CommissionRule = {
