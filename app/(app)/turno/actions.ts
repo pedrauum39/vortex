@@ -8,7 +8,9 @@ import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import type { Turno } from '@/lib/tipos';
 import { MINUTOS_DE_ANTECEDENCIA, podeIniciar } from '@/lib/turno';
 
-export type { Anterior };
+// Nada de `export type` aqui: um arquivo 'use server' só pode exportar
+// funções async — reexportar um tipo quebra em runtime com "X is not
+// defined" no cliente. Quem precisar do tipo importa direto de lib/statementDb.
 
 function revalidar() {
   revalidatePath('/turno');

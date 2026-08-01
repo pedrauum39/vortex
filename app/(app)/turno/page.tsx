@@ -1,7 +1,7 @@
 import { exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, horaBRT } from '@/lib/tempo';
-import { HORARIOS, rotuloTurno, type Bloco, type Funcao, type Model } from '@/lib/tipos';
+import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
   dataDoTurnoAtual,
@@ -14,6 +14,7 @@ import { Painel } from './painel';
 type TurnoDoDia = {
   id: string;
   data: string;
+  turno: Turno;
   bloco: Bloco;
   funcao: Funcao;
   shift_logs: {
@@ -26,25 +27,32 @@ type TurnoDoDia = {
 
 export default async function TurnoPage() {
   const rep = await exigirRep();
-  const data = dataDoTurnoAtual(rep.turno);
   const supabase = await criarClienteServidor();
 
-  const [{ data: turnos }, { data: models }] = await Promise.all([
-    supabase
-      .from('shifts')
-      .select(
-        'id, data, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)))',
-      )
-      // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
-      // sem isto ele cairia no turno de outra pessoa.
-      .eq('data', data)
-      .eq('rep_id', rep.id),
-    // O roster é do TIME (bloco), não do turno — ainda não sei o bloco do
-    // turno de hoje aqui em cima, então busco todo mundo ativo e filtro na tela.
-    supabase.from('models').select('*').eq('ativa', true).order('nome'),
-  ]);
+  // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
+  // o admin pode ter escalado alguém num turno diferente do de costume, e
+  // isso precisa aparecer aqui igual. Cada turno tem sua própria regra de
+  // qual dia é "hoje" (o T6/T1 cruza a meia-noite), então checa os três.
+  const candidatas = [...new Set(TURNOS.map((t) => dataDoTurnoAtual(t)))];
 
-  const turno = ((turnos ?? []) as unknown as TurnoDoDia[])[0];
+  const { data: turnos } = await supabase
+    .from('shifts')
+    .select(
+      'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)))',
+    )
+    // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
+    // sem isto ele cairia no turno de outra pessoa.
+    .eq('rep_id', rep.id)
+    .in('data', candidatas);
+
+  const turno = ((turnos ?? []) as unknown as TurnoDoDia[]).find(
+    (t) => t.data === dataDoTurnoAtual(t.turno),
+  );
+  const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
+  const turnoDoSlot = turno?.turno ?? rep.turno;
+
+  const { data: models } = await supabase.from('models').select('*').eq('ativa', true).order('nome');
+
   const log = turno?.shift_logs[0];
 
   return (
@@ -52,8 +60,8 @@ export default async function TurnoPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Turno</h1>
         <p className="mt-1 text-sm text-texto-fraco">
-          {diaLegivel(data)} · {rotuloTurno(rep.turno)} · {HORARIOS[rep.turno].inicio}–
-          {HORARIOS[rep.turno].fim}
+          {diaLegivel(data)} · {rotuloTurno(turnoDoSlot)} · {HORARIOS[turnoDoSlot].inicio}–
+          {HORARIOS[turnoDoSlot].fim}
         </p>
       </div>
 
@@ -72,7 +80,7 @@ export default async function TurnoPage() {
                   saida: log.clock_out_at ? horaBRT(new Date(log.clock_out_at)) : null,
                   modelos: log.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome })),
                   horas: horasDoTurno(
-                    rep.turno,
+                    turnoDoSlot,
                     data,
                     new Date(log.clock_in_at),
                     log.clock_out_at ? new Date(log.clock_out_at) : null,
@@ -84,11 +92,10 @@ export default async function TurnoPage() {
           repId={rep.id}
           // Admin ignora a janela dos 15 minutos — precisa testar o fluxo
           // (OCR, comissão) sem esperar a hora certa do turno.
-          podeIniciar={rep.role === 'admin' || podeIniciar(rep.turno, data)}
+          podeIniciar={rep.role === 'admin' || podeIniciar(turnoDoSlot, data)}
           abreAs={horaBRT(
             new Date(
-              janelaDoTurno(rep.turno, data).inicio.getTime() -
-                MINUTOS_DE_ANTECEDENCIA * 60_000,
+              janelaDoTurno(turnoDoSlot, data).inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000,
             ),
           )}
         />

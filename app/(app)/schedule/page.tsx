@@ -12,8 +12,8 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
   const { aba = 'meus', de } = await searchParams;
 
   const inicio = de ?? segundaDaSemana(dataBRT());
-  const fim = somarDias(inicio, 13);
-  const dias = Array.from({ length: 14 }, (_, i) => somarDias(inicio, i));
+  const fim = somarDias(inicio, 6);
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
 
   return (
     <div className="space-y-6">
@@ -21,7 +21,7 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
         <h1 className="text-2xl font-semibold tracking-tight">Schedule</h1>
         <div className="ml-auto flex items-center gap-1 text-sm">
           <Link
-            href={`/schedule?aba=${aba}&de=${somarDias(inicio, -14)}`}
+            href={`/schedule?aba=${aba}&de=${somarDias(inicio, -7)}`}
             className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
           >
             ←
@@ -30,7 +30,7 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
             {diaLegivel(inicio)} – {diaLegivel(fim)}
           </span>
           <Link
-            href={`/schedule?aba=${aba}&de=${somarDias(inicio, 14)}`}
+            href={`/schedule?aba=${aba}&de=${somarDias(inicio, 7)}`}
             className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
           >
             →
@@ -111,23 +111,23 @@ async function AbaMeus({
       {turnos.map((t) => {
         const log = t.shift_logs[0];
         return (
-          <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 text-sm">
+          <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-base">
             <span className={t.data === hoje ? 'font-medium text-accent' : ''}>
               {diaLegivel(t.data)}
             </span>
             <span className="text-texto-fraco">{rotuloTurno(t.turno)}</span>
             <span className="text-texto-fraco">{t.models?.nome ?? `Bloco ${t.bloco}`}</span>
             {t.funcao === 'assist' && (
-              <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-xs text-accent">
+              <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
                 Assistant
               </span>
             )}
             {t.origem === 'manual' && (
-              <span className="rounded-md border border-borda px-2 py-0.5 text-xs text-texto-fraco">
+              <span className="rounded-md border border-borda px-2 py-0.5 text-sm text-texto-fraco">
                 alterado
               </span>
             )}
-            <span className="ml-auto text-xs text-texto-fraco">
+            <span className="ml-auto text-sm text-texto-fraco">
               {log?.clock_out_at
                 ? 'concluído'
                 : log
@@ -179,28 +179,24 @@ async function AbaTime({
   );
 
   return (
-    <div className="space-y-8">
-      {[dias.slice(0, 7), dias.slice(7)].map((semana) => (
-        <div key={semana[0]} className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-          <table className="w-full min-w-[46rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-borda">
-                <th className="w-24 px-4 py-3 text-left font-medium text-texto-fraco">Turno</th>
-                {semana.map((dia) => (
-                  <th key={dia} className="px-3 py-3 text-left font-medium text-texto-fraco">
-                    {diaLegivel(dia)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(['I', 'II'] as Bloco[]).map((bloco) => (
-                <BlocoDeLinhas key={bloco} bloco={bloco} semana={semana} busca={busca} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+    <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
+      <table className="w-full min-w-[56rem] border-collapse text-base">
+        <thead>
+          <tr className="border-b border-borda">
+            <th className="w-28 px-4 py-3.5 text-left font-medium text-texto-fraco">Turno</th>
+            {dias.map((dia) => (
+              <th key={dia} className="px-4 py-3.5 text-left font-medium text-texto-fraco">
+                {diaLegivel(dia)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(['I', 'II'] as Bloco[]).map((bloco) => (
+            <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} />
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -217,20 +213,20 @@ function BlocoDeLinhas({
   return (
     <>
       <tr className="border-b border-borda bg-superficie-alta">
-        <td colSpan={8} className="px-4 py-2 text-xs font-medium tracking-wide text-accent">
+        <td colSpan={8} className="px-4 py-2.5 text-sm font-medium tracking-wide text-accent">
           {bloco === 'I' ? 'TIME 1 · Vortex I' : 'TIME 2 · Vortex II'}
         </td>
       </tr>
       {TURNOS.map((turno) => (
         <tr key={turno} className="border-b border-borda last:border-0">
-          <td className="px-4 py-3 text-texto-fraco">{rotuloTurno(turno)}</td>
+          <td className="px-4 py-4 text-texto-fraco">{rotuloTurno(turno)}</td>
           {semana.map((dia) => {
             const regular = busca.get(`${dia}|${turno}|${bloco}|regular`);
             const assist = busca.get(`${dia}|${turno}|${bloco}|assist`);
             return (
-              <td key={dia} className="px-3 py-3 align-top">
+              <td key={dia} className="px-4 py-4 align-top">
                 <div>{regular ?? <span className="text-texto-fraco">—</span>}</div>
-                {assist && <div className="mt-1 text-xs text-accent">+ {assist}</div>}
+                {assist && <div className="mt-1 text-sm text-accent">+ {assist}</div>}
               </td>
             );
           })}

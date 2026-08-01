@@ -5,6 +5,7 @@ import { criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
 import type { Model, Rep } from '@/lib/tipos';
 import { FormularioTurno } from './formulario-turno';
+import { GradeEscala } from './grade-escala';
 import { LinhaTurno } from './linha-turno';
 import { NavPeriodo } from './nav-periodo';
 import type { LinhaShift } from './tipos';
@@ -14,7 +15,8 @@ type Busca = { de?: string };
 export default async function AdminTurnos({ searchParams }: { searchParams: Promise<Busca> }) {
   const { de } = await searchParams;
   const inicio = de ?? segundaDaSemana(dataBRT());
-  const fim = somarDias(inicio, 13);
+  const fim = somarDias(inicio, 6);
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
 
   const supabase = await criarClienteServidor();
 
@@ -36,6 +38,11 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
   const reps = (repsData ?? []) as Rep[];
   const models = (modelsData ?? []) as Model[];
+
+  const valoresDaGrade: Record<string, string | null> = {};
+  for (const s of shifts) {
+    valoresDaGrade[`${s.data}|${s.turno}|${s.bloco}|${s.funcao}`] = s.rep_id;
+  }
 
   // Agrupa por slot (data+turno+bloco) para achar o par regular/assist e
   // computar a comissão exatamente como o /invoice faz.
@@ -109,6 +116,8 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-6">
       <NavPeriodo inicio={inicio} fim={fim} />
+
+      <GradeEscala dias={dias} reps={reps} valores={valoresDaGrade} />
 
       <FormularioTurno reps={reps} inicio={inicio} />
 

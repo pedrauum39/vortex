@@ -10,7 +10,8 @@ import {
   totalDasLinhas,
   type LinhasNet,
 } from '@/lib/statement';
-import { statementAnterior, type Anterior } from './actions';
+import type { Anterior } from '@/lib/statementDb';
+import { statementAnterior } from './actions';
 
 const ROTULO: Record<string, string> = {
   assinaturas: 'Assinaturas',

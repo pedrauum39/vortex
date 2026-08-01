@@ -58,6 +58,54 @@ export async function criarTurno(dados: {
   revalidar();
 }
 
+/**
+ * Define quem ocupa um slot da grade — cada célula da planilha chama isto ao
+ * trocar o select. `repId` vazio limpa o slot.
+ *
+ * Trocar o dono de um slot que já existe apaga a linha antiga em vez de só
+ * atualizar o rep_id: um upsert por cima deixaria o ponto/statement do rep
+ * anterior pendurado no mesmo shift_id, já que a troca de dono não é o mesmo
+ * turno continuando — é outra pessoa nele.
+ */
+export async function definirSlot(dados: {
+  data: string;
+  turno: Turno;
+  bloco: Bloco;
+  funcao: Funcao;
+  repId: string | null;
+}) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { data: existente } = await supabase
+    .from('shifts')
+    .select('id, rep_id')
+    .eq('data', dados.data)
+    .eq('turno', dados.turno)
+    .eq('bloco', dados.bloco)
+    .eq('funcao', dados.funcao)
+    .maybeSingle();
+
+  if (existente && existente.rep_id !== dados.repId) {
+    const { error } = await supabase.from('shifts').delete().eq('id', existente.id);
+    if (error) throw new Error(error.message);
+  }
+
+  if (dados.repId && (!existente || existente.rep_id !== dados.repId)) {
+    const { error } = await supabase.from('shifts').insert({
+      data: dados.data,
+      turno: dados.turno,
+      bloco: dados.bloco,
+      funcao: dados.funcao,
+      rep_id: dados.repId,
+      origem: 'manual',
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  revalidar();
+}
+
 /** Apaga o turno. Em cascata some o ponto e os statements que estivessem nele. */
 export async function apagarTurno(shiftId: string) {
   await exigirAdmin();
