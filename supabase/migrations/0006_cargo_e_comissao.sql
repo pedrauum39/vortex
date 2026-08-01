@@ -1,20 +1,26 @@
 -- Cargo define o percentual de comissão e é INDEPENDENTE do `papel`: papel é a
 -- posição do rep no rodízio da escala (A/B/C), cargo é a patente dele.
--- Pedro Ribeiro, por exemplo, é papel A no T6/T1 e Grand Primaris.
+--
+-- Os valores vêm da tabela ADMIN TIME (coluna R) de `schedule by claude.xlsx`,
+-- conferida nas 18 abas. Não dá para derivar do papel: Carolinne e Gabriela são
+-- papel A e Secundus, enquanto Natasha é papel B e Primaris.
 
 create type cargo_t as enum ('grand_primaris', 'knight_primaris', 'secundus', 'tertius');
 
 alter table reps add column cargo cargo_t not null default 'tertius';
 
--- Chute inicial a partir do papel, para o admin corrigir na tela: A vira
--- Knight Primaris, B vira Secundus, C vira Tertius.
-update reps set cargo = case papel
-  when 'A' then 'knight_primaris'::cargo_t
-  when 'B' then 'secundus'::cargo_t
-  else 'tertius'::cargo_t
+update reps set cargo = case nome_curto
+  when 'Pedro Ribeiro'    then 'grand_primaris'::cargo_t   -- "Gran Primaris"
+  when 'Natasha Tem Tem'  then 'knight_primaris'::cargo_t  -- "Primaris"
+  when 'Carolinne P.'     then 'secundus'::cargo_t
+  when 'Léo Grimaldi'     then 'secundus'::cargo_t
+  when 'Gabriela Storini' then 'secundus'::cargo_t
+  when 'Ignacio Canelo'   then 'secundus'::cargo_t
+  when 'Oliver Melo'      then 'tertius'::cargo_t
+  when 'Carlos de Lucca'  then 'tertius'::cargo_t
+  when 'Diogo Ciesielski' then 'tertius'::cargo_t
+  else cargo
 end;
-
-update reps set cargo = 'grand_primaris' where nome_curto = 'Pedro Ribeiro';
 
 -- $2/hora para todo mundo. Fica na `reps` e não na regra para caber exceção
 -- individual sem versionar a regra do time inteiro.
