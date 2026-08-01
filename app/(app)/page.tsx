@@ -9,8 +9,11 @@ type MeuTurno = {
   data: string;
   bloco: Bloco;
   funcao: Funcao;
-  models: { nome: string } | null;
+  shift_logs: { shift_log_models: { models: { nome: string } }[] }[];
 };
+
+const nomeDoTurno = (t: MeuTurno) =>
+  t.shift_logs[0]?.shift_log_models.map((m) => m.models.nome).join(' + ') || `Bloco ${t.bloco}`;
 
 export default async function Dashboard() {
   const rep = await exigirRep();
@@ -21,7 +24,7 @@ export default async function Dashboard() {
   // isto o dashboard do admin mostraria os turnos do time inteiro.
   const { data } = await supabase
     .from('shifts')
-    .select('id, data, bloco, funcao, models(nome)')
+    .select('id, data, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
     .eq('rep_id', rep.id)
     .gte('data', hoje)
     .order('data')
@@ -46,7 +49,7 @@ export default async function Dashboard() {
         {hojeSlot ? (
           <>
             <p className="mt-2 text-xl font-medium">
-              {hojeSlot.models?.nome ?? `Bloco ${hojeSlot.bloco}`}
+              {nomeDoTurno(hojeSlot)}
               {hojeSlot.funcao === 'assist' && (
                 <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
                   Assistant
@@ -80,7 +83,7 @@ export default async function Dashboard() {
               <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
                 <span>{diaLegivel(t.data)}</span>
                 <span className="text-texto-fraco">
-                  {t.models?.nome ?? `Bloco ${t.bloco}`}
+                  {nomeDoTurno(t)}
                   {t.funcao === 'assist' && ' · Assistant'}
                 </span>
               </li>

@@ -75,8 +75,11 @@ type MeuTurno = {
   bloco: Bloco;
   funcao: 'regular' | 'assist';
   origem: 'gerado' | 'manual';
-  models: { nome: string } | null;
-  shift_logs: { clock_in_at: string; clock_out_at: string | null }[];
+  shift_logs: {
+    clock_in_at: string;
+    clock_out_at: string | null;
+    shift_log_models: { models: { nome: string } }[];
+  }[];
 };
 
 async function AbaMeus({
@@ -95,7 +98,9 @@ async function AbaMeus({
   // isto "Meus turnos" mostraria o time inteiro para o admin.
   const { data } = await supabase
     .from('shifts')
-    .select('id, data, turno, bloco, funcao, origem, models(nome), shift_logs(clock_in_at, clock_out_at)')
+    .select(
+      'id, data, turno, bloco, funcao, origem, shift_logs(clock_in_at, clock_out_at, shift_log_models(models(nome)))',
+    )
     .eq('rep_id', repId)
     .gte('data', inicio)
     .lte('data', fim)
@@ -110,13 +115,14 @@ async function AbaMeus({
     <ul className="divide-y divide-borda rounded-2xl border border-borda bg-superficie">
       {turnos.map((t) => {
         const log = t.shift_logs[0];
+        const modelos = log?.shift_log_models.map((m) => m.models.nome).join(' + ');
         return (
           <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-base">
             <span className={t.data === hoje ? 'font-medium text-accent' : ''}>
               {diaLegivel(t.data)}
             </span>
             <span className="text-texto-fraco">{rotuloTurno(t.turno)}</span>
-            <span className="text-texto-fraco">{t.models?.nome ?? `Bloco ${t.bloco}`}</span>
+            <span className="text-texto-fraco">{modelos || `Bloco ${t.bloco}`}</span>
             {t.funcao === 'assist' && (
               <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
                 Assistant
@@ -151,6 +157,7 @@ type LinhaTime = {
   bloco: Bloco;
   funcao: 'regular' | 'assist';
   rep_nome: string | null;
+  modelos_nome: string | null;
 };
 
 async function AbaTime({
@@ -167,7 +174,7 @@ async function AbaTime({
   const supabase = await criarClienteServidor();
   const { data } = await supabase
     .from('escala_time')
-    .select('data, turno, bloco, funcao, rep_nome')
+    .select('data, turno, bloco, funcao, rep_nome, modelos_nome')
     .gte('data', inicio)
     .lte('data', fim);
 
@@ -175,7 +182,7 @@ async function AbaTime({
   if (linhas.length === 0) return <Vazia admin={admin} inicio={inicio} fim={fim} />;
 
   const busca = new Map(
-    linhas.map((l) => [`${l.data}|${l.turno}|${l.bloco}|${l.funcao}`, l.rep_nome]),
+    linhas.map((l) => [`${l.data}|${l.turno}|${l.bloco}|${l.funcao}`, l]),
   );
 
   return (
@@ -208,7 +215,7 @@ function BlocoDeLinhas({
 }: {
   bloco: Bloco;
   semana: string[];
-  busca: Map<string, string | null>;
+  busca: Map<string, LinhaTime>;
 }) {
   return (
     <>
@@ -225,8 +232,16 @@ function BlocoDeLinhas({
             const assist = busca.get(`${dia}|${turno}|${bloco}|assist`);
             return (
               <td key={dia} className="px-4 py-4 align-top">
-                <div>{regular ?? <span className="text-texto-fraco">—</span>}</div>
-                {assist && <div className="mt-1 text-sm text-accent">+ {assist}</div>}
+                <div>{regular?.rep_nome ?? <span className="text-texto-fraco">—</span>}</div>
+                {regular?.modelos_nome && (
+                  <div className="mt-0.5 text-sm text-texto-fraco">{regular.modelos_nome}</div>
+                )}
+                {/* Espaço sempre reservado: o Time 2 nunca tem Assistant (regra
+                    do project.md), então sem isto as linhas do Time 1 ficam mais
+                    altas nas semanas com Assistant e os dois blocos desalinham. */}
+                <div className="mt-1 min-h-[1.25rem] text-sm text-accent">
+                  {assist?.rep_nome && `+ ${assist.rep_nome}`}
+                </div>
               </td>
             );
           })}

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { gerarEscala, type SlotEscala } from './escala';
-import type { Bloco, Funcao, Model, Origem, Rep, Turno } from './tipos';
+import type { Bloco, Funcao, Origem, Rep, Turno } from './tipos';
 
 export type LinhaShift = {
   data: string;
@@ -8,21 +8,17 @@ export type LinhaShift = {
   bloco: Bloco;
   funcao: Funcao;
   rep_id: string;
-  model_id: string | null;
   origem: Origem;
 };
 
-/** Bloco de cima é a Vortex I, bloco de baixo é a Vortex II. Ver project.md. */
-const MODELO_DO_BLOCO: Record<Bloco, string> = { I: 'Vortex I', II: 'Vortex II' };
+// Não tem mais "o modelo do bloco": um time pode ter várias modelos no
+// roster, e não tem como o gerador saber sozinho qual delas é a do dia — quem
+// escolhe é o rep, no clock-in (ver shift_log_models). shifts.model_id fica
+// sem uso aqui de propósito.
 
-/** Resolve papel+turno em rep_id e bloco em model_id. Função pura. */
-export function slotsParaLinhas(
-  slots: SlotEscala[],
-  reps: Rep[],
-  models: Model[],
-): LinhaShift[] {
+/** Resolve papel+turno em rep_id. Função pura. */
+export function slotsParaLinhas(slots: SlotEscala[], reps: Rep[]): LinhaShift[] {
   const porPapel = new Map(reps.map((r) => [`${r.turno}|${r.papel}`, r.id]));
-  const porNome = new Map(models.map((m) => [m.nome, m.id]));
 
   return slots.flatMap((slot) => {
     const rep_id = porPapel.get(`${slot.turno}|${slot.papel}`);
@@ -35,7 +31,6 @@ export function slotsParaLinhas(
         bloco: slot.bloco,
         funcao: slot.funcao,
         rep_id,
-        model_id: porNome.get(MODELO_DO_BLOCO[slot.bloco]) ?? null,
         origem: slot.origem,
       },
     ];
@@ -55,13 +50,8 @@ export async function materializarEscala(
   dataFim: string,
 ) {
   const { data: reps } = await supabase.from('reps').select('*');
-  const { data: models } = await supabase.from('models').select('*');
 
-  const linhas = slotsParaLinhas(
-    gerarEscala(dataInicio, dataFim),
-    (reps ?? []) as Rep[],
-    (models ?? []) as Model[],
-  );
+  const linhas = slotsParaLinhas(gerarEscala(dataInicio, dataFim), (reps ?? []) as Rep[]);
 
   const { error } = await supabase
     .from('shifts')
