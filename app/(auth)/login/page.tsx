@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -39,7 +40,8 @@ export default function Login() {
     <main className="relative flex min-h-dvh items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <Image src="/vortex-logo.png" alt="Vortex" width={72} height={72} className="mx-auto rounded-full" priority />
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
             <span className="text-accent">VORTEX</span>
           </h1>
           <p className="mt-1 text-sm text-texto-fraco">Escala, turnos e invoice do time</p>

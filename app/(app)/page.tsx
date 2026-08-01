@@ -15,7 +15,7 @@ import {
   segundaDaSemana,
   somarDias,
 } from '@/lib/tempo';
-import { HORARIOS, rotuloTurno, type Bloco, type Funcao } from '@/lib/tipos';
+import { HORARIOS, ROTULO_CARGO, rotuloTurno, type Bloco, type Cargo, type Funcao } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
 
 type MeuTurno = {
@@ -84,11 +84,20 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Olá, {rep.nome_curto}</h1>
-        <p className="mt-1 text-sm text-texto-fraco">
-          {rotuloTurno(rep.turno)} · papel {rep.papel} · {HORARIOS[rep.turno].inicio}–
-          {HORARIOS[rep.turno].fim}
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
+          {rep.nome_curto}
+        </h1>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:max-w-md">
+          <CaixaPerfil rotulo="Turno" icone={<IconeRelogio />}>
+            <span className="inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
+              {rotuloTurno(rep.turno)}
+            </span>
+          </CaixaPerfil>
+          <CaixaPerfil rotulo="Cargo" icone={<IconeEstrela />}>
+            <BadgeCargo cargo={rep.cargo} />
+          </CaixaPerfil>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-borda bg-superficie p-6">
@@ -211,6 +220,59 @@ function IconeRaio() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className="size-5">
       <path d="M13 2 3 14h7l-1 8 11-14h-7l0-6Z" />
+    </svg>
+  );
+}
+
+// Dourado pros dois níveis de Primaris, prata pro Secundus, bronze pro Tertius.
+const ESTILO_CARGO: Record<Cargo, string> = {
+  grand_primaris: 'bg-gradient-to-b from-amber-300 via-yellow-400 to-yellow-600 text-yellow-950',
+  knight_primaris: 'bg-gradient-to-b from-amber-300 via-yellow-400 to-yellow-600 text-yellow-950',
+  secundus: 'bg-gradient-to-b from-slate-200 via-slate-300 to-slate-400 text-slate-900',
+  tertius: 'bg-gradient-to-b from-orange-400 via-orange-600 to-orange-800 text-orange-50',
+};
+
+function BadgeCargo({ cargo }: { cargo: Cargo }) {
+  return (
+    <span className={`inline-block rounded-lg px-3 py-1 text-sm font-bold shadow-sm ${ESTILO_CARGO[cargo]}`}>
+      {ROTULO_CARGO[cargo]}
+    </span>
+  );
+}
+
+function CaixaPerfil({
+  rotulo,
+  icone,
+  children,
+}: {
+  rotulo: string;
+  icone: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-borda bg-superficie p-3">
+      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+        {icone}
+        {rotulo}
+      </div>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
+
+function IconeRelogio() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconeEstrela() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5">
+      <path d="M12 2l2.9 6.26 6.9.6-5.2 4.62 1.6 6.77L12 16.9l-6.2 3.35 1.6-6.77-5.2-4.62 6.9-.6L12 2Z" />
     </svg>
   );
 }
