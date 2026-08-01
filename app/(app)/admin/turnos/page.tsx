@@ -1,5 +1,5 @@
 import { buscarRegraVigente } from '@/lib/comissaoDb';
-import { linhasDoSlot, type LinhaInvoice, type SlotResolvido } from '@/lib/invoice';
+import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
@@ -22,7 +22,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, rep_id, model_id, origem, reps(nome_curto, cargo, valor_hora), models(nome), shift_logs(id, rep_id, clock_in_at, clock_out_at, model_id_real, statements(id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .gte('data', inicio)
       .lte('data', fim)
@@ -30,7 +30,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       .order('turno')
       .order('bloco'),
     supabase.from('reps').select('*').order('turno').order('papel'),
-    supabase.from('models').select('*').order('nome'),
+    supabase.from('models').select('*').eq('ativa', true).order('bloco').order('nome'),
   ]);
 
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
@@ -52,11 +52,28 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
 
   for (const { regular, assist } of porSlot.values()) {
     const log = regular?.shift_logs[0];
-    const statement = log?.statements;
-    if (!regular || !log || !statement || !regular.reps) continue;
+    if (!regular || !log || !regular.reps) continue;
 
-    const minhaModelo = log.model_id_real ?? regular.model_id;
-    const anterior = await buscarAnterior(supabase, regular.turno, regular.data, minhaModelo);
+    const modelos: ModeloTrabalhada[] = [];
+    for (const { model_id } of log.shift_log_models) {
+      const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
+      const anterior = await buscarAnterior(supabase, regular.turno, regular.data, model_id);
+      modelos.push({
+        modeloId: model_id,
+        statement: statement
+          ? {
+              assinaturas: Number(statement.net_assinaturas),
+              gorjetas: Number(statement.net_gorjetas),
+              publicacoes: Number(statement.net_publicacoes),
+              mensagens: Number(statement.net_mensagens),
+              indicacoes: Number(statement.net_indicacoes),
+            }
+          : null,
+        anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
+        anteriorPendente: anterior.tipo === 'pendente',
+      });
+    }
+
     const assistLog = assist?.shift_logs[0];
 
     const slot: SlotResolvido = {
@@ -69,15 +86,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
         valorHora: regular.reps.valor_hora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
-        statement: {
-          assinaturas: Number(statement.net_assinaturas),
-          gorjetas: Number(statement.net_gorjetas),
-          publicacoes: Number(statement.net_publicacoes),
-          mensagens: Number(statement.net_mensagens),
-          indicacoes: Number(statement.net_indicacoes),
-        },
-        anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
-        anteriorPendente: anterior.tipo === 'pendente',
+        modelos,
       },
       assist:
         assist?.rep_id && assist.reps && assistLog
@@ -101,7 +110,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <NavPeriodo inicio={inicio} fim={fim} />
 
-      <FormularioTurno reps={reps} models={models} inicio={inicio} />
+      <FormularioTurno reps={reps} inicio={inicio} />
 
       {shifts.length === 0 ? (
         <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">
@@ -117,16 +126,20 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
                 <th className="px-3 py-3 font-medium">Bloco</th>
                 <th className="px-3 py-3 font-medium">Função</th>
                 <th className="px-3 py-3 font-medium">Rep</th>
-                <th className="px-3 py-3 font-medium">Modelo</th>
                 <th className="px-3 py-3 font-medium">Ponto</th>
-                <th className="px-3 py-3 font-medium">Statement</th>
+                <th className="px-3 py-3 font-medium">Statements</th>
                 <th className="px-3 py-3 text-right font-medium">Comissão</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {shifts.map((s) => (
-                <LinhaTurno key={s.id} shift={s} linha={linhasPorShift.get(s.id) ?? null} />
+                <LinhaTurno
+                  key={s.id}
+                  shift={s}
+                  linha={linhasPorShift.get(s.id) ?? null}
+                  models={models.filter((m) => m.bloco === s.bloco)}
+                />
               ))}
             </tbody>
           </table>

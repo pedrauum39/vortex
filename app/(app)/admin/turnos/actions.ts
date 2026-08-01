@@ -29,7 +29,8 @@ function localParaUtc(valor: string): Date {
 /**
  * Cria ou atualiza um turno na data/turno/bloco/função escolhidos. `origem` é
  * sempre 'manual' — é o índice único que dá precedência a esta linha sobre o
- * que gerarEscala() geraria no mesmo slot.
+ * que gerarEscala() geraria no mesmo slot. A modelo é escolhida depois, ao
+ * simular o ponto — aqui só se define quem ocupa o slot.
  */
 export async function criarTurno(dados: {
   data: string;
@@ -37,7 +38,6 @@ export async function criarTurno(dados: {
   bloco: Bloco;
   funcao: Funcao;
   repId: string;
-  modelId: string | null;
 }) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -49,7 +49,6 @@ export async function criarTurno(dados: {
       bloco: dados.bloco,
       funcao: dados.funcao,
       rep_id: dados.repId,
-      model_id: dados.modelId,
       origem: 'manual',
     },
     { onConflict: 'data,turno,bloco,funcao' },
@@ -59,7 +58,7 @@ export async function criarTurno(dados: {
   revalidar();
 }
 
-/** Apaga o turno. Em cascata some o ponto e o statement que estivessem nele. */
+/** Apaga o turno. Em cascata some o ponto e os statements que estivessem nele. */
 export async function apagarTurno(shiftId: string) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -70,26 +69,39 @@ export async function apagarTurno(shiftId: string) {
   revalidar();
 }
 
-/** Simula o clock in/out com horários escolhidos à mão, sem passar pela janela oficial. */
+/** Simula o clock in/out com horários e modelo(s) escolhidos à mão. */
 export async function simularPonto(dados: {
   shiftId: string;
   repId: string;
   entrada: string; // datetime-local, BRT
   saida: string | null;
+  modeloIds: string[];
 }) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  const { error } = await supabase.from('shift_logs').upsert(
-    {
-      shift_id: dados.shiftId,
-      rep_id: dados.repId,
-      clock_in_at: localParaUtc(dados.entrada).toISOString(),
-      clock_out_at: dados.saida ? localParaUtc(dados.saida).toISOString() : null,
-    },
-    { onConflict: 'shift_id,rep_id' },
-  );
+  if (dados.modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
+
+  const { data: log, error } = await supabase
+    .from('shift_logs')
+    .upsert(
+      {
+        shift_id: dados.shiftId,
+        rep_id: dados.repId,
+        clock_in_at: localParaUtc(dados.entrada).toISOString(),
+        clock_out_at: dados.saida ? localParaUtc(dados.saida).toISOString() : null,
+      },
+      { onConflict: 'shift_id,rep_id' },
+    )
+    .select('id')
+    .single();
   if (error) throw new Error(error.message);
+
+  await supabase.from('shift_log_models').delete().eq('shift_log_id', log.id);
+  const { error: erroModelos } = await supabase
+    .from('shift_log_models')
+    .insert(dados.modeloIds.map((modelId) => ({ shift_log_id: log.id, model_id: modelId })));
+  if (erroModelos) throw new Error(erroModelos.message);
 
   revalidar();
 }
@@ -104,9 +116,10 @@ export async function apagarPonto(shiftLogId: string) {
   revalidar();
 }
 
-/** Grava um statement com valores à mão, sem passar pelo OCR. */
+/** Grava o statement de uma modelo específica do turno, com valores à mão. */
 export async function simularStatement(dados: {
   shiftLogId: string;
+  modeloId: string;
   assinaturas: number;
   gorjetas: number;
   publicacoes: number;
@@ -122,6 +135,7 @@ export async function simularStatement(dados: {
   const { error } = await supabase.from('statements').upsert(
     {
       shift_log_id: dados.shiftLogId,
+      model_id: dados.modeloId,
       net_total: total,
       net_assinaturas: dados.assinaturas,
       net_gorjetas: dados.gorjetas,
@@ -130,7 +144,7 @@ export async function simularStatement(dados: {
       net_indicacoes: dados.indicacoes,
       corrigido_manualmente: true,
     },
-    { onConflict: 'shift_log_id' },
+    { onConflict: 'shift_log_id,model_id' },
   );
   if (error) throw new Error(error.message);
 

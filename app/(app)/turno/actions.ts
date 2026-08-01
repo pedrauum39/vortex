@@ -15,13 +15,17 @@ function revalidar() {
   revalidatePath('/');
 }
 
-/** Clock in. `clock_in_at` vem do default now() do Postgres, em UTC. */
-export async function iniciarTurno(shiftId: string, modelIdReal: string | null) {
+/** Clock in com 1 ou 2 modelos (double). `clock_in_at` vem do default now() do Postgres. */
+export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
   const rep = await exigirRep();
   const supabase = await criarClienteServidor();
 
+  if (modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
+  if (modeloIds.length > 2) throw new Error('No máximo duas modelos (double).');
+
   // A trava vale no servidor, não só no botão: a tela pode estar aberta desde
-  // antes da janela abrir, ou a ação pode ser chamada direto.
+  // antes da janela abrir, ou a ação pode ser chamada direto. Admin ignora a
+  // janela — precisa poder testar o fluxo (OCR, comissão) a qualquer hora.
   const { data: shift } = await supabase
     .from('shifts')
     .select('data, turno')
@@ -30,97 +34,113 @@ export async function iniciarTurno(shiftId: string, modelIdReal: string | null) 
     .single();
   if (!shift) throw new Error('Turno não encontrado.');
 
-  if (!podeIniciar(shift.turno as Turno, shift.data as string)) {
+  if (rep.role !== 'admin' && !podeIniciar(shift.turno as Turno, shift.data as string)) {
     throw new Error(
       `O ponto abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno e fecha quando ele termina.`,
     );
   }
 
-  const { error } = await supabase.from('shift_logs').insert({
-    shift_id: shiftId,
-    rep_id: rep.id,
-    model_id_real: modelIdReal,
-  });
+  const { data: log, error } = await supabase
+    .from('shift_logs')
+    .insert({ shift_id: shiftId, rep_id: rep.id })
+    .select('id')
+    .single();
   if (error) throw new Error(error.message);
+
+  const { error: erroModelos } = await supabase
+    .from('shift_log_models')
+    .insert(modeloIds.map((modelId) => ({ shift_log_id: log.id, model_id: modelId })));
+  if (erroModelos) throw new Error(erroModelos.message);
 
   revalidar();
 }
 
-/** Registra que o rep trabalhou uma modelo diferente da escalada. */
-export async function trocarModelo(logId: string, modelIdReal: string | null) {
+/** Substitui a lista de modelos deste turno — o rep corrigindo uma escolha errada. */
+export async function trocarModelos(logId: string, modeloIds: string[]) {
   await exigirRep();
   const supabase = await criarClienteServidor();
 
+  if (modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
+  if (modeloIds.length > 2) throw new Error('No máximo duas modelos (double).');
+
+  const { error: erroDelete } = await supabase
+    .from('shift_log_models')
+    .delete()
+    .eq('shift_log_id', logId);
+  if (erroDelete) throw new Error(erroDelete.message);
+
   const { error } = await supabase
-    .from('shift_logs')
-    .update({ model_id_real: modelIdReal })
-    .eq('id', logId);
+    .from('shift_log_models')
+    .insert(modeloIds.map((modelId) => ({ shift_log_id: logId, model_id: modelId })));
   if (error) throw new Error(error.message);
 
   revalidar();
 }
 
 /**
- * As linhas net do statement do turno anterior na cadeia do dia, para descontar
- * do acumulado deste turno.
- *
- * Atravessa o RLS de propósito: o turno anterior é de OUTRO rep. O que volta
- * são só os valores acumulados que já estão embutidos no print que este rep tem
- * na mão — nenhum nome, nenhuma hora, nenhuma comissão.
+ * As linhas net do statement da MESMA modelo no turno anterior da cadeia.
+ * Atravessa o RLS de propósito: o turno anterior pode ser de OUTRO rep. O que
+ * volta são só os valores acumulados que já estão embutidos no print que este
+ * rep tem na mão — nenhum nome, nenhuma hora, nenhuma comissão.
  */
-export async function statementAnterior(shiftId: string): Promise<Anterior> {
+export async function statementAnterior(shiftId: string, modeloId: string): Promise<Anterior> {
   await exigirRep();
   const supabase = await criarClienteServidor();
 
   // O RLS garante que o rep só alcança o próprio turno.
   const { data: meu } = await supabase
     .from('shifts')
-    .select('data, turno, model_id, shift_logs(model_id_real)')
+    .select('data, turno')
     .eq('id', shiftId)
     .single();
   if (!meu) throw new Error('Turno não encontrado.');
 
-  const logs = meu.shift_logs as { model_id_real: string | null }[];
-  const minhaModelo = logs[0]?.model_id_real ?? (meu.model_id as string | null);
-
-  return buscarAnterior(criarClienteAdmin(), meu.turno as Turno, meu.data as string, minhaModelo);
+  return buscarAnterior(criarClienteAdmin(), meu.turno as Turno, meu.data as string, modeloId);
 }
 
-export type DadosReport = {
+export type ReportModelo = {
+  modeloId: string;
   linhas: LinhasNet;
   netTotal: number;
-  resumo: string;
-  teveAssistente: boolean;
-  saiuAntes: boolean;
-  motivoSaida: string | null;
   imagemPath: string | null;
   ocrRaw: unknown;
   corrigidoManualmente: boolean;
   refundConfirmado: boolean;
 };
 
-/** Fecha o turno e grava o statement. */
+export type DadosReport = {
+  reports: ReportModelo[];
+  resumo: string;
+  teveAssistente: boolean;
+  saiuAntes: boolean;
+  motivoSaida: string | null;
+};
+
+/** Fecha o turno e grava um statement por modelo trabalhada. */
 export async function finalizarTurno(logId: string, dados: DadosReport) {
   await exigirRep();
   const supabase = await criarClienteServidor();
 
-  const { error: erroStatement } = await supabase.from('statements').upsert(
-    {
+  if (dados.reports.length === 0) throw new Error('Falta o report de ao menos uma modelo.');
+
+  const { error: erroStatements } = await supabase.from('statements').upsert(
+    dados.reports.map((r) => ({
       shift_log_id: logId,
-      imagem_path: dados.imagemPath,
-      ocr_raw: dados.ocrRaw,
-      net_total: dados.netTotal,
-      net_assinaturas: dados.linhas.assinaturas,
-      net_gorjetas: dados.linhas.gorjetas,
-      net_publicacoes: dados.linhas.publicacoes,
-      net_mensagens: dados.linhas.mensagens,
-      net_indicacoes: dados.linhas.indicacoes,
-      corrigido_manualmente: dados.corrigidoManualmente,
-      refund_confirmado: dados.refundConfirmado,
-    },
-    { onConflict: 'shift_log_id' },
+      model_id: r.modeloId,
+      imagem_path: r.imagemPath,
+      ocr_raw: r.ocrRaw,
+      net_total: r.netTotal,
+      net_assinaturas: r.linhas.assinaturas,
+      net_gorjetas: r.linhas.gorjetas,
+      net_publicacoes: r.linhas.publicacoes,
+      net_mensagens: r.linhas.mensagens,
+      net_indicacoes: r.linhas.indicacoes,
+      corrigido_manualmente: r.corrigidoManualmente,
+      refund_confirmado: r.refundConfirmado,
+    })),
+    { onConflict: 'shift_log_id,model_id' },
   );
-  if (erroStatement) throw new Error(erroStatement.message);
+  if (erroStatements) throw new Error(erroStatements.message);
 
   // O statement pode falhar sem derrubar o turno, mas o clock out não: é ele
   // que fecha as horas.

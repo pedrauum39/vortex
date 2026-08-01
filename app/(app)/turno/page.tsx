@@ -16,13 +16,11 @@ type TurnoDoDia = {
   data: string;
   bloco: Bloco;
   funcao: Funcao;
-  model_id: string | null;
-  models: { nome: string } | null;
   shift_logs: {
     id: string;
     clock_in_at: string;
     clock_out_at: string | null;
-    model_id_real: string | null;
+    shift_log_models: { model_id: string; models: { nome: string } }[];
   }[];
 };
 
@@ -35,16 +33,19 @@ export default async function TurnoPage() {
     supabase
       .from('shifts')
       .select(
-        'id, data, bloco, funcao, model_id, models(nome), shift_logs(id, clock_in_at, clock_out_at, model_id_real)',
+        'id, data, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)))',
       )
       // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
       // sem isto ele cairia no turno de outra pessoa.
       .eq('data', data)
       .eq('rep_id', rep.id),
-    supabase.from('models').select('id, nome').order('nome'),
+    // O roster é do TIME (bloco), não do turno — ainda não sei o bloco do
+    // turno de hoje aqui em cima, então busco todo mundo ativo e filtro na tela.
+    supabase.from('models').select('*').eq('ativa', true).order('nome'),
   ]);
 
   const turno = ((turnos ?? []) as unknown as TurnoDoDia[])[0];
+  const log = turno?.shift_logs[0];
 
   return (
     <div className="space-y-6">
@@ -62,35 +63,28 @@ export default async function TurnoPage() {
         </div>
       ) : (
         <Painel
-          turno={{
-            id: turno.id,
-            modelo: turno.models?.nome ?? `Bloco ${turno.bloco}`,
-            modelId: turno.model_id,
-            assist: turno.funcao === 'assist',
-          }}
+          turno={{ id: turno.id, bloco: turno.bloco, assist: turno.funcao === 'assist' }}
           log={
-            turno.shift_logs[0]
+            log
               ? {
-                  id: turno.shift_logs[0].id,
-                  entrada: horaBRT(new Date(turno.shift_logs[0].clock_in_at)),
-                  saida: turno.shift_logs[0].clock_out_at
-                    ? horaBRT(new Date(turno.shift_logs[0].clock_out_at))
-                    : null,
-                  modelIdReal: turno.shift_logs[0].model_id_real,
+                  id: log.id,
+                  entrada: horaBRT(new Date(log.clock_in_at)),
+                  saida: log.clock_out_at ? horaBRT(new Date(log.clock_out_at)) : null,
+                  modelos: log.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome })),
                   horas: horasDoTurno(
                     rep.turno,
                     data,
-                    new Date(turno.shift_logs[0].clock_in_at),
-                    turno.shift_logs[0].clock_out_at
-                      ? new Date(turno.shift_logs[0].clock_out_at)
-                      : null,
+                    new Date(log.clock_in_at),
+                    log.clock_out_at ? new Date(log.clock_out_at) : null,
                   ),
                 }
               : null
           }
-          models={(models ?? []) as Model[]}
+          models={((models ?? []) as Model[]).filter((m) => m.bloco === turno.bloco)}
           repId={rep.id}
-          podeIniciar={podeIniciar(rep.turno, data)}
+          // Admin ignora a janela dos 15 minutos — precisa testar o fluxo
+          // (OCR, comissão) sem esperar a hora certa do turno.
+          podeIniciar={rep.role === 'admin' || podeIniciar(rep.turno, data)}
           abreAs={horaBRT(
             new Date(
               janelaDoTurno(rep.turno, data).inicio.getTime() -

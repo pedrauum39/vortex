@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import type { LinhaInvoice } from '@/lib/invoice';
 import { LINHAS } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
+import type { Model } from '@/lib/tipos';
 import { rotuloTurno } from '@/lib/tipos';
 import { apagarPonto, apagarStatement, apagarTurno, simularPonto, simularStatement } from './actions';
 import type { LinhaShift } from './tipos';
@@ -21,14 +22,21 @@ const ROTULO: Record<string, string> = {
   indicacoes: 'Indicações',
 };
 
-export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaInvoice | null }) {
+export function LinhaTurno({
+  shift,
+  linha,
+  models,
+}: {
+  shift: LinhaShift;
+  linha: LinhaInvoice | null;
+  models: Model[];
+}) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [formPonto, setFormPonto] = useState(false);
-  const [formStatement, setFormStatement] = useState(false);
+  const [modeloDoForm, setModeloDoForm] = useState<string | null>(null);
 
   const log = shift.shift_logs[0];
-  const statement = log?.statements;
 
   const rodar = (acao: () => Promise<void>) =>
     executar(async () => {
@@ -36,7 +44,7 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
       try {
         await acao();
         setFormPonto(false);
-        setFormStatement(false);
+        setModeloDoForm(null);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu.');
       }
@@ -56,13 +64,14 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
           )}
         </td>
         <td className="px-3 py-2.5">{shift.reps?.nome_curto ?? '—'}</td>
-        <td className="px-3 py-2.5 text-texto-fraco">{shift.models?.nome ?? '—'}</td>
         <td className="px-3 py-2.5">
           {log ? (
             <div className="flex items-center gap-2">
               <span className="text-texto-fraco">
                 {datetimeLocalBRT(new Date(log.clock_in_at)).slice(11)}
                 {log.clock_out_at && ` – ${datetimeLocalBRT(new Date(log.clock_out_at)).slice(11)}`}
+                {' · '}
+                {log.shift_log_models.map((m) => m.models.nome).join(' + ') || 'sem modelo'}
               </span>
               <button type="button" onClick={() => setFormPonto((v) => !v)} className="text-xs text-accent hover:underline">
                 editar
@@ -85,25 +94,45 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
         <td className="px-3 py-2.5">
           {!log ? (
             <span className="text-texto-fraco">—</span>
-          ) : statement ? (
-            <div className="flex items-center gap-2">
-              <span className="text-texto-fraco">{dinheiro(statement.net_total)}</span>
-              <button type="button" onClick={() => setFormStatement((v) => !v)} className="text-xs text-accent hover:underline">
-                editar
-              </button>
-              <button
-                type="button"
-                disabled={pendente}
-                onClick={() => rodar(() => apagarStatement(statement.id))}
-                className="text-xs text-red-400 hover:underline disabled:opacity-50"
-              >
-                apagar
-              </button>
-            </div>
           ) : (
-            <button type="button" onClick={() => setFormStatement(true)} className="text-xs text-accent hover:underline">
-              simular statement
-            </button>
+            <div className="flex flex-col gap-1">
+              {log.shift_log_models.map(({ model_id, models: m }) => {
+                const st = log.statements.find((s) => s.model_id === model_id);
+                return (
+                  <div key={model_id} className="flex items-center gap-2">
+                    <span className="text-texto-fraco">{m.nome}:</span>
+                    {st ? (
+                      <>
+                        <span>{dinheiro(st.net_total)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setModeloDoForm(model_id)}
+                          className="text-xs text-accent hover:underline"
+                        >
+                          editar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pendente}
+                          onClick={() => rodar(() => apagarStatement(st.id))}
+                          className="text-xs text-red-400 hover:underline disabled:opacity-50"
+                        >
+                          apagar
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setModeloDoForm(model_id)}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        simular statement
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </td>
         <td className="px-3 py-2.5 text-right">
@@ -121,7 +150,7 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
             type="button"
             disabled={pendente}
             onClick={() => {
-              if (confirm('Apagar este turno? Ponto e statement dele somem junto.')) {
+              if (confirm('Apagar este turno? Ponto e statements dele somem junto.')) {
                 rodar(() => apagarTurno(shift.id));
               }
             }}
@@ -134,7 +163,7 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
 
       {erro && (
         <tr>
-          <td colSpan={10} className="px-4 py-2 text-xs text-red-400">
+          <td colSpan={9} className="px-4 py-2 text-xs text-red-400">
             {erro}
           </td>
         </tr>
@@ -142,16 +171,18 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
 
       {formPonto && (
         <tr className="border-b border-borda bg-superficie-alta/50">
-          <td colSpan={10} className="px-4 py-3">
+          <td colSpan={9} className="px-4 py-3">
             <FormPonto
               repId={shift.rep_id!}
               shiftId={shift.id}
+              models={models}
+              modelosAtuais={log?.shift_log_models.map((m) => m.model_id) ?? []}
               entradaAtual={log ? datetimeLocalBRT(new Date(log.clock_in_at)) : ''}
               saidaAtual={log?.clock_out_at ? datetimeLocalBRT(new Date(log.clock_out_at)) : ''}
               pendente={pendente}
-              onSalvar={(entrada, saida) =>
+              onSalvar={(entrada, saida, modeloIds) =>
                 rodar(() =>
-                  simularPonto({ shiftId: shift.id, repId: shift.rep_id!, entrada, saida: saida || null }),
+                  simularPonto({ shiftId: shift.id, repId: shift.rep_id!, entrada, saida: saida || null, modeloIds }),
                 )
               }
               onCancelar={() => setFormPonto(false)}
@@ -160,14 +191,17 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
         </tr>
       )}
 
-      {formStatement && log && (
+      {modeloDoForm && log && (
         <tr className="border-b border-borda bg-superficie-alta/50">
-          <td colSpan={10} className="px-4 py-3">
+          <td colSpan={9} className="px-4 py-3">
             <FormStatement
-              atual={statement}
+              modeloNome={log.shift_log_models.find((m) => m.model_id === modeloDoForm)?.models.nome ?? ''}
+              atual={log.statements.find((s) => s.model_id === modeloDoForm) ?? null}
               pendente={pendente}
-              onSalvar={(vals) => rodar(() => simularStatement({ shiftLogId: log.id, ...vals }))}
-              onCancelar={() => setFormStatement(false)}
+              onSalvar={(vals) =>
+                rodar(() => simularStatement({ shiftLogId: log.id, modeloId: modeloDoForm, ...vals }))
+              }
+              onCancelar={() => setModeloDoForm(null)}
             />
           </td>
         </tr>
@@ -177,6 +211,8 @@ export function LinhaTurno({ shift, linha }: { shift: LinhaShift; linha: LinhaIn
 }
 
 function FormPonto({
+  models,
+  modelosAtuais,
   entradaAtual,
   saidaAtual,
   pendente,
@@ -185,51 +221,79 @@ function FormPonto({
 }: {
   repId: string;
   shiftId: string;
+  models: Model[];
+  modelosAtuais: string[];
   entradaAtual: string;
   saidaAtual: string;
   pendente: boolean;
-  onSalvar: (entrada: string, saida: string) => void;
+  onSalvar: (entrada: string, saida: string, modeloIds: string[]) => void;
   onCancelar: () => void;
 }) {
   const [entrada, setEntrada] = useState(entradaAtual);
   const [saida, setSaida] = useState(saidaAtual);
+  const [modeloIds, setModeloIds] = useState<string[]>(modelosAtuais);
+
+  function alternar(id: string) {
+    setModeloIds((atual) => {
+      if (atual.includes(id)) return atual.filter((x) => x !== id);
+      if (atual.length >= 2) return atual;
+      return [...atual, id];
+    });
+  }
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1 text-xs text-texto-fraco">
-        Entrada (BRT)
-        <input type="datetime-local" value={entrada} onChange={(e) => setEntrada(e.target.value)} className={campo} />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-texto-fraco">
-        Saída (BRT, opcional — em andamento se vazio)
-        <input type="datetime-local" value={saida} onChange={(e) => setSaida(e.target.value)} className={campo} />
-      </label>
-      <button
-        type="button"
-        onClick={onCancelar}
-        className="rounded-lg border border-borda px-3 py-1.5 text-xs text-texto-fraco hover:text-texto"
-      >
-        cancelar
-      </button>
-      <button
-        type="button"
-        disabled={pendente || !entrada}
-        onClick={() => onSalvar(entrada, saida)}
-        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
-      >
-        gravar ponto
-      </button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {models.map((m) => (
+          <label
+            key={m.id}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+              modeloIds.includes(m.id) ? 'border-accent bg-accent-fraco text-accent' : 'border-borda text-texto-fraco'
+            }`}
+          >
+            <input type="checkbox" checked={modeloIds.includes(m.id)} onChange={() => alternar(m.id)} className="size-3.5" />
+            {m.nome}
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs text-texto-fraco">
+          Entrada (BRT)
+          <input type="datetime-local" value={entrada} onChange={(e) => setEntrada(e.target.value)} className={campo} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-texto-fraco">
+          Saída (BRT, opcional — em andamento se vazio)
+          <input type="datetime-local" value={saida} onChange={(e) => setSaida(e.target.value)} className={campo} />
+        </label>
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="rounded-lg border border-borda px-3 py-1.5 text-xs text-texto-fraco hover:text-texto"
+        >
+          cancelar
+        </button>
+        <button
+          type="button"
+          disabled={pendente || !entrada || modeloIds.length === 0}
+          onClick={() => onSalvar(entrada, saida, modeloIds)}
+          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
+        >
+          gravar ponto
+        </button>
+      </div>
     </div>
   );
 }
 
 function FormStatement({
+  modeloNome,
   atual,
   pendente,
   onSalvar,
   onCancelar,
 }: {
-  atual: LinhaShift['shift_logs'][number]['statements'];
+  modeloNome: string;
+  atual: LinhaShift['shift_logs'][number]['statements'][number] | null;
   pendente: boolean;
   onSalvar: (vals: {
     assinaturas: number;
@@ -252,6 +316,7 @@ function FormStatement({
 
   return (
     <div className="flex flex-wrap items-end gap-3">
+      <span className="text-xs font-medium text-accent">{modeloNome}</span>
       {LINHAS.map((l) => (
         <label key={l} className="flex flex-col gap-1 text-xs text-texto-fraco">
           {ROTULO[l]}

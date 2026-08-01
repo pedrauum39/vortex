@@ -1,27 +1,18 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Rep } from '@/lib/tipos';
+import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep } from '@/lib/tipos';
 import { criarTurno } from './actions';
 
 const campo =
   'rounded-lg border border-borda bg-fundo px-2.5 py-2 text-sm outline-none focus:border-accent';
 
-export function FormularioTurno({
-  reps,
-  models,
-  inicio,
-}: {
-  reps: Rep[];
-  models: Model[];
-  inicio: string;
-}) {
+export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string }) {
   const [data, setData] = useState(inicio);
   const [turno, setTurno] = useState<(typeof TURNOS)[number]>('T2T3');
   const [bloco, setBloco] = useState<Bloco>('I');
   const [funcao, setFuncao] = useState<Funcao>('regular');
   const [repId, setRepId] = useState(reps[0]?.id ?? '');
-  const [modelId, setModelId] = useState(models[0]?.id ?? '');
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -32,7 +23,7 @@ export function FormularioTurno({
       setErro(null);
       setOk(false);
       try {
-        await criarTurno({ data, turno, bloco, funcao, repId, modelId: modelId || null });
+        await criarTurno({ data, turno, bloco, funcao, repId });
         setOk(true);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
@@ -86,18 +77,6 @@ export function FormularioTurno({
             {reps.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nome_curto} · {rotuloTurno(r.turno)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-texto-fraco">
-          Modelo
-          <select value={modelId} onChange={(e) => setModelId(e.target.value)} className={campo}>
-            <option value="">—</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome}
               </option>
             ))}
           </select>

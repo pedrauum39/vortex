@@ -3,12 +3,12 @@
 // Um slot pode ter até duas pessoas: quem é regular e, quando a escala (ou uma
 // cobertura) escalou alguém no campo Assistant do mesmo dia/turno/bloco, quem
 // assistiu. O rep pode aparecer num período tanto como regular quanto como
-// assistente, em slots diferentes — por isso duas buscas separadas.
+// assistente, em slots diferentes — por isso duas buscas separadas. Um regular
+// pode ter trabalhado 1 ou 2 modelos (double) no mesmo turno.
 
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
-import type { LinhasNet } from '@/lib/statement';
-import type { SlotResolvido } from '@/lib/invoice';
+import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
 import type { Bloco, Cargo, Turno } from '@/lib/tipos';
 
 type LinhaShift = {
@@ -16,34 +16,58 @@ type LinhaShift = {
   data: string;
   turno: Turno;
   bloco: Bloco;
-  model_id: string | null;
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
-    model_id_real: string | null;
-    statements: Record<string, number> | null;
+    shift_log_models: { model_id: string }[];
+    statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
   }[];
 };
 
 type LinhaSiblingRegular = {
   rep_id: string | null;
-  model_id: string | null;
   reps: { cargo: Cargo; valor_hora: number } | null;
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
-    model_id_real: string | null;
-    statements: Record<string, number> | null;
+    shift_log_models: { model_id: string }[];
+    statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
   }[];
 };
 
-const paraLinhasNet = (st: Record<string, number>): LinhasNet => ({
-  assinaturas: Number(st.net_assinaturas),
-  gorjetas: Number(st.net_gorjetas),
-  publicacoes: Number(st.net_publicacoes),
-  mensagens: Number(st.net_mensagens),
-  indicacoes: Number(st.net_indicacoes),
-});
+const CAMPOS =
+  'id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
+
+async function montarModelos(
+  db: ReturnType<typeof criarClienteAdmin>,
+  turno: Turno,
+  data: string,
+  log: LinhaShift['shift_logs'][number],
+): Promise<ModeloTrabalhada[]> {
+  const modelos: ModeloTrabalhada[] = [];
+
+  for (const { model_id } of log.shift_log_models) {
+    const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
+    const anterior = await buscarAnterior(db, turno, data, model_id);
+
+    modelos.push({
+      modeloId: model_id,
+      statement: statement
+        ? {
+            assinaturas: Number(statement.net_assinaturas),
+            gorjetas: Number(statement.net_gorjetas),
+            publicacoes: Number(statement.net_publicacoes),
+            mensagens: Number(statement.net_mensagens),
+            indicacoes: Number(statement.net_indicacoes),
+          }
+        : null,
+      anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
+      anteriorPendente: anterior.tipo === 'pendente',
+    });
+  }
+
+  return modelos;
+}
 
 export async function buscarSlotsDoRep(
   repId: string,
@@ -53,8 +77,6 @@ export async function buscarSlotsDoRep(
   fim: string,
 ): Promise<SlotResolvido[]> {
   const db = criarClienteAdmin();
-  const CAMPOS =
-    'id, data, turno, bloco, model_id, shift_logs(clock_in_at, clock_out_at, model_id_real, statements(net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
 
   const [{ data: comoRegular }, { data: comoAssist }] = await Promise.all([
     db
@@ -80,12 +102,11 @@ export async function buscarSlotsDoRep(
     const log = shift.shift_logs[0];
     if (!log) continue; // ainda não bati o ponto neste slot
 
-    const minhaModelo = log.model_id_real ?? shift.model_id;
-    const anterior = await buscarAnterior(db, shift.turno, shift.data, minhaModelo);
-
     const { data: siblingRows } = await db
       .from('shifts')
-      .select('rep_id, model_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, model_id_real, statements(net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))')
+      .select(
+        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
       .eq('bloco', shift.bloco)
@@ -103,9 +124,7 @@ export async function buscarSlotsDoRep(
         valorHora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
-        statement: log.statements ? paraLinhasNet(log.statements) : null,
-        anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
-        anteriorPendente: anterior.tipo === 'pendente',
+        modelos: await montarModelos(db, shift.turno, shift.data, log),
       },
       assist:
         sibling?.rep_id && assistLog
@@ -127,7 +146,9 @@ export async function buscarSlotsDoRep(
 
     const { data: siblingRows } = await db
       .from('shifts')
-      .select('rep_id, model_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, model_id_real, statements(net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))')
+      .select(
+        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
       .eq('bloco', shift.bloco)
@@ -135,9 +156,6 @@ export async function buscarSlotsDoRep(
     const sibling = (siblingRows as unknown as LinhaSiblingRegular[] | null)?.[0];
     const regularLog = sibling?.shift_logs[0];
     if (!sibling?.rep_id || !regularLog) continue; // o regular ainda não bateu ponto
-
-    const modeloRegular = regularLog.model_id_real ?? sibling.model_id;
-    const anterior = await buscarAnterior(db, shift.turno, shift.data, modeloRegular);
 
     slots.push({
       data: shift.data,
@@ -149,9 +167,7 @@ export async function buscarSlotsDoRep(
         valorHora: sibling.reps?.valor_hora ?? 0,
         clockIn: new Date(regularLog.clock_in_at),
         clockOut: regularLog.clock_out_at ? new Date(regularLog.clock_out_at) : null,
-        statement: regularLog.statements ? paraLinhasNet(regularLog.statements) : null,
-        anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
-        anteriorPendente: anterior.tipo === 'pendente',
+        modelos: await montarModelos(db, shift.turno, shift.data, regularLog),
       },
       assist: {
         repId,

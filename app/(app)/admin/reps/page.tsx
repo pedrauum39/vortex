@@ -15,7 +15,6 @@ export default async function AdminReps() {
             <th className="px-4 py-3 font-medium">Nome curto</th>
             <th className="px-3 py-3 font-medium">Nome oficial</th>
             <th className="px-3 py-3 font-medium">Turno</th>
-            <th className="px-3 py-3 font-medium">Papel</th>
             <th className="px-3 py-3 font-medium">Cargo</th>
             <th className="px-3 py-3 font-medium">$/h</th>
             <th className="px-3 py-3 font-medium">Ativo</th>

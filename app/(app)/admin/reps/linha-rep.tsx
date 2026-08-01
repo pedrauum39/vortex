@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Papel, type Rep, type Turno } from '@/lib/tipos';
+import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Rep, type Turno } from '@/lib/tipos';
 import { atualizarRep } from './actions';
 
 const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'tertius'];
-const PAPEIS: Papel[] = ['A', 'B', 'C'];
 
 const campo = 'w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent';
 
@@ -19,11 +18,14 @@ export function LinhaRep({ rep }: { rep: Rep }) {
     executar(async () => {
       setErro(null);
       try {
+        // papel não aparece na tela — decide o rodízio da escala por baixo dos
+        // panos, já conferido célula a célula contra a planilha. Reenviamos o
+        // valor que já estava, sem tocar nele.
         await atualizarRep(rep.id, {
           nome_curto: dados.nome_curto,
           nome_oficial: dados.nome_oficial,
           turno: dados.turno,
-          papel: dados.papel,
+          papel: rep.papel,
           cargo: dados.cargo,
           valor_hora: dados.valor_hora,
           ativo: dados.ativo,
@@ -41,7 +43,6 @@ export function LinhaRep({ rep }: { rep: Rep }) {
         <td className="px-4 py-2.5">{rep.nome_curto}</td>
         <td className="px-3 py-2.5 text-texto-fraco">{rep.nome_oficial}</td>
         <td className="px-3 py-2.5">{rotuloTurno(rep.turno)}</td>
-        <td className="px-3 py-2.5">{rep.papel}</td>
         <td className="px-3 py-2.5">{ROTULO_CARGO[rep.cargo]}</td>
         <td className="px-3 py-2.5">${rep.valor_hora}</td>
         <td className="px-3 py-2.5">{rep.ativo ? 'sim' : 'não'}</td>
@@ -83,19 +84,6 @@ export function LinhaRep({ rep }: { rep: Rep }) {
           {TURNOS.map((t) => (
             <option key={t} value={t}>
               {rotuloTurno(t)}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-3 py-2.5">
-        <select
-          value={dados.papel}
-          onChange={(e) => setDados({ ...dados, papel: e.target.value as Papel })}
-          className={campo}
-        >
-          {PAPEIS.map((p) => (
-            <option key={p} value={p}>
-              {p}
             </option>
           ))}
         </select>

@@ -1,6 +1,7 @@
 // Busca do statement anterior na cadeia, contra o banco. Compartilhado entre a
-// tela do turno (um shift por vez) e o invoice (vários shifts de uma vez) —
-// as duas precisam da mesma regra de "quem vem antes na cadeia do dia".
+// tela do turno, o invoice e o admin — todos precisam da mesma regra de "quem
+// vem antes na cadeia do dia", agora por modelo: um turno "double" tem um
+// statement por modelo, e cada modelo tem sua própria cadeia.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { turnoAnterior, type LinhasNet } from './statement';
@@ -17,54 +18,50 @@ export type Anterior =
   | { tipo: 'ok'; linhas: LinhasNet };
 
 /**
- * As linhas net do statement do turno anterior na cadeia do dia, para a mesma
- * modelo. Espera um cliente que atravesse o RLS (admin) — o turno anterior é
- * de OUTRO rep, e o que volta são só os valores acumulados do print dele.
+ * As linhas net do statement da MESMA modelo no turno anterior da cadeia.
+ * Espera um cliente que atravesse o RLS (admin) — o turno anterior pode ser de
+ * outro rep, e o que volta são só os valores acumulados do print dele.
  */
 export async function buscarAnterior(
   db: SupabaseClient,
   turno: Turno,
   data: string,
-  minhaModelo: string | null,
+  modeloId: string,
 ): Promise<Anterior> {
   const anterior = turnoAnterior(turno, data);
   if (!anterior) return { tipo: 'primeiro' };
 
-  const { data: candidatos } = await db
+  // Os turnos 'regular' do dia anterior — pode ter mais de um bloco; o que
+  // importa é qual shift_log tem statement para ESTA modelo.
+  const { data: shiftsAnteriores } = await db
     .from('shifts')
-    .select(
-      'model_id, shift_logs(model_id_real, statements(net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
-    )
+    .select('shift_logs(id)')
     .eq('data', anterior.data)
     .eq('turno', anterior.turno)
     .eq('funcao', 'regular');
 
-  for (const turnoRow of candidatos ?? []) {
-    // `shift_logs` é lista (vários reps podem logar no mesmo shift), mas
-    // `statements` volta como OBJETO: o unique(shift_log_id) faz o PostgREST
-    // tratar como um-para-um. Tratar como lista devolveria sempre 'pendente'.
-    const log = (
-      turnoRow.shift_logs as { model_id_real: string | null; statements: unknown }[]
-    )[0];
-    const modelo = log?.model_id_real ?? turnoRow.model_id;
-    if (modelo !== minhaModelo) continue;
+  const logIds = (shiftsAnteriores ?? []).flatMap((s) =>
+    (s.shift_logs as { id: string }[]).map((l) => l.id),
+  );
+  if (logIds.length === 0) return { tipo: 'pendente' };
 
-    const st = log?.statements as Record<string, number> | null;
-    if (!st) return { tipo: 'pendente' };
+  const { data: st } = await db
+    .from('statements')
+    .select('net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes')
+    .in('shift_log_id', logIds)
+    .eq('model_id', modeloId)
+    .maybeSingle();
 
-    return {
-      tipo: 'ok',
-      linhas: {
-        assinaturas: Number(st.net_assinaturas),
-        gorjetas: Number(st.net_gorjetas),
-        publicacoes: Number(st.net_publicacoes),
-        mensagens: Number(st.net_mensagens),
-        indicacoes: Number(st.net_indicacoes),
-      },
-    };
-  }
+  if (!st) return { tipo: 'pendente' };
 
-  // Nenhum turno da mesma modelo antes deste — ninguém trabalhou ou o print
-  // ainda não veio. Nos dois casos o desconto fica em aberto.
-  return { tipo: 'pendente' };
+  return {
+    tipo: 'ok',
+    linhas: {
+      assinaturas: Number(st.net_assinaturas),
+      gorjetas: Number(st.net_gorjetas),
+      publicacoes: Number(st.net_publicacoes),
+      mensagens: Number(st.net_mensagens),
+      indicacoes: Number(st.net_indicacoes),
+    },
+  };
 }

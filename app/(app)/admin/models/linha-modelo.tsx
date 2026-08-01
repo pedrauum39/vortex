@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import type { Model } from '@/lib/tipos';
-import { apagarModelo, criarModelo, renomearModelo } from './actions';
+import type { Bloco, Model } from '@/lib/tipos';
+import { apagarModelo, criarModelo, definirAtivaModelo, renomearModelo } from './actions';
 
 export function LinhaModelo({ model }: { model: Model }) {
   const [editando, setEditando] = useState(false);
@@ -22,7 +22,7 @@ export function LinhaModelo({ model }: { model: Model }) {
     });
 
   return (
-    <tr className="border-b border-borda last:border-0">
+    <tr className={`border-b border-borda last:border-0 ${!model.ativa ? 'opacity-50' : ''}`}>
       <td className="px-4 py-2.5">
         {editando ? (
           <input
@@ -32,7 +32,10 @@ export function LinhaModelo({ model }: { model: Model }) {
             autoFocus
           />
         ) : (
-          model.nome
+          <>
+            {model.nome}
+            {!model.ativa && <span className="ml-2 text-xs text-texto-fraco">(inativa)</span>}
+          </>
         )}
       </td>
       <td className="px-4 py-2.5 text-right">
@@ -66,6 +69,14 @@ export function LinhaModelo({ model }: { model: Model }) {
             <button
               type="button"
               disabled={pendente}
+              onClick={() => rodar(() => definirAtivaModelo(model.id, !model.ativa))}
+              className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
+            >
+              {model.ativa ? 'desativar' : 'reativar'}
+            </button>
+            <button
+              type="button"
+              disabled={pendente}
               onClick={() => {
                 if (confirm(`Apagar "${model.nome}"? Turnos que usam essa modelo ficam sem modelo.`)) {
                   rodar(() => apagarModelo(model.id));
@@ -82,7 +93,7 @@ export function LinhaModelo({ model }: { model: Model }) {
   );
 }
 
-export function FormularioModelo() {
+export function FormularioModelo({ bloco }: { bloco: Bloco }) {
   const [nome, setNome] = useState('');
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -92,7 +103,7 @@ export function FormularioModelo() {
     executar(async () => {
       setErro(null);
       try {
-        await criarModelo(nome.trim());
+        await criarModelo(nome.trim(), bloco);
         setNome('');
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
@@ -105,7 +116,7 @@ export function FormularioModelo() {
       <input
         value={nome}
         onChange={(e) => setNome(e.target.value)}
-        placeholder="Nova modelo, ex: Vortex III"
+        placeholder="Adicionar modelo a este time"
         className="w-full rounded-lg border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-accent"
       />
       <button
@@ -114,7 +125,7 @@ export function FormularioModelo() {
         onClick={criar}
         className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
       >
-        Criar
+        Adicionar
       </button>
       {erro && <span className="text-xs text-red-400">{erro}</span>}
     </div>

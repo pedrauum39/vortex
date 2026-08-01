@@ -30,9 +30,14 @@ const slotBase = (): SlotResolvido => ({
     valorHora: 2,
     clockIn: brtParaUtc(2026, 7, 30, 5, 0),
     clockOut: brtParaUtc(2026, 7, 30, 13, 0),
-    statement: ACUMULADO_T2T3,
-    anterior: ACUMULADO_ANTERIOR,
-    anteriorPendente: false,
+    modelos: [
+      {
+        modeloId: 'm1',
+        statement: ACUMULADO_T2T3,
+        anterior: ACUMULADO_ANTERIOR,
+        anteriorPendente: false,
+      },
+    ],
   },
   assist: null,
 });
@@ -77,7 +82,7 @@ describe('linhasDoSlot', () => {
 
   test('sem statement, a comissão é zero e a linha fica pendente', () => {
     const slot = slotBase();
-    slot.regular!.statement = null;
+    slot.regular!.modelos[0].statement = null;
 
     const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
 
@@ -88,8 +93,8 @@ describe('linhasDoSlot', () => {
 
   test('statement do turno anterior faltando também deixa pendente', () => {
     const slot = slotBase();
-    slot.regular!.anterior = null;
-    slot.regular!.anteriorPendente = true;
+    slot.regular!.modelos[0].anterior = null;
+    slot.regular!.modelos[0].anteriorPendente = true;
 
     const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
 
@@ -120,6 +125,39 @@ describe('linhasDoSlot', () => {
     const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
     expect(linha.horas).toBe(8);
   });
+
+  test('double: a base soma o delta das duas modelos', () => {
+    const slot = slotBase();
+    // Segunda modelo do turno, com sua própria cadeia — sem turno anterior
+    // (abre o dia para essa modelo).
+    slot.regular!.modelos.push({
+      modeloId: 'm2',
+      statement: { assinaturas: 0, gorjetas: 50, publicacoes: 0, mensagens: 450, indicacoes: 0 },
+      anterior: null,
+      anteriorPendente: false,
+    });
+
+    const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
+
+    // m1: 2329,53 (como no primeiro teste). m2: 50 + 450 = 500.
+    expect(linha.base).toBe(2829.53);
+    expect(linha.pendente).toBe(false);
+  });
+
+  test('double: uma modelo pendente não trava a base da outra, mas marca pendente', () => {
+    const slot = slotBase();
+    slot.regular!.modelos.push({
+      modeloId: 'm2',
+      statement: null,
+      anterior: null,
+      anteriorPendente: false,
+    });
+
+    const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
+
+    expect(linha.base).toBe(2329.53); // só a m1, que está resolvida
+    expect(linha.pendente).toBe(true);
+  });
 });
 
 describe('totaisDoPeriodo', () => {
@@ -130,7 +168,7 @@ describe('totaisDoPeriodo', () => {
     semStatement.data = '2026-07-31';
     semStatement.regular!.clockIn = brtParaUtc(2026, 7, 31, 5, 0);
     semStatement.regular!.clockOut = brtParaUtc(2026, 7, 31, 13, 0);
-    semStatement.regular!.statement = null;
+    semStatement.regular!.modelos[0].statement = null;
 
     const totais = totaisDoPeriodo([
       ...cheio,
