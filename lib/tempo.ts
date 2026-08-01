@@ -78,6 +78,12 @@ export function horaBRT(instante: Date): string {
   return `${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
 }
 
+/** 'YYYY-MM-DDTHH:mm' em BRT — o formato de <input type="datetime-local">. */
+export function datetimeLocalBRT(instante: Date): string {
+  const { ano, mes, dia } = relogioBRT(instante);
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T${horaBRT(instante)}`;
+}
+
 /** 'dd/MM HH:mm' em BRT. */
 export function formatarBRT(instante: Date): string {
   const { dia, mes } = relogioBRT(instante);
