@@ -3,8 +3,10 @@
 -- linha por modelo trabalhada — e o statement passa a ser por modelo, não por
 -- turno inteiro.
 --
--- statements e shift_logs estão vazias neste momento (conferido antes de
--- escrever esta migração), então não há nada para migrar.
+-- Limpa dado de teste do playground de antes desta migração: statement sem
+-- model_id não tem como virar válido (o rep e a venda continuam sem sentido
+-- sem saber de qual modelo), então é descartável, não migrável.
+delete from statements;
 
 create table shift_log_models (
   id            uuid primary key default gen_random_uuid(),
