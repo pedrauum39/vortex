@@ -23,8 +23,10 @@ type Props = {
 export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
+  // Sem log ainda, começa com o roster padrão do time todo marcado — o rep
+  // desmarca quem não fez e marca quem fez fora do padrão.
   const [selecionados, setSelecionados] = useState<string[]>(
-    log?.modelos.map((m) => m.id) ?? [],
+    log?.modelos.map((m) => m.id) ?? models.map((m) => m.id),
   );
   const [editandoModelos, setEditandoModelos] = useState(false);
   const [fechando, setFechando] = useState(false);
@@ -41,11 +43,9 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
     });
 
   function alternar(id: string) {
-    setSelecionados((atual) => {
-      if (atual.includes(id)) return atual.filter((x) => x !== id);
-      if (atual.length >= 2) return atual; // no máximo double
-      return [...atual, id];
-    });
+    setSelecionados((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
   }
 
   return (
@@ -56,7 +56,7 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
         </span>
         {log && log.modelos.length > 1 && (
           <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
-            Double
+            {log.modelos.length === 2 ? 'Double' : `${log.modelos.length} modelos`}
           </span>
         )}
         {turno.assist && (
@@ -77,7 +77,7 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
           <p className="text-sm text-texto-fraco">
             Modelo{selecionados.length > 1 ? 's' : ''} trabalhada
             {selecionados.length > 1 ? 's' : ''}{' '}
-            <span className="text-xs">(até 2 — marque a segunda só em caso de double)</span>
+            <span className="text-xs">(o padrão do time já vem marcado — ajuste se for diferente)</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {models.map((m) => (

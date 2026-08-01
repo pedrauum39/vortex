@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { reduzirImagem } from '@/lib/imagem';
 import {
   LINHAS,
   baseComissao,
@@ -25,26 +26,6 @@ const VAZIO: LinhasNet = { assinaturas: 0, gorjetas: 0, publicacoes: 0, mensagen
 
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
-
-/** Reduz para 1568px no lado maior — o statement continua legível e custa metade. */
-async function reduzir(arquivo: Blob): Promise<{ blob: Blob; base64: string }> {
-  const bitmap = await createImageBitmap(arquivo);
-  const escala = Math.min(1, 1568 / Math.max(bitmap.width, bitmap.height));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * escala);
-  canvas.height = Math.round(bitmap.height * escala);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-
-  const blob = await new Promise<Blob>((ok) => canvas.toBlob((b) => ok(b!), 'image/jpeg', 0.9));
-  const base64 = await new Promise<string>((ok) => {
-    const leitor = new FileReader();
-    leitor.onload = () => ok((leitor.result as string).split(',')[1]);
-    leitor.readAsDataURL(blob);
-  });
-
-  return { blob, base64 };
-}
 
 export type ResultadoModelo = {
   linhas: LinhasNet;
@@ -112,7 +93,7 @@ export function ReportModelo({
     setLendo(true);
     setAvisoOcr(null);
     try {
-      const { blob, base64 } = await reduzir(arquivo);
+      const { blob, base64 } = await reduzirImagem(arquivo);
       setBlob(blob);
       setPrevia(`data:image/jpeg;base64,${base64}`);
 
@@ -145,39 +126,59 @@ export function ReportModelo({
     }
   }, []);
 
-  useEffect(() => {
-    function aoColar(evento: ClipboardEvent) {
-      const imagem = [...(evento.clipboardData?.items ?? [])]
-        .find((item) => item.type.startsWith('image/'))
-        ?.getAsFile();
-      if (imagem) {
-        evento.preventDefault();
-        lerPrint(imagem);
-      }
-    }
-    window.addEventListener('paste', aoColar);
-    return () => window.removeEventListener('paste', aoColar);
-  }, [lerPrint]);
+  function limparPrint() {
+    setBlob(null);
+    setPrevia(null);
+    setOcrRaw(null);
+    setAvisoOcr(null);
+    setLinhas(VAZIO);
+    setTotalImpresso(0);
+    setEditou(false);
+  }
 
   return (
     <div className="rounded-xl border border-borda p-4">
       <p className="text-sm font-medium text-accent">{modeloNome}</p>
 
       <div
+        tabIndex={0}
         onDrop={(e) => {
           e.preventDefault();
           const arquivo = e.dataTransfer.files?.[0];
           if (arquivo?.type.startsWith('image/')) lerPrint(arquivo);
         }}
         onDragOver={(e) => e.preventDefault()}
-        className="mt-2 rounded-lg border border-dashed border-borda bg-fundo p-3 text-center"
+        onPaste={(e) => {
+          const imagem = [...e.clipboardData.items]
+            .find((item) => item.type.startsWith('image/'))
+            ?.getAsFile();
+          if (imagem) {
+            e.preventDefault();
+            lerPrint(imagem);
+          }
+        }}
+        className="mt-2 rounded-lg border border-dashed border-borda bg-fundo p-3 text-center outline-none focus:border-accent"
       >
         {previa ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={previa} alt="Print do statement" className="mx-auto max-h-32 rounded border border-borda" />
+          <div className="relative inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previa} alt="Print do statement" className="mx-auto max-h-32 rounded border border-borda" />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                limparPrint();
+              }}
+              aria-label="Remover print"
+              title="Remover print"
+              className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold leading-none text-white hover:bg-red-600"
+            >
+              ×
+            </button>
+          </div>
         ) : (
           <p className="text-xs text-texto-fraco">
-            Cole com <kbd className="rounded bg-superficie-alta px-1.5 py-0.5">Ctrl+V</kbd> ou arraste
+            Clique aqui e cole com <kbd className="rounded bg-superficie-alta px-1.5 py-0.5">Ctrl+V</kbd> ou arraste
           </p>
         )}
         <label className="mt-2 inline-block cursor-pointer text-xs text-accent hover:underline">

@@ -2,11 +2,21 @@
 
 import { useState, useTransition } from 'react';
 import type { Bloco, Model } from '@/lib/tipos';
-import { apagarModelo, criarModelo, definirAtivaModelo, renomearModelo } from './actions';
+import {
+  apagarModelo,
+  criarModelo,
+  definirAtivaModelo,
+  definirMetaMensal,
+  renomearModelo,
+} from './actions';
+
+const dinheiro = (valor: number) =>
+  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
 export function LinhaModelo({ model }: { model: Model }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(model.nome);
+  const [metaMensal, setMetaMensal] = useState(model.meta_mensal);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -38,6 +48,19 @@ export function LinhaModelo({ model }: { model: Model }) {
           </>
         )}
       </td>
+      <td className="px-3 py-2.5 text-texto-fraco">
+        {editando ? (
+          <input
+            type="number"
+            step="0.01"
+            value={metaMensal}
+            onChange={(e) => setMetaMensal(Number(e.target.value))}
+            className="w-28 rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent"
+          />
+        ) : (
+          <>meta {dinheiro(model.meta_mensal)}/mês</>
+        )}
+      </td>
       <td className="px-4 py-2.5 text-right">
         {erro && <span className="mr-2 text-xs text-red-400">{erro}</span>}
         {editando ? (
@@ -46,6 +69,7 @@ export function LinhaModelo({ model }: { model: Model }) {
               type="button"
               onClick={() => {
                 setNome(model.nome);
+                setMetaMensal(model.meta_mensal);
                 setEditando(false);
               }}
               className="text-xs text-texto-fraco hover:text-texto"
@@ -55,7 +79,12 @@ export function LinhaModelo({ model }: { model: Model }) {
             <button
               type="button"
               disabled={pendente}
-              onClick={() => rodar(() => renomearModelo(model.id, nome))}
+              onClick={() =>
+                rodar(async () => {
+                  await renomearModelo(model.id, nome);
+                  await definirMetaMensal(model.id, metaMensal);
+                })
+              }
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
             >
               salvar

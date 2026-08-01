@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { criarClienteBrowser } from '@/lib/supabase/client';
+import { CampoSenha } from '../campo-senha';
 
 const CONFIGURADO = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
@@ -69,14 +71,7 @@ export default function Login() {
           <label className="mt-4 block text-sm text-texto-fraco" htmlFor="senha">
             Senha
           </label>
-          <input
-            id="senha"
-            type="password"
-            required
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-borda bg-fundo px-3 py-2.5 text-sm outline-none focus:border-accent"
-          />
+          <CampoSenha id="senha" value={senha} onChange={setSenha} />
 
           {erro && <p className="mt-4 text-sm text-red-400">{erro}</p>}
 
@@ -90,7 +85,11 @@ export default function Login() {
         </form>
 
         <p className="mt-4 text-center text-xs text-texto-fraco">
-          Não há auto-cadastro. Peça o acesso ao admin.
+          Não tem conta?{' '}
+          <Link href="/cadastro" className="text-accent hover:underline">
+            Criar uma
+          </Link>{' '}
+          — depois peça pro admin liberar o acesso.
         </p>
       </div>
     </main>

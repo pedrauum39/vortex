@@ -18,6 +18,7 @@ export default async function AdminReps() {
             <th className="px-3 py-3 font-medium">Cargo</th>
             <th className="px-3 py-3 font-medium">$/h</th>
             <th className="px-3 py-3 font-medium">Ativo</th>
+            <th className="px-3 py-3 font-medium">Login</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>

@@ -46,7 +46,7 @@ export type Rep = {
 };
 
 /** Uma modelo (perfil de conteúdo) do roster de um dos dois times. */
-export type Model = { id: string; nome: string; bloco: Bloco; ativa: boolean };
+export type Model = { id: string; nome: string; bloco: Bloco; ativa: boolean; meta_mensal: number };
 
 export type Shift = {
   id: string;

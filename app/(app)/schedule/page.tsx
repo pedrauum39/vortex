@@ -96,15 +96,26 @@ async function AbaMeus({
   const supabase = await criarClienteServidor();
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto "Meus turnos" mostraria o time inteiro para o admin.
-  const { data } = await supabase
-    .from('shifts')
-    .select(
-      'id, data, turno, bloco, funcao, origem, shift_logs(clock_in_at, clock_out_at, shift_log_models(models(nome)))',
-    )
-    .eq('rep_id', repId)
-    .gte('data', inicio)
-    .lte('data', fim)
-    .order('data');
+  const [{ data }, { data: modelsData }] = await Promise.all([
+    supabase
+      .from('shifts')
+      .select(
+        'id, data, turno, bloco, funcao, origem, shift_logs(clock_in_at, clock_out_at, shift_log_models(models(nome)))',
+      )
+      .eq('rep_id', repId)
+      .gte('data', inicio)
+      .lte('data', fim)
+      .order('data'),
+    supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
+  ]);
+
+  const rosterPorBloco = new Map<Bloco, string>();
+  for (const m of modelsData ?? []) {
+    rosterPorBloco.set(
+      m.bloco as Bloco,
+      [rosterPorBloco.get(m.bloco as Bloco), m.nome].filter(Boolean).join(', '),
+    );
+  }
 
   const turnos = (data ?? []) as unknown as MeuTurno[];
   if (turnos.length === 0) return <Vazia admin={admin} inicio={inicio} fim={fim} />;
@@ -115,6 +126,8 @@ async function AbaMeus({
     <ul className="divide-y divide-borda rounded-2xl border border-borda bg-superficie">
       {turnos.map((t) => {
         const log = t.shift_logs[0];
+        // Antes do clock-in real, mostra o roster padrão do time — é pra
+        // isso que ele existe (/admin/models).
         const modelos = log?.shift_log_models.map((m) => m.models.nome).join(' + ');
         return (
           <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-base">
@@ -122,7 +135,9 @@ async function AbaMeus({
               {diaLegivel(t.data)}
             </span>
             <span className="text-texto-fraco">{rotuloTurno(t.turno)}</span>
-            <span className="text-texto-fraco">{modelos || `Bloco ${t.bloco}`}</span>
+            <span className="text-texto-fraco">
+              {modelos || rosterPorBloco.get(t.bloco) || `Bloco ${t.bloco}`}
+            </span>
             {t.funcao === 'assist' && (
               <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
                 Assistant

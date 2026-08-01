@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Rep, type Turno } from '@/lib/tipos';
-import { atualizarRep } from './actions';
+import { atualizarRep, desvincularLogin, vincularLogin } from './actions';
 
 const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'tertius'];
 
@@ -40,12 +41,19 @@ export function LinhaRep({ rep }: { rep: Rep }) {
   if (!editando) {
     return (
       <tr className="border-b border-borda last:border-0">
-        <td className="px-4 py-2.5">{rep.nome_curto}</td>
+        <td className="px-4 py-2.5">
+          <Link href={`/admin/reps/${rep.id}`} className="text-accent hover:underline">
+            {rep.nome_curto}
+          </Link>
+        </td>
         <td className="px-3 py-2.5 text-texto-fraco">{rep.nome_oficial}</td>
         <td className="px-3 py-2.5">{rotuloTurno(rep.turno)}</td>
         <td className="px-3 py-2.5">{ROTULO_CARGO[rep.cargo]}</td>
         <td className="px-3 py-2.5">${rep.valor_hora}</td>
         <td className="px-3 py-2.5">{rep.ativo ? 'sim' : 'não'}</td>
+        <td className="px-3 py-2.5">
+          <CelulaLogin rep={rep} />
+        </td>
         <td className="px-4 py-2.5 text-right">
           <button
             type="button"
@@ -118,6 +126,9 @@ export function LinhaRep({ rep }: { rep: Rep }) {
           className="size-4 accent-[var(--color-accent)]"
         />
       </td>
+      <td className="px-3 py-2.5">
+        <CelulaLogin rep={rep} />
+      </td>
       <td className="px-4 py-2.5 text-right">
         <div className="flex items-center justify-end gap-2">
           {erro && <span className="text-xs text-red-400">{erro}</span>}
@@ -142,5 +153,90 @@ export function LinhaRep({ rep }: { rep: Rep }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * 'Pedro Ribeiro' → 'pedro.ribeiro@vortex.local'. Não precisa ser um e-mail
+ * real — com "Auto Confirm User" no Supabase, ninguém confere a caixa de
+ * entrada. Só serve pra dar um login sem depender do e-mail de cada rep.
+ */
+function sugestaoEmail(nomeCurto: string): string {
+  const slug = nomeCurto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+  return `${slug}@vortex.local`;
+}
+
+/**
+ * Liga o rep a uma conta do Supabase Auth já criada por fora (Dashboard).
+ * Não cria conta nem senha aqui — só procura pelo e-mail e grava o id.
+ */
+function CelulaLogin({ rep }: { rep: Rep }) {
+  const [email, setEmail] = useState(() => sugestaoEmail(rep.nome_curto));
+  const [pendente, executar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+
+  if (rep.auth_user_id) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-xs text-accent">vinculado</span>
+        <button
+          type="button"
+          disabled={pendente}
+          onClick={() => {
+            if (confirm(`Desvincular o login de ${rep.nome_curto}? Ele não vai conseguir mais entrar.`)) {
+              executar(async () => {
+                setErro(null);
+                try {
+                  await desvincularLogin(rep.id);
+                } catch (e) {
+                  setErro(e instanceof Error ? e.message : 'Não deu.');
+                }
+              });
+            }
+          }}
+          className="text-xs text-red-400 hover:underline disabled:opacity-50"
+        >
+          desvincular
+        </button>
+        {erro && <span className="text-xs text-red-400">{erro}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="e-mail já criado"
+        className="w-36 rounded-lg border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-accent"
+      />
+      <button
+        type="button"
+        disabled={pendente || !email.trim()}
+        onClick={() =>
+          executar(async () => {
+            setErro(null);
+            try {
+              await vincularLogin(rep.id, email);
+              setEmail('');
+            } catch (e) {
+              setErro(e instanceof Error ? e.message : 'Não deu.');
+            }
+          })
+        }
+        className="shrink-0 rounded-md bg-accent px-2 py-1 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
+      >
+        vincular
+      </button>
+      {erro && <span className="text-xs text-red-400">{erro}</span>}
+    </div>
   );
 }

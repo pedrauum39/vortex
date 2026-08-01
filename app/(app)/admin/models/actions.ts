@@ -47,6 +47,16 @@ export async function definirAtivaModelo(id: string, ativa: boolean) {
   revalidar();
 }
 
+export async function definirMetaMensal(id: string, metaMensal: number) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('models').update({ meta_mensal: metaMensal }).eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
 /** shifts.model_id tem ON DELETE SET NULL — apagar não quebra turnos existentes. */
 export async function apagarModelo(id: string) {
   await exigirAdmin();

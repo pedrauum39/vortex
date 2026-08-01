@@ -117,3 +117,39 @@ export function inicioDoDiaBRT(data: string): Date {
   const [ano, mes, dia] = data.split('-').map(Number);
   return brtParaUtc(ano, mes, dia);
 }
+
+/** Quantidade de dias no mês (calendário) de 'YYYY-MM'. */
+export function diasNoMes(mes: string): number {
+  const [ano, m] = mes.split('-').map(Number);
+  return new Date(Date.UTC(ano, m, 0)).getUTCDate();
+}
+
+/** 'YYYY-MM' do mês atual em BRT. */
+export function mesAtual(instante: Date = new Date()): string {
+  return dataBRT(instante).slice(0, 7);
+}
+
+/** Soma meses a 'YYYY-MM'. */
+export function somarMeses(mes: string, meses: number): string {
+  const [ano, m] = mes.split('-').map(Number);
+  const total = ano * 12 + (m - 1) + meses;
+  const anoNovo = Math.floor(total / 12);
+  const mesNovo = (total % 12) + 1;
+  return `${anoNovo}-${String(mesNovo).padStart(2, '0')}`;
+}
+
+/** Primeiro e último dia ('YYYY-MM-DD') de um mês 'YYYY-MM'. */
+export function limitesDoMes(mes: string): { inicio: string; fim: string } {
+  return { inicio: `${mes}-01`, fim: `${mes}-${String(diasNoMes(mes)).padStart(2, '0')}` };
+}
+
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+/** 'YYYY-MM' → 'agosto de 2026'. */
+export function mesLegivel(mes: string): string {
+  const [ano, m] = mes.split('-').map(Number);
+  return `${MESES[m - 1]} de ${ano}`;
+}

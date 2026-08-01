@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
+import { buscarSlotsDoRep } from '@/lib/invoiceDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, segundaDaSemana, somarDias } from '@/lib/tempo';
 import { ROTULO_CARGO, rotuloTurno } from '@/lib/tipos';
-import { buscarSlotsDoRep } from './dados';
 
 type Busca = { de?: string };
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useCallback, useState, useTransition } from 'react';
+import { reduzirImagem } from '@/lib/imagem';
 import type { LinhaInvoice } from '@/lib/invoice';
 import { LINHAS } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
@@ -176,7 +177,7 @@ export function LinhaTurno({
               repId={shift.rep_id!}
               shiftId={shift.id}
               models={models}
-              modelosAtuais={log?.shift_log_models.map((m) => m.model_id) ?? []}
+              modelosAtuais={log?.shift_log_models.map((m) => m.model_id) ?? models.map((m) => m.id)}
               entradaAtual={log ? datetimeLocalBRT(new Date(log.clock_in_at)) : ''}
               saidaAtual={log?.clock_out_at ? datetimeLocalBRT(new Date(log.clock_out_at)) : ''}
               pendente={pendente}
@@ -234,11 +235,9 @@ function FormPonto({
   const [modeloIds, setModeloIds] = useState<string[]>(modelosAtuais);
 
   function alternar(id: string) {
-    setModeloIds((atual) => {
-      if (atual.includes(id)) return atual.filter((x) => x !== id);
-      if (atual.length >= 2) return atual;
-      return [...atual, id];
-    });
+    setModeloIds((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
   }
 
   return (
@@ -311,12 +310,64 @@ function FormStatement({
     mensagens: atual?.net_mensagens ?? 0,
     indicacoes: atual?.net_indicacoes ?? 0,
   });
+  const [lendo, setLendo] = useState(false);
+  const [avisoOcr, setAvisoOcr] = useState<string | null>(null);
 
   const total = LINHAS.reduce((s, l) => s + vals[l], 0);
+
+  const lerPrint = useCallback(async (arquivo: Blob) => {
+    setLendo(true);
+    setAvisoOcr(null);
+    try {
+      const { base64 } = await reduzirImagem(arquivo);
+      const resposta = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagem: base64, tipo: 'image/jpeg' }),
+      });
+      if (!resposta.ok) {
+        setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
+        return;
+      }
+      const lido = await resposta.json();
+      setVals({
+        assinaturas: lido.net.assinaturas,
+        gorjetas: lido.net.gorjetas,
+        publicacoes: lido.net.publicacoes,
+        mensagens: lido.net.mensagens,
+        indicacoes: lido.net.indicacoes,
+      });
+    } catch {
+      setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
+    } finally {
+      setLendo(false);
+    }
+  }, []);
 
   return (
     <div className="flex flex-wrap items-end gap-3">
       <span className="text-xs font-medium text-accent">{modeloNome}</span>
+      <div
+        onDrop={(e) => {
+          e.preventDefault();
+          const arquivo = e.dataTransfer.files?.[0];
+          if (arquivo?.type.startsWith('image/')) lerPrint(arquivo);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        className="flex flex-col items-start gap-1 rounded-lg border border-dashed border-borda bg-fundo px-2.5 py-1.5"
+      >
+        <label className="cursor-pointer text-xs text-accent hover:underline">
+          {lendo ? 'lendo…' : 'subir print'}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={lendo}
+            onChange={(e) => e.target.files?.[0] && lerPrint(e.target.files[0])}
+            className="hidden"
+          />
+        </label>
+        {avisoOcr && <span className="text-xs text-amber-300">{avisoOcr}</span>}
+      </div>
       {LINHAS.map((l) => (
         <label key={l} className="flex flex-col gap-1 text-xs text-texto-fraco">
           {ROTULO[l]}

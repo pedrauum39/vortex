@@ -33,15 +33,16 @@ export async function atualizarSessao(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const noLogin = request.nextUrl.pathname.startsWith('/login');
+  const rotaPublica =
+    request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/cadastro');
 
-  if (!user && !noLogin) {
+  if (!user && !rotaPublica) {
     const destino = request.nextUrl.clone();
     destino.pathname = '/login';
     return NextResponse.redirect(destino);
   }
 
-  if (user && noLogin) {
+  if (user && rotaPublica) {
     const destino = request.nextUrl.clone();
     destino.pathname = '/';
     return NextResponse.redirect(destino);

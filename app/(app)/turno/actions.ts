@@ -17,13 +17,12 @@ function revalidar() {
   revalidatePath('/');
 }
 
-/** Clock in com 1 ou 2 modelos (double). `clock_in_at` vem do default now() do Postgres. */
+/** Clock in com uma ou mais modelos trabalhadas. `clock_in_at` vem do default now() do Postgres. */
 export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
   const rep = await exigirRep();
   const supabase = await criarClienteServidor();
 
   if (modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
-  if (modeloIds.length > 2) throw new Error('No máximo duas modelos (double).');
 
   // A trava vale no servidor, não só no botão: a tela pode estar aberta desde
   // antes da janela abrir, ou a ação pode ser chamada direto. Admin ignora a
@@ -63,7 +62,6 @@ export async function trocarModelos(logId: string, modeloIds: string[]) {
   const supabase = await criarClienteServidor();
 
   if (modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
-  if (modeloIds.length > 2) throw new Error('No máximo duas modelos (double).');
 
   const { error: erroDelete } = await supabase
     .from('shift_log_models')
