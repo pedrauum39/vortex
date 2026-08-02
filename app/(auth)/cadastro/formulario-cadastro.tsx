@@ -89,7 +89,7 @@ export function FormularioCadastro({ reps }: { reps: { id: string; nome_curto: s
     <main className="relative flex min-h-dvh items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Image src="/vortex-logo.png" alt="Vortex" width={72} height={72} className="mx-auto rounded-full" priority />
+          <Image src="/vortex-logo.png" alt="Vortex" width={160} height={160} className="mx-auto rounded-full" priority />
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">
             <span className="text-accent">VORTEX</span>
           </h1>
