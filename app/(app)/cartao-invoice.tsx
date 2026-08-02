@@ -9,7 +9,7 @@ export function CartaoInvoice({ valor }: { valor: string }) {
   return (
     <div className="rounded-2xl border border-borda bg-superficie p-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-texto-fraco">Invoice do período atual</p>
+        <p className="text-sm text-texto-fraco">Invoice do mês atual</p>
         <button
           type="button"
           onClick={() => setVisivel((v) => !v)}

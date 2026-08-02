@@ -10,13 +10,14 @@ const ROTAS = [
   { href: '/invoice', rotulo: 'Invoice' },
 ];
 
-export function Nav({ admin }: { admin: boolean }) {
+export function Nav({ admin, primaris }: { admin: boolean; primaris: boolean }) {
   const atual = usePathname();
-  const rotas = admin ? [...ROTAS, { href: '/admin', rotulo: 'Admin' }] : ROTAS;
+  const rotas = primaris ? [...ROTAS, { href: '/primaris', rotulo: 'Primaris' }] : ROTAS;
+  const rotasFinais = admin ? [...rotas, { href: '/admin', rotulo: 'Admin' }] : rotas;
 
   return (
     <nav className="flex gap-1">
-      {rotas.map(({ href, rotulo }) => {
+      {rotasFinais.map(({ href, rotulo }) => {
         const ativo = href === '/' ? atual === '/' : atual.startsWith(href);
         return (
           <Link

@@ -14,7 +14,10 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             <Image src="/vortex-logo.png" alt="" width={48} height={48} className="rounded-full" />
             VORTEX
           </span>
-          <Nav admin={rep.role === 'admin'} />
+          <Nav
+            admin={rep.role === 'admin'}
+            primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris'}
+          />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-texto-fraco sm:block">
               {rep.nome_curto} · {rotuloTurno(rep.turno)}

@@ -3,26 +3,33 @@ import { exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
+import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
-import { dataBRT, diaLegivel, segundaDaSemana, somarDias } from '@/lib/tempo';
+import { diaLegivel, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, rotuloTurno } from '@/lib/tipos';
 
-type Busca = { de?: string };
+type Busca = { mes?: string };
 
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
+const centavos = (valor: number) => Math.round(valor * 100) / 100;
+
 export default async function InvoicePage({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
-  const { de } = await searchParams;
+  const { mes: mesParam } = await searchParams;
 
-  const inicio = de ?? segundaDaSemana(dataBRT());
-  const fim = somarDias(inicio, 13);
+  const mes = mesParam ?? mesAtual();
+  const { inicio, fim } = limitesDoMes(mes);
   const agora = new Date();
 
-  const [slots, regra] = await Promise.all([
+  const cargoPrimaris: CargoPrimaris | null =
+    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' ? rep.cargo : null;
+
+  const [slots, regra, bonus] = await Promise.all([
     buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicio, fim),
     buscarRegraVigente(criarClienteAdmin(), fim),
+    cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicio, fim) : null,
   ]);
 
   const linhas = slots
@@ -31,6 +38,9 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
     .sort((a, b) => a.data.localeCompare(b.data));
 
   const totais = totaisDoPeriodo(linhas);
+  const totalComBonus = bonus
+    ? centavos(totais.total + bonus.partyAddition + bonus.teamAddition)
+    : totais.total;
 
   return (
     <div className="space-y-6">
@@ -38,16 +48,14 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
         <h1 className="text-2xl font-semibold tracking-tight">Invoice</h1>
         <div className="ml-auto flex items-center gap-1 text-sm">
           <Link
-            href={`/invoice?de=${somarDias(inicio, -14)}`}
+            href={`/invoice?mes=${somarMeses(mes, -1)}`}
             className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
           >
             ←
           </Link>
-          <span className="px-2 text-texto-fraco">
-            {diaLegivel(inicio)} – {diaLegivel(fim)}
-          </span>
+          <span className="px-2 capitalize text-texto-fraco">{mesLegivel(mes)}</span>
           <Link
-            href={`/invoice?de=${somarDias(inicio, 14)}`}
+            href={`/invoice?mes=${somarMeses(mes, 1)}`}
             className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
           >
             →
@@ -62,7 +70,7 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Cartao rotulo="Horas" valor={dinheiro(totais.valorHoras)} nota={`${totais.horas.toFixed(2)}h`} />
         <Cartao rotulo="Comissão" valor={dinheiro(totais.comissao)} />
-        <Cartao rotulo="Total" valor={dinheiro(totais.total)} destaque />
+        <Cartao rotulo="Total" valor={dinheiro(totalComBonus)} destaque />
         <Cartao
           rotulo="Turnos"
           valor={String(totais.turnos)}
@@ -82,6 +90,19 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
           comissão calculada — falta o print do statement de algum turno da cadeia. O valor se
           ajusta sozinho assim que o print chegar.
         </p>
+      )}
+
+      {bonus && (
+        <section className="rounded-2xl border border-accent/30 bg-accent-fraco/30 p-5">
+          <h2 className="text-sm font-medium text-accent">Bônus de liderança</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Cartao rotulo="Total sales commission" valor={dinheiro(totais.comissao)} />
+            <Cartao rotulo="Party addition" valor={dinheiro(bonus.partyAddition)} />
+            {rep.cargo === 'grand_primaris' && (
+              <Cartao rotulo="Team addition" valor={dinheiro(bonus.teamAddition)} />
+            )}
+          </div>
+        </section>
       )}
 
       {linhas.length === 0 ? (

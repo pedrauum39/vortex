@@ -6,15 +6,7 @@ import { buscarSlotsDoRep } from '@/lib/invoiceDb';
 import { corDaMeta, temRaio, type CorMeta } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
-import {
-  dataBRT,
-  diaLegivel,
-  diasNoMes,
-  limitesDoMes,
-  mesAtual,
-  segundaDaSemana,
-  somarDias,
-} from '@/lib/tempo';
+import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
 import { HORARIOS, ROTULO_CARGO, rotuloTurno, type Bloco, type Cargo, type Funcao } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
 
@@ -44,9 +36,6 @@ export default async function Dashboard() {
   const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mes);
   const diasDoMes = diasNoMes(mes);
 
-  const inicioInvoice = segundaDaSemana(hoje);
-  const fimInvoice = somarDias(inicioInvoice, 13);
-
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
   const [{ data }, { data: modelsData }, metas, recorde, slots, regra] = await Promise.all([
@@ -60,8 +49,8 @@ export default async function Dashboard() {
     supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
     buscarMetasDoRep(supabase, rep.id, inicioMes, fimMes, diasDoMes),
     buscarRecordeDoRep(supabase, rep.id),
-    buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioInvoice, fimInvoice),
-    buscarRegraVigente(criarClienteAdmin(), fimInvoice),
+    buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
+    buscarRegraVigente(criarClienteAdmin(), fimMes),
   ]);
 
   const linhasInvoice = slots
