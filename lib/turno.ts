@@ -38,15 +38,24 @@ export function podeIniciar(turno: Turno, data: string, agora: Date = new Date()
  * Horas contadas do turno, sempre dentro da janela oficial: entrar adiantado
  * não começa a contar antes da hora, e sair atrasado não conta depois do fim.
  * Turno em andamento (sem saída) conta até agora.
+ *
+ * Turno FECHADO sem marcar "saiu antes" sempre paga a janela inteira (8h),
+ * não importa a que horas bateu saída — só quem marcou a caixa tem a hora
+ * de fato reduzida pela saída antecipada.
  */
 export function horasDoTurno(
   turno: Turno,
   data: string,
   entrada: Date,
   saida: Date | null,
+  saiuAntes: boolean,
   agora: Date = new Date(),
 ): number {
   const { inicio, fim } = janelaDoTurno(turno, data);
+
+  if (saida && !saiuAntes) {
+    return Math.max(0, Math.round(((fim.getTime() - inicio.getTime()) / 3_600_000) * 100) / 100);
+  }
 
   const de = Math.max(entrada.getTime(), inicio.getTime());
   const ate = Math.min((saida ?? agora).getTime(), fim.getTime());

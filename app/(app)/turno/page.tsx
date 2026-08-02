@@ -21,6 +21,7 @@ type TurnoDoDia = {
     id: string;
     clock_in_at: string;
     clock_out_at: string | null;
+    saiu_antes: boolean;
     shift_log_models: { model_id: string; models: { nome: string } }[];
   }[];
 };
@@ -38,7 +39,7 @@ export default async function TurnoPage() {
   const { data: turnos } = await supabase
     .from('shifts')
     .select(
-      'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)))',
+      'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
     )
     // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
     // sem isto ele cairia no turno de outra pessoa.
@@ -84,6 +85,7 @@ export default async function TurnoPage() {
                     data,
                     new Date(log.clock_in_at),
                     log.clock_out_at ? new Date(log.clock_out_at) : null,
+                    log.saiu_antes,
                   ),
                 }
               : null

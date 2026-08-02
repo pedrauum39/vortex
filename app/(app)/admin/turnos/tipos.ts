@@ -14,6 +14,7 @@ export type LinhaShift = {
     rep_id: string;
     clock_in_at: string;
     clock_out_at: string | null;
+    saiu_antes: boolean;
     shift_log_models: { model_id: string; models: { nome: string } }[];
     statements: {
       id: string;

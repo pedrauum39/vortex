@@ -29,6 +29,8 @@ type PessoaNoSlot = {
   valorHora: number;
   clockIn: Date;
   clockOut: Date | null;
+  /** Turno fechado sem isto marcado sempre paga a janela inteira (8h). */
+  saiuAntes: boolean;
   /** 1 modelo no caso normal, 2 num double. */
   modelos: ModeloTrabalhada[];
 };
@@ -90,12 +92,26 @@ export function linhasDoSlot(
 
   const regular = slot.regular;
   const parcialRegular = !regular.clockOut;
-  const horasRegular = horasDoTurno(slot.turno, slot.data, regular.clockIn, regular.clockOut, agora);
+  const horasRegular = horasDoTurno(
+    slot.turno,
+    slot.data,
+    regular.clockIn,
+    regular.clockOut,
+    regular.saiuAntes,
+    agora,
+  );
 
   const { base, pendente } = baseDoRegular(regular.modelos);
 
   const horasAssist = slot.assist
-    ? horasDoTurno(slot.turno, slot.data, slot.assist.clockIn, slot.assist.clockOut, agora)
+    ? horasDoTurno(
+        slot.turno,
+        slot.data,
+        slot.assist.clockIn,
+        slot.assist.clockOut,
+        slot.assist.saiuAntes,
+        agora,
+      )
     : 0;
 
   const { regular: pagRegular, assistente: pagAssist } = pagamentoDoSlot(

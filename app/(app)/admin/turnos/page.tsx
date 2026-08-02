@@ -24,7 +24,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .gte('data', inicio)
       .lte('data', fim)
@@ -93,6 +93,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
         valorHora: regular.reps.valor_hora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
+        saiuAntes: log.saiu_antes,
         modelos,
       },
       assist:
@@ -103,6 +104,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
               valorHora: assist.reps.valor_hora,
               clockIn: new Date(assistLog.clock_in_at),
               clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,
+              saiuAntes: assistLog.saiu_antes,
             }
           : null,
     };

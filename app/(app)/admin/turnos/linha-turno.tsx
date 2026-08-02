@@ -146,7 +146,7 @@ export function LinhaTurno({
             <span className="text-texto-fraco">—</span>
           )}
         </td>
-        <td className="px-4 py-2.5 text-right">
+        <td className="whitespace-nowrap px-4 py-2.5 text-right">
           <button
             type="button"
             disabled={pendente}

@@ -19,6 +19,7 @@ type LinhaShift = {
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
+    saiu_antes: boolean;
     shift_log_models: { model_id: string }[];
     statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
   }[];
@@ -30,13 +31,14 @@ type LinhaSiblingRegular = {
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
+    saiu_antes: boolean;
     shift_log_models: { model_id: string }[];
     statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
   }[];
 };
 
 const CAMPOS =
-  'id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
+  'id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
 
 async function montarModelos(
   db: ReturnType<typeof criarClienteAdmin>,
@@ -105,7 +107,7 @@ export async function buscarSlotsDoRep(
     const { data: siblingRows } = await db
       .from('shifts')
       .select(
-        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
@@ -124,6 +126,7 @@ export async function buscarSlotsDoRep(
         valorHora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
+        saiuAntes: log.saiu_antes,
         modelos: await montarModelos(db, shift.turno, shift.data, log),
       },
       assist:
@@ -134,6 +137,7 @@ export async function buscarSlotsDoRep(
               valorHora: sibling.reps?.valor_hora ?? 0,
               clockIn: new Date(assistLog.clock_in_at),
               clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,
+              saiuAntes: assistLog.saiu_antes,
             }
           : null,
     });
@@ -147,7 +151,7 @@ export async function buscarSlotsDoRep(
     const { data: siblingRows } = await db
       .from('shifts')
       .select(
-        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
@@ -167,6 +171,7 @@ export async function buscarSlotsDoRep(
         valorHora: sibling.reps?.valor_hora ?? 0,
         clockIn: new Date(regularLog.clock_in_at),
         clockOut: regularLog.clock_out_at ? new Date(regularLog.clock_out_at) : null,
+        saiuAntes: regularLog.saiu_antes,
         modelos: await montarModelos(db, shift.turno, shift.data, regularLog),
       },
       assist: {
@@ -175,6 +180,7 @@ export async function buscarSlotsDoRep(
         valorHora,
         clockIn: new Date(meuLog.clock_in_at),
         clockOut: meuLog.clock_out_at ? new Date(meuLog.clock_out_at) : null,
+        saiuAntes: meuLog.saiu_antes,
       },
     });
   }

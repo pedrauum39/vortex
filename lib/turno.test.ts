@@ -86,6 +86,7 @@ describe('horasDoTurno', () => {
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 21, 0),
       brtParaUtc(2026, 8, 11, 5, 0),
+      false,
     );
     expect(h).toBe(8);
   });
@@ -96,6 +97,7 @@ describe('horasDoTurno', () => {
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 20, 45),
       brtParaUtc(2026, 8, 11, 5, 0),
+      false,
     );
     expect(h).toBe(8);
   });
@@ -106,26 +108,40 @@ describe('horasDoTurno', () => {
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 21, 0),
       brtParaUtc(2026, 8, 11, 5, 40),
+      false,
     );
     expect(h).toBe(8);
   });
 
-  test('saída antecipada conta só o que trabalhou', () => {
+  test('saída antecipada MARCADA conta só o que trabalhou', () => {
     const h = horasDoTurno(
       'T6T1',
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 21, 30),
       brtParaUtc(2026, 8, 11, 4, 45),
+      true,
     );
     expect(h).toBe(7.25);
   });
 
-  test('turno em andamento conta até agora', () => {
+  test('saída antecipada NÃO marcada paga o turno cheio mesmo assim', () => {
+    const h = horasDoTurno(
+      'T6T1',
+      '2026-08-10',
+      brtParaUtc(2026, 8, 10, 21, 30),
+      brtParaUtc(2026, 8, 11, 4, 45),
+      false,
+    );
+    expect(h).toBe(8);
+  });
+
+  test('turno em andamento conta até agora, mesmo sem marcar saída antecipada', () => {
     const h = horasDoTurno(
       'T2T3',
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 5, 0),
       null,
+      false,
       brtParaUtc(2026, 8, 10, 8, 30),
     );
     expect(h).toBe(3.5);
@@ -137,17 +153,19 @@ describe('horasDoTurno', () => {
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 5, 0),
       null,
+      false,
       brtParaUtc(2026, 8, 10, 20, 0),
     );
     expect(h).toBe(8);
   });
 
-  test('ponto inteiro fora da janela não conta nada', () => {
+  test('ponto inteiro fora da janela, mas saiu antes marcado, não conta nada', () => {
     const h = horasDoTurno(
       'T2T3',
       '2026-08-10',
       brtParaUtc(2026, 8, 10, 4, 45),
       brtParaUtc(2026, 8, 10, 4, 55),
+      true,
     );
     expect(h).toBe(0);
   });

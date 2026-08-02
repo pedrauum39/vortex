@@ -30,6 +30,7 @@ const slotBase = (): SlotResolvido => ({
     valorHora: 2,
     clockIn: brtParaUtc(2026, 7, 30, 5, 0),
     clockOut: brtParaUtc(2026, 7, 30, 13, 0),
+    saiuAntes: false,
     modelos: [
       {
         modeloId: 'm1',
@@ -65,6 +66,7 @@ describe('linhasDoSlot', () => {
       valorHora: 2,
       clockIn: brtParaUtc(2026, 7, 30, 5, 0),
       clockOut: brtParaUtc(2026, 7, 30, 13, 0),
+      saiuAntes: false,
     };
 
     const linhas = linhasDoSlot(slot, REGRA_PADRAO, agora);
@@ -124,6 +126,26 @@ describe('linhasDoSlot', () => {
 
     const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
     expect(linha.horas).toBe(8);
+  });
+
+  test('saiu mais cedo sem marcar a caixa: paga as 8h inteiras mesmo assim', () => {
+    const slot = slotBase();
+    slot.regular!.clockOut = brtParaUtc(2026, 7, 30, 11, 0); // saiu 2h antes
+    slot.regular!.saiuAntes = false;
+
+    const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
+    expect(linha.horas).toBe(8);
+    expect(linha.valorHoras).toBe(16);
+  });
+
+  test('saiu mais cedo E marcou a caixa: paga só o que trabalhou', () => {
+    const slot = slotBase();
+    slot.regular!.clockOut = brtParaUtc(2026, 7, 30, 11, 0); // saiu 2h antes
+    slot.regular!.saiuAntes = true;
+
+    const [linha] = linhasDoSlot(slot, REGRA_PADRAO, agora);
+    expect(linha.horas).toBe(6);
+    expect(linha.valorHoras).toBe(12);
   });
 
   test('double: a base soma o delta das duas modelos', () => {
