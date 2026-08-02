@@ -83,20 +83,30 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="rounded-2xl border border-borda bg-superficie p-5">
         <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
           {rep.nome_curto}
         </h1>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:max-w-md">
-          <CaixaPerfil rotulo="Turno" icone={<IconeRelogio />}>
-            <span className="inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
+        <div className="mt-4 flex flex-wrap gap-6">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+              <IconeRelogio />
+              Turno
+            </div>
+            <span className="mt-1.5 inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
               {rotuloTurno(rep.turno)}
             </span>
-          </CaixaPerfil>
-          <CaixaPerfil rotulo="Cargo" icone={<IconeEstrela />}>
-            <BadgeCargo cargo={rep.cargo} />
-          </CaixaPerfil>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+              <IconeEstrela />
+              Cargo
+            </div>
+            <div className="mt-1.5">
+              <BadgeCargo cargo={rep.cargo} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -237,26 +247,6 @@ function BadgeCargo({ cargo }: { cargo: Cargo }) {
     <span className={`inline-block rounded-lg px-3 py-1 text-sm font-bold shadow-sm ${ESTILO_CARGO[cargo]}`}>
       {ROTULO_CARGO[cargo]}
     </span>
-  );
-}
-
-function CaixaPerfil({
-  rotulo,
-  icone,
-  children,
-}: {
-  rotulo: string;
-  icone: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-borda bg-superficie p-3">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
-        {icone}
-        {rotulo}
-      </div>
-      <div className="mt-1.5">{children}</div>
-    </div>
   );
 }
 
