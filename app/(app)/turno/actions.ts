@@ -36,9 +36,7 @@ export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
   if (!shift) throw new Error('Turno não encontrado.');
 
   if (rep.role !== 'admin' && !podeIniciar(shift.turno as Turno, shift.data as string)) {
-    throw new Error(
-      `O ponto abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno e fecha quando ele termina.`,
-    );
+    throw new Error(`O ponto só abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno.`);
   }
 
   const { data: log, error } = await supabase

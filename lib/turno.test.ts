@@ -63,8 +63,9 @@ describe('podeIniciar', () => {
     expect(podeIniciar('T6T1', '2026-08-10', brtParaUtc(2026, 8, 11, 4, 59))).toBe(true);
   });
 
-  test('fecha quando o turno acaba', () => {
-    expect(podeIniciar('T6T1', '2026-08-10', brtParaUtc(2026, 8, 11, 5, 1))).toBe(false);
+  test('continua aberto mesmo bem depois do turno acabar — rep que esquece ainda consegue bater ponto', () => {
+    expect(podeIniciar('T6T1', '2026-08-10', brtParaUtc(2026, 8, 11, 5, 1))).toBe(true);
+    expect(podeIniciar('T6T1', '2026-08-10', brtParaUtc(2026, 8, 11, 20, 0))).toBe(true);
   });
 
   test('não abre horas antes', () => {

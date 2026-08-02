@@ -24,14 +24,16 @@ export function dataDoTurnoAtual(turno: Turno, agora: Date = new Date()): string
 export const MINUTOS_DE_ANTECEDENCIA = 15;
 
 /**
- * O clock in abre 15 minutos antes e fecha no fim do turno. Antes disso o rep
- * ainda não está no turno; depois, o turno já passou.
+ * O clock in abre 15 minutos antes e não fecha mais — só a data do turno
+ * (checada em outro lugar) limita até quando dá pra abrir. Sem isso, um rep
+ * que esquece de bater ponto durante o turno nunca mais conseguiria registrar
+ * aquele turno.
  */
 export function podeIniciar(turno: Turno, data: string, agora: Date = new Date()): boolean {
-  const { inicio, fim } = janelaDoTurno(turno, data);
+  const { inicio } = janelaDoTurno(turno, data);
   const abre = inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000;
 
-  return agora.getTime() >= abre && agora.getTime() <= fim.getTime();
+  return agora.getTime() >= abre;
 }
 
 /**
