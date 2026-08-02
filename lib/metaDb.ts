@@ -4,9 +4,17 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calcularMetas, metaDiariaDaPagina, percentualAtingido, type TurnoParaMeta } from './meta';
-import { deltaTurno, totalDasLinhas, type LinhasNet } from './statement';
+import { deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
+import { somarDias } from './tempo';
 import type { Bloco, Model, Turno } from './tipos';
+
+/** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
+ * — um T6T1 datado 31/07 pertence a agosto, não julho. */
+function dentroDoPeriodo(turno: Turno, data: string, inicio: string, fim: string): boolean {
+  const dia = diaDoStatement(turno, data);
+  return dia >= inicio && dia <= fim;
+}
 
 type LinhaShift = {
   id: string;
@@ -92,6 +100,10 @@ export async function buscarMetasDoRep(
   fim: string,
   diasDoMes: number,
 ): Promise<MetasDoPeriodo> {
+  // Busca desde um dia antes: um T6T1 do fim do mês anterior pode pertencer a
+  // este período (diaDoStatement), mas sua `data` fica fora da janela crua.
+  const inicioBusca = somarDias(inicio, -1);
+
   const [{ data: shiftsData }, { data: modelsData }] = await Promise.all([
     db
       .from('shifts')
@@ -100,13 +112,15 @@ export async function buscarMetasDoRep(
       )
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
-      .gte('data', inicio)
+      .gte('data', inicioBusca)
       .lte('data', fim)
       .order('data'),
     db.from('models').select('*').eq('ativa', true),
   ]);
 
-  const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
+  const shifts = ((shiftsData ?? []) as unknown as LinhaShift[]).filter((s) =>
+    dentroDoPeriodo(s.turno, s.data, inicio, fim),
+  );
   const roster = (modelsData ?? []) as Model[];
 
   const turnosParaMeta: TurnoParaMeta[] = [];

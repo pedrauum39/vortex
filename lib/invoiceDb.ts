@@ -6,10 +6,20 @@
 // assistente, em slots diferentes — por isso duas buscas separadas. Um regular
 // pode ter trabalhado 1 ou 2 modelos (double) no mesmo turno.
 
+import { diaDoStatement } from '@/lib/statement';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
+import { somarDias } from '@/lib/tempo';
 import type { Bloco, Cargo, Turno } from '@/lib/tipos';
+
+/** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
+ * — um T6T1 datado 31/07 pertence a agosto, não julho. Sem isto ele some do
+ * invoice de agosto e aparece indevidamente no de julho. */
+function dentroDoPeriodo(turno: Turno, data: string, inicio: string, fim: string): boolean {
+  const dia = diaDoStatement(turno, data);
+  return dia >= inicio && dia <= fim;
+}
 
 type LinhaShift = {
   id: string;
@@ -80,20 +90,25 @@ export async function buscarSlotsDoRep(
 ): Promise<SlotResolvido[]> {
   const db = criarClienteAdmin();
 
+  // Busca desde um dia antes: um T6T1 do último dia do mês anterior pode
+  // pertencer a este período (diaDoStatement), mas sua `data` fica fora da
+  // janela crua — a checagem de dentroDoPeriodo() filtra certo depois.
+  const inicioBusca = somarDias(inicio, -1);
+
   const [{ data: comoRegular }, { data: comoAssist }] = await Promise.all([
     db
       .from('shifts')
       .select(CAMPOS)
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
-      .gte('data', inicio)
+      .gte('data', inicioBusca)
       .lte('data', fim),
     db
       .from('shifts')
       .select(CAMPOS)
       .eq('rep_id', repId)
       .eq('funcao', 'assist')
-      .gte('data', inicio)
+      .gte('data', inicioBusca)
       .lte('data', fim),
   ]);
 
@@ -101,6 +116,7 @@ export async function buscarSlotsDoRep(
 
   // Slots onde EU sou o regular: busco quem me assistiu, se alguém assistiu.
   for (const shift of (comoRegular ?? []) as unknown as LinhaShift[]) {
+    if (!dentroDoPeriodo(shift.turno, shift.data, inicio, fim)) continue;
     const log = shift.shift_logs[0];
     if (!log) continue; // ainda não bati o ponto neste slot
 
@@ -145,6 +161,7 @@ export async function buscarSlotsDoRep(
 
   // Slots onde EU sou o assistente: preciso da venda de quem eu assisti.
   for (const shift of (comoAssist ?? []) as unknown as LinhaShift[]) {
+    if (!dentroDoPeriodo(shift.turno, shift.data, inicio, fim)) continue;
     const meuLog = shift.shift_logs[0];
     if (!meuLog) continue;
 
