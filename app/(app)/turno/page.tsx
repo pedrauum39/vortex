@@ -124,7 +124,10 @@ export default async function TurnoPage({
                 }
               : null
           }
-          models={((models ?? []) as Model[]).filter((m) => m.bloco === turno.bloco)}
+          // Todas as modelos ativas, não só as do time do turno — o rep pode
+          // ter feito uma modelo de outro time (ex.: cobrindo alguém), e
+          // precisa poder marcar isso mesmo fora do roster padrão.
+          models={(models ?? []) as Model[]}
           repId={rep.id}
           // Admin ignora a janela dos 15 minutos — precisa testar o fluxo
           // (OCR, comissão) sem esperar a hora certa do turno.

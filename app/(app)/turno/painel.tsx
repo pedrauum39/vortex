@@ -23,10 +23,15 @@ type Props = {
 export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
-  // Sem log ainda, começa com o roster padrão do time todo marcado — o rep
-  // desmarca quem não fez e marca quem fez fora do padrão.
+
+  const doTime = models.filter((m) => m.bloco === turno.bloco);
+  const outras = models.filter((m) => m.bloco !== turno.bloco);
+
+  // Sem log ainda, começa com o roster padrão do PRÓPRIO time marcado — o
+  // rep desmarca quem não fez e marca quem fez fora do padrão, inclusive
+  // modelos de outro time (ex.: cobrindo alguém).
   const [selecionados, setSelecionados] = useState<string[]>(
-    log?.modelos.map((m) => m.id) ?? models.map((m) => m.id),
+    log?.modelos.map((m) => m.id) ?? doTime.map((m) => m.id),
   );
   const [editandoModelos, setEditandoModelos] = useState(false);
   const [fechando, setFechando] = useState(false);
@@ -79,26 +84,14 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
             {selecionados.length > 1 ? 's' : ''}{' '}
             <span className="text-xs">(o padrão do time já vem marcado — ajuste se for diferente)</span>
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {models.map((m) => (
-              <label
-                key={m.id}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  selecionados.includes(m.id)
-                    ? 'border-accent bg-accent-fraco text-accent'
-                    : 'border-borda text-texto-fraco'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selecionados.includes(m.id)}
-                  onChange={() => alternar(m.id)}
-                  className="size-4 accent-[var(--color-accent)]"
-                />
-                {m.nome}
-              </label>
-            ))}
-          </div>
+          <ListaModelos modelos={doTime} selecionados={selecionados} onAlternar={alternar} />
+
+          {outras.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-texto-fraco">Fez uma modelo de outro time?</p>
+              <ListaModelos modelos={outras} selecionados={selecionados} onAlternar={alternar} />
+            </div>
+          )}
 
           {editandoModelos && (
             <div className="mt-3 flex gap-2">
@@ -183,5 +176,38 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
 
       {erro && <p className="mt-4 text-sm text-red-400">{erro}</p>}
     </section>
+  );
+}
+
+function ListaModelos({
+  modelos,
+  selecionados,
+  onAlternar,
+}: {
+  modelos: Model[];
+  selecionados: string[];
+  onAlternar: (id: string) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {modelos.map((m) => (
+        <label
+          key={m.id}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+            selecionados.includes(m.id)
+              ? 'border-accent bg-accent-fraco text-accent'
+              : 'border-borda text-texto-fraco'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={selecionados.includes(m.id)}
+            onChange={() => onAlternar(m.id)}
+            className="size-4 accent-[var(--color-accent)]"
+          />
+          {m.nome}
+        </label>
+      ))}
+    </div>
   );
 }
