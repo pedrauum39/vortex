@@ -124,7 +124,11 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <NavPeriodo inicio={inicio} fim={fim} />
 
-      <GradeEscala dias={dias} reps={reps} valores={valoresDaGrade} />
+      {/* key={inicio}: sem isto o React reaproveita a mesma instância do
+          componente ao trocar de semana e nunca reinicializa o useState
+          interno com os valores novos — a grade fica presa nos valores da
+          primeira semana que carregou, pra sempre, não importa a URL. */}
+      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} />
 
       <FormularioTurno reps={reps} inicio={inicio} />
 
