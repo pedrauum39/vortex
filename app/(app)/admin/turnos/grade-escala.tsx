@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import { diaLegivel } from '@/lib/tempo';
 import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep, type Turno } from '@/lib/tipos';
-import { definirSlot } from './actions';
+import { salvarGrade } from './actions';
 
 type Valores = Record<string, string | null>;
 
@@ -13,7 +13,9 @@ const chaveDe = (data: string, turno: Turno, bloco: Bloco, funcao: Funcao) =>
 
 /**
  * A escala em grade, como a planilha: cada célula é um select com todo mundo
- * do time. Trocar o valor grava na hora — direto no banco, sem confirmar.
+ * do time. Trocar o valor só atualiza a tela — fica marcado como pendente
+ * até o admin clicar "Salvar alterações", que manda todas as células
+ * mudadas de uma vez.
  */
 export function GradeEscala({
   dias,
@@ -25,56 +27,87 @@ export function GradeEscala({
   valores: Valores;
 }) {
   const [valores, setValores] = useState(valoresIniciais);
-  const [salvando, setSalvando] = useState<Set<string>>(new Set());
+  const [pendentes, setPendentes] = useState<Map<string, string | null>>(new Map());
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const router = useRouter();
 
   function alterar(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) {
     const chave = chaveDe(data, turno, bloco, funcao);
-    setValores((v) => ({ ...v, [chave]: repId || null }));
-    setSalvando((s) => new Set(s).add(chave));
+    const valor = repId || null;
+    setValores((v) => ({ ...v, [chave]: valor }));
+    setPendentes((p) => new Map(p).set(chave, valor));
+    setErro(null);
+  }
 
-    definirSlot({ data, turno, bloco, funcao, repId: repId || null })
-      .catch((e) => {
-        alert(e instanceof Error ? e.message : 'Não deu para salvar.');
-        setValores((v) => ({ ...v, [chave]: valoresIniciais[chave] ?? null }));
-      })
-      .finally(() => {
-        setSalvando((s) => {
-          const novo = new Set(s);
-          novo.delete(chave);
-          return novo;
-        });
-        router.refresh();
-      });
+  async function salvar() {
+    if (pendentes.size === 0) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await salvarGrade(
+        [...pendentes.entries()].map(([chave, repId]) => {
+          const [data, turno, bloco, funcao] = chave.split('|') as [string, Turno, Bloco, Funcao];
+          return { data, turno, bloco, funcao, repId };
+        }),
+      );
+      setPendentes(new Map());
+      router.refresh();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não deu para salvar.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-      <table className="w-full min-w-[68rem] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-borda">
-            <th className="w-36 px-4 py-3 text-left font-medium text-texto-fraco">Turno</th>
-            {dias.map((dia) => (
-              <th key={dia} className="px-2 py-3 text-left font-medium text-texto-fraco">
-                {diaLegivel(dia)}
-              </th>
+    <div className="rounded-2xl border border-borda bg-superficie">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-borda px-4 py-3">
+        <p className="text-sm text-texto-fraco">
+          {pendentes.size > 0
+            ? `${pendentes.size} alteração(ões) pendente(s)`
+            : 'Sem alterações pendentes'}
+        </p>
+        <div className="flex items-center gap-3">
+          {erro && <span className="text-xs text-red-400">{erro}</span>}
+          <button
+            type="button"
+            disabled={pendentes.size === 0 || salvando}
+            onClick={salvar}
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-40"
+          >
+            {salvando ? 'Salvando…' : 'Salvar alterações'}
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[68rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-borda">
+              <th className="w-36 px-4 py-3 text-left font-medium text-texto-fraco">Turno</th>
+              {dias.map((dia) => (
+                <th key={dia} className="px-2 py-3 text-left font-medium text-texto-fraco">
+                  {diaLegivel(dia)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(['I', 'II'] as Bloco[]).map((bloco) => (
+              <BlocoDaGrade
+                key={bloco}
+                bloco={bloco}
+                dias={dias}
+                reps={reps}
+                valores={valores}
+                pendentes={pendentes}
+                salvando={salvando}
+                onChange={alterar}
+              />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {(['I', 'II'] as Bloco[]).map((bloco) => (
-            <BlocoDaGrade
-              key={bloco}
-              bloco={bloco}
-              dias={dias}
-              reps={reps}
-              valores={valores}
-              salvando={salvando}
-              onChange={alterar}
-            />
-          ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -84,6 +117,7 @@ function BlocoDaGrade({
   dias,
   reps,
   valores,
+  pendentes,
   salvando,
   onChange,
 }: {
@@ -91,7 +125,8 @@ function BlocoDaGrade({
   dias: string[];
   reps: Rep[];
   valores: Valores;
-  salvando: Set<string>;
+  pendentes: Map<string, string | null>;
+  salvando: boolean;
   onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
 }) {
   return (
@@ -111,6 +146,7 @@ function BlocoDaGrade({
             dias={dias}
             reps={reps}
             valores={valores}
+            pendentes={pendentes}
             salvando={salvando}
             onChange={onChange}
           />
@@ -122,6 +158,7 @@ function BlocoDaGrade({
             dias={dias}
             reps={reps}
             valores={valores}
+            pendentes={pendentes}
             salvando={salvando}
             onChange={onChange}
             fraco
@@ -140,6 +177,7 @@ function LinhaDaGrade({
   dias,
   reps,
   valores,
+  pendentes,
   salvando,
   onChange,
   fraco,
@@ -151,7 +189,8 @@ function LinhaDaGrade({
   dias: string[];
   reps: Rep[];
   valores: Valores;
-  salvando: Set<string>;
+  pendentes: Map<string, string | null>;
+  salvando: boolean;
   onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
   fraco?: boolean;
 }) {
@@ -161,14 +200,19 @@ function LinhaDaGrade({
       {dias.map((dia) => {
         const chave = chaveDe(dia, turno, bloco, funcao);
         const valor = valores[chave] ?? '';
+        const pendente = pendentes.has(chave);
         return (
           <td key={dia} className="px-1.5 py-1.5">
             <select
               value={valor}
               onChange={(e) => onChange(dia, turno, bloco, funcao, e.target.value)}
-              disabled={salvando.has(chave)}
+              disabled={salvando}
               className={`w-full rounded-lg border bg-fundo px-1.5 py-1.5 text-xs outline-none focus:border-accent disabled:opacity-50 ${
-                valor ? 'border-borda' : 'border-dashed border-borda text-texto-fraco'
+                pendente
+                  ? 'border-amber-400/70'
+                  : valor
+                    ? 'border-borda'
+                    : 'border-dashed border-borda text-texto-fraco'
               }`}
             >
               <option value="">—</option>
