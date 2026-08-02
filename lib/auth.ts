@@ -19,8 +19,19 @@ export async function repAtual(): Promise<Rep | null> {
   return data as Rep | null;
 }
 
+/**
+ * Login sem rep vinculado tem que cair em /aguardando, nunca em /login: o
+ * middleware manda quem já tem sessão pra fora de /login, e essa página
+ * mandaria de volta pra /login por não achar o rep — loop infinito de
+ * redirect pra quem se cadastrou mas ainda não foi vinculado pelo admin.
+ */
 export async function exigirRep(): Promise<Rep> {
   const rep = await repAtual();
-  if (!rep) redirect('/login');
-  return rep;
+  if (rep) return rep;
+
+  const supabase = await criarClienteServidor();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  redirect(user ? '/aguardando' : '/login');
 }
