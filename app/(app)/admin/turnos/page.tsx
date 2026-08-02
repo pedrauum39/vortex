@@ -12,6 +12,11 @@ import type { LinhaShift } from './tipos';
 
 type Busca = { de?: string };
 
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL (?de=...) — ex.: uma semana futura que estava vazia antes de gerar a
+// escala continua aparecendo vazia depois, até o cache expirar sozinho.
+export const dynamic = 'force-dynamic';
+
 export default async function AdminTurnos({ searchParams }: { searchParams: Promise<Busca> }) {
   const { de } = await searchParams;
   const inicio = de ?? segundaDaSemana(dataBRT());

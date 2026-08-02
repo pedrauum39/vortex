@@ -12,6 +12,11 @@ const percentual = (valor: number | null) => (valor === null ? '—' : `${valor.
 
 type Busca = { mes?: string };
 
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL — um mês que ainda não tinha turno algum continua aparecendo vazio
+// depois, até o cache expirar sozinho.
+export const dynamic = 'force-dynamic';
+
 export default async function DetalheRep({
   params,
   searchParams,

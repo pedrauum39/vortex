@@ -7,6 +7,11 @@ import { BotaoGerar } from './botao-gerar';
 
 type Busca = { aba?: string; de?: string };
 
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL — uma semana que estava vazia antes de gerar a escala continua
+// aparecendo vazia depois, até o cache expirar sozinho.
+export const dynamic = 'force-dynamic';
+
 export default async function Schedule({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
   const { aba = 'meus', de } = await searchParams;
@@ -58,7 +63,13 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
       </div>
 
       {aba === 'time' ? (
-        <AbaTime dias={dias} admin={rep.role === 'admin'} inicio={inicio} fim={fim} />
+        <AbaTime
+          dias={dias}
+          admin={rep.role === 'admin'}
+          inicio={inicio}
+          fim={fim}
+          meuNome={rep.nome_curto}
+        />
       ) : (
         <AbaMeus repId={rep.id} inicio={inicio} fim={fim} admin={rep.role === 'admin'} />
       )}
@@ -180,11 +191,13 @@ async function AbaTime({
   admin,
   inicio,
   fim,
+  meuNome,
 }: {
   dias: string[];
   admin: boolean;
   inicio: string;
   fim: string;
+  meuNome: string;
 }) {
   const supabase = await criarClienteServidor();
   const { data, error } = await supabase
@@ -220,7 +233,7 @@ async function AbaTime({
         </thead>
         <tbody>
           {(['I', 'II'] as Bloco[]).map((bloco) => (
-            <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} />
+            <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} meuNome={meuNome} />
           ))}
         </tbody>
       </table>
@@ -232,10 +245,12 @@ function BlocoDeLinhas({
   bloco,
   semana,
   busca,
+  meuNome,
 }: {
   bloco: Bloco;
   semana: string[];
   busca: Map<string, LinhaTime>;
+  meuNome: string;
 }) {
   return (
     <>
@@ -250,8 +265,12 @@ function BlocoDeLinhas({
           {semana.map((dia) => {
             const regular = busca.get(`${dia}|${turno}|${bloco}|regular`);
             const assist = busca.get(`${dia}|${turno}|${bloco}|assist`);
+            const souEu = regular?.rep_nome === meuNome || assist?.rep_nome === meuNome;
             return (
-              <td key={dia} className="px-4 py-4 align-top">
+              <td
+                key={dia}
+                className={`px-4 py-4 align-top ${souEu ? 'rounded-lg ring-2 ring-inset ring-accent' : ''}`}
+              >
                 <div>{regular?.rep_nome ?? <span className="text-texto-fraco">—</span>}</div>
                 {regular?.modelos_nome && (
                   <div className="mt-0.5 text-sm text-texto-fraco">{regular.modelos_nome}</div>

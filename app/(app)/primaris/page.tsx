@@ -13,6 +13,11 @@ const dinheiro = (valor: number) =>
 
 const NOME_TIME: Record<Bloco, string> = { I: 'Time 1 · Vortex I', II: 'Time 2 · Vortex II' };
 
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL — um mês que ainda não tinha venda alguma continua aparecendo vazio
+// depois, até o cache expirar sozinho.
+export const dynamic = 'force-dynamic';
+
 export default async function Primaris({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
   if (rep.cargo !== 'grand_primaris' && rep.cargo !== 'knight_primaris') redirect('/');

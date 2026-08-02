@@ -15,6 +15,11 @@ const dinheiro = (valor: number) =>
 
 const centavos = (valor: number) => Math.round(valor * 100) / 100;
 
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL — um mês que ainda não tinha turno algum continua aparecendo vazio
+// depois, até o cache expirar sozinho.
+export const dynamic = 'force-dynamic';
+
 export default async function InvoicePage({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
   const { mes: mesParam } = await searchParams;
