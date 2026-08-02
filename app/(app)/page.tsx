@@ -5,6 +5,7 @@ import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
 import { corDaMeta, temRaio, type CorMeta } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
+import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
 import { HORARIOS, ROTULO_CARGO, rotuloTurno, type Bloco, type Cargo, type Funcao } from '@/lib/tipos';
@@ -36,9 +37,12 @@ export default async function Dashboard() {
   const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mes);
   const diasDoMes = diasNoMes(mes);
 
+  const cargoPrimaris: CargoPrimaris | null =
+    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' ? rep.cargo : null;
+
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
-  const [{ data }, { data: modelsData }, metas, recorde, slots, regra] = await Promise.all([
+  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus] = await Promise.all([
     supabase
       .from('shifts')
       .select('id, data, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
@@ -51,12 +55,16 @@ export default async function Dashboard() {
     buscarRecordeDoRep(supabase, rep.id),
     buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
     buscarRegraVigente(criarClienteAdmin(), fimMes),
+    cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
   ]);
 
   const linhasInvoice = slots
     .flatMap((slot) => linhasDoSlot(slot, regra, new Date()))
     .filter((l) => l.repId === rep.id);
   const totaisInvoice = totaisDoPeriodo(linhasInvoice);
+  const totalInvoiceComBonus = bonus
+    ? Math.round((totaisInvoice.total + bonus.partyAddition + bonus.teamAddition) * 100) / 100
+    : totaisInvoice.total;
 
   const rosterPorBloco = new Map<Bloco, string>();
   for (const m of modelsData ?? []) {
@@ -132,7 +140,7 @@ export default async function Dashboard() {
         <CartaoMeta percentual={metas.percentualParcial} />
         <Cartao rotulo="Total vendido (mês)" valor={dinheiro(metas.totalVendido)} />
         <Cartao rotulo="Turnos feitos (mês)" valor={String(metas.turnosFeitos)} />
-        <CartaoInvoice valor={dinheiro(totaisInvoice.total)} />
+        <CartaoInvoice valor={dinheiro(totalInvoiceComBonus)} />
         <CartaoRecorde recorde={recorde} />
       </section>
 
