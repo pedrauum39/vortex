@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, horaBRT } from '@/lib/tempo';
@@ -26,8 +27,13 @@ type TurnoDoDia = {
   }[];
 };
 
-export default async function TurnoPage() {
+export default async function TurnoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ turno?: string }>;
+}) {
   const rep = await exigirRep();
+  const { turno: turnoEscolhido } = await searchParams;
   const supabase = await criarClienteServidor();
 
   // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
@@ -46,9 +52,18 @@ export default async function TurnoPage() {
     .eq('rep_id', rep.id)
     .in('data', candidatas);
 
-  const turno = ((turnos ?? []) as unknown as TurnoDoDia[]).find(
+  // Pode haver mais de um turno "atual" ao mesmo tempo (ex.: admin escalou um
+  // extra além do turno de costume no mesmo dia) — os três turnos oficiais
+  // cobrem o dia inteiro sem sobrepor horário, então isto quase nunca dá só
+  // um resultado; precisa de escolha, não de um .find() pegando o primeiro
+  // às cegas.
+  const candidatos = ((turnos ?? []) as unknown as TurnoDoDia[]).filter(
     (t) => t.data === dataDoTurnoAtual(t.turno),
   );
+  const turno =
+    candidatos.find((t) => t.turno === turnoEscolhido) ??
+    candidatos.find((t) => t.shift_logs[0]) ??
+    candidatos[0];
   const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
   const turnoDoSlot = turno?.turno ?? rep.turno;
 
@@ -65,6 +80,25 @@ export default async function TurnoPage() {
           {HORARIOS[turnoDoSlot].fim}
         </p>
       </div>
+
+      {candidatos.length > 1 && (
+        <div className="flex gap-2">
+          {candidatos.map((c) => (
+            <Link
+              key={c.id}
+              href={`/turno?turno=${c.turno}`}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${
+                turno?.id === c.id
+                  ? 'border-accent bg-accent-fraco text-accent'
+                  : 'border-borda text-texto-fraco hover:text-texto'
+              }`}
+            >
+              {rotuloTurno(c.turno)}
+              {c.funcao === 'assist' && ' · Assistant'}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {!turno ? (
         <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">

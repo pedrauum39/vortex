@@ -8,12 +8,21 @@ import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/m
 import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
-import { HORARIOS, ROTULO_CARGO, rotuloTurno, type Bloco, type Cargo, type Funcao } from '@/lib/tipos';
+import {
+  HORARIOS,
+  ROTULO_CARGO,
+  rotuloTurno,
+  type Bloco,
+  type Cargo,
+  type Funcao,
+  type Turno,
+} from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
 
 type MeuTurno = {
   id: string;
   data: string;
+  turno: Turno;
   bloco: Bloco;
   funcao: Funcao;
   shift_logs: { shift_log_models: { models: { nome: string } }[] }[];
@@ -45,11 +54,11 @@ export default async function Dashboard() {
   const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus] = await Promise.all([
     supabase
       .from('shifts')
-      .select('id, data, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
+      .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
       .eq('rep_id', rep.id)
       .gte('data', hoje)
       .order('data')
-      .limit(6),
+      .limit(10),
     supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
     buscarMetasDoRep(supabase, rep.id, inicioMes, fimMes, diasDoMes),
     buscarRecordeDoRep(supabase, rep.id),
@@ -75,7 +84,10 @@ export default async function Dashboard() {
   }
 
   const turnos = (data ?? []) as unknown as MeuTurno[];
-  const hojeSlot = turnos.find((t) => t.data === hoje);
+  // .filter, não .find: o admin pode escalar mais de um turno no mesmo dia
+  // pro mesmo rep (ex.: um T6T1 extra além do T2T3 de costume) — pegar só o
+  // primeiro escondia os outros em silêncio.
+  const hojeSlots = turnos.filter((t) => t.data === hoje);
   const proximos = turnos.filter((t) => t.data > hoje).slice(0, 5);
 
   return (
@@ -109,19 +121,25 @@ export default async function Dashboard() {
 
       <section className="rounded-2xl border border-borda bg-superficie p-6">
         <h2 className="text-sm font-medium text-texto-fraco">Hoje</h2>
-        {hojeSlot ? (
+        {hojeSlots.length > 0 ? (
           <>
-            <p className="mt-2 text-xl font-medium">
-              {nomeDoTurno(hojeSlot, rosterPorBloco)}
-              {hojeSlot.funcao === 'assist' && (
-                <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
-                  Assistant
-                </span>
-              )}
-            </p>
-            <p className="mt-1 text-sm text-texto-fraco">
-              {HORARIOS[rep.turno].inicio} às {HORARIOS[rep.turno].fim}
-            </p>
+            <div className="mt-2 space-y-3">
+              {hojeSlots.map((t) => (
+                <div key={t.id}>
+                  <p className="text-xl font-medium">
+                    {rotuloTurno(t.turno)} · {nomeDoTurno(t, rosterPorBloco)}
+                    {t.funcao === 'assist' && (
+                      <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
+                        Assistant
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-sm text-texto-fraco">
+                    {HORARIOS[t.turno].inicio} às {HORARIOS[t.turno].fim}
+                  </p>
+                </div>
+              ))}
+            </div>
             <Link
               href="/turno"
               className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
@@ -154,7 +172,7 @@ export default async function Dashboard() {
               <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
                 <span>{diaLegivel(t.data)}</span>
                 <span className="text-texto-fraco">
-                  {nomeDoTurno(t, rosterPorBloco)}
+                  {rotuloTurno(t.turno)} · {nomeDoTurno(t, rosterPorBloco)}
                   {t.funcao === 'assist' && ' · Assistant'}
                 </span>
               </li>
