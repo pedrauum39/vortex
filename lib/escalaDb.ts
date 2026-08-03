@@ -18,7 +18,11 @@ export type LinhaShift = {
 
 /** Resolve papel+turno em rep_id. Função pura. */
 export function slotsParaLinhas(slots: SlotEscala[], reps: Rep[]): LinhaShift[] {
-  const porPapel = new Map(reps.map((r) => [`${r.turno}|${r.papel}`, r.id]));
+  // Só reps ativos disputam um slot da escala gerada — inclui os reps
+  // sintéticos de cover (ativo=false), que têm turno/papel só de enfeite pra
+  // satisfazer a constraint e não devem nunca ser escalados automaticamente,
+  // e reps desativados que possam ter deixado (turno,papel) repetido.
+  const porPapel = new Map(reps.filter((r) => r.ativo).map((r) => [`${r.turno}|${r.papel}`, r.id]));
 
   return slots.flatMap((slot) => {
     const rep_id = porPapel.get(`${slot.turno}|${slot.papel}`);
