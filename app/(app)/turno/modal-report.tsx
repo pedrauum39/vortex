@@ -10,13 +10,27 @@ type Props = {
   shiftId: string;
   repId: string;
   modelos: { id: string; nome: string }[];
+  /** Assistente não reporta modelo própria — a comissão vem do turno do
+   * regular, então o modal fecha sem pedir print nenhum. */
+  assist: boolean;
+  /** Pré-marca "teve assistente" quando o turno já tem alguém no papel de
+   * assistente (só faz sentido pro regular, nunca pro próprio assistente). */
+  teveAssistenteInicial: boolean;
   aoFechar: () => void;
 };
 
-export function ModalReport({ logId, shiftId, repId, modelos, aoFechar }: Props) {
+export function ModalReport({
+  logId,
+  shiftId,
+  repId,
+  modelos,
+  assist,
+  teveAssistenteInicial,
+  aoFechar,
+}: Props) {
   const [resultados, setResultados] = useState<Record<string, ResultadoModelo>>({});
   const [resumo, setResumo] = useState('');
-  const [teveAssistente, setTeveAssistente] = useState(false);
+  const [teveAssistente, setTeveAssistente] = useState(teveAssistenteInicial);
   const [saiuAntes, setSaiuAntes] = useState(false);
   const [motivo, setMotivo] = useState('');
 
@@ -24,8 +38,8 @@ export function ModalReport({ logId, shiftId, repId, modelos, aoFechar }: Props)
   const [erro, setErro] = useState<string | null>(null);
 
   const todosProntos =
-    modelos.length > 0 &&
-    modelos.every((m) => resultados[m.id]?.pronto && !resultados[m.id]?.lendo);
+    assist ||
+    (modelos.length > 0 && modelos.every((m) => resultados[m.id]?.pronto && !resultados[m.id]?.lendo));
   const travado = !todosProntos || (saiuAntes && !motivo.trim());
 
   function confirmar() {
@@ -34,36 +48,39 @@ export function ModalReport({ logId, shiftId, repId, modelos, aoFechar }: Props)
       try {
         const reports: ReportModeloDados[] = [];
 
-        for (const modelo of modelos) {
-          const r = resultados[modelo.id];
-          let imagemPath: string | null = null;
+        if (!assist) {
+          for (const modelo of modelos) {
+            const r = resultados[modelo.id];
+            let imagemPath: string | null = null;
 
-          if (r.blob) {
-            const caminho = `${repId}/${logId}-${modelo.id}.jpg`;
-            const { error } = await criarClienteBrowser()
-              .storage.from('statements')
-              .upload(caminho, r.blob, { contentType: 'image/jpeg', upsert: true });
-            // Print que não sobe não pode travar o fechamento do turno.
-            if (!error) imagemPath = caminho;
+            if (r.blob) {
+              const caminho = `${repId}/${logId}-${modelo.id}.jpg`;
+              const { error } = await criarClienteBrowser()
+                .storage.from('statements')
+                .upload(caminho, r.blob, { contentType: 'image/jpeg', upsert: true });
+              // Print que não sobe não pode travar o fechamento do turno.
+              if (!error) imagemPath = caminho;
+            }
+
+            reports.push({
+              modeloId: modelo.id,
+              linhas: r.linhas,
+              netTotal: r.netTotal,
+              imagemPath,
+              ocrRaw: r.ocrRaw,
+              corrigidoManualmente: r.corrigidoManualmente,
+              refundConfirmado: r.refundConfirmado,
+            });
           }
-
-          reports.push({
-            modeloId: modelo.id,
-            linhas: r.linhas,
-            netTotal: r.netTotal,
-            imagemPath,
-            ocrRaw: r.ocrRaw,
-            corrigidoManualmente: r.corrigidoManualmente,
-            refundConfirmado: r.refundConfirmado,
-          });
         }
 
         await finalizarTurno(logId, {
           reports,
           resumo,
-          teveAssistente,
+          teveAssistente: assist ? false : teveAssistente,
           saiuAntes,
           motivoSaida: motivo.trim() || null,
+          assist,
         });
 
         aoFechar();
@@ -78,19 +95,26 @@ export function ModalReport({ logId, shiftId, repId, modelos, aoFechar }: Props)
       <div className="w-full max-w-2xl rounded-2xl border border-borda bg-superficie p-6 shadow-2xl">
         <h2 className="text-lg font-medium">Finalizar turno</h2>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {modelos.map((modelo) => (
-            <ReportModelo
-              key={modelo.id}
-              shiftId={shiftId}
-              modeloId={modelo.id}
-              modeloNome={modelo.nome}
-              onChange={(resultado) =>
-                setResultados((atual) => ({ ...atual, [modelo.id]: resultado }))
-              }
-            />
-          ))}
-        </div>
+        {assist ? (
+          <p className="mt-3 text-sm text-texto-fraco">
+            Assistente não precisa enviar print — a comissão vem do turno do regular. É só confirmar
+            pra fechar o ponto.
+          </p>
+        ) : (
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            {modelos.map((modelo) => (
+              <ReportModelo
+                key={modelo.id}
+                shiftId={shiftId}
+                modeloId={modelo.id}
+                modeloNome={modelo.nome}
+                onChange={(resultado) =>
+                  setResultados((atual) => ({ ...atual, [modelo.id]: resultado }))
+                }
+              />
+            ))}
+          </div>
+        )}
 
         <label className="mt-5 block text-sm text-texto-fraco" htmlFor="resumo">
           Resumo do turno
@@ -103,15 +127,17 @@ export function ModalReport({ logId, shiftId, repId, modelos, aoFechar }: Props)
           className="mt-1.5 w-full rounded-lg border border-borda bg-fundo px-3 py-2.5 text-sm outline-none focus:border-accent"
         />
 
-        <label className="mt-4 flex items-center gap-2.5 text-sm">
-          <input
-            type="checkbox"
-            checked={teveAssistente}
-            onChange={(e) => setTeveAssistente(e.target.checked)}
-            className="size-4 accent-[var(--color-accent)]"
-          />
-          Teve assistente
-        </label>
+        {!assist && (
+          <label className="mt-4 flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={teveAssistente}
+              onChange={(e) => setTeveAssistente(e.target.checked)}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            Teve assistente
+          </label>
+        )}
 
         <label className="mt-2.5 flex items-center gap-2.5 text-sm">
           <input

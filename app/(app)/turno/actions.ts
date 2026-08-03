@@ -112,14 +112,19 @@ export type DadosReport = {
   teveAssistente: boolean;
   saiuAntes: boolean;
   motivoSaida: string | null;
+  /** Assistente não reporta modelo própria — a comissão vem do turno do
+   * regular, então não precisa de print nenhum pra fechar. */
+  assist: boolean;
 };
 
-/** Fecha o turno e grava um statement por modelo trabalhada. */
+/** Fecha o turno e grava um statement por modelo trabalhada (regular) — assistente só fecha, sem report. */
 export async function finalizarTurno(logId: string, dados: DadosReport) {
   await exigirRep();
   const supabase = await criarClienteServidor();
 
-  if (dados.reports.length === 0) throw new Error('Falta o report de ao menos uma modelo.');
+  if (!dados.assist && dados.reports.length === 0) {
+    throw new Error('Falta o report de ao menos uma modelo.');
+  }
 
   const { error: erroStatements } = await supabase.from('statements').upsert(
     dados.reports.map((r) => ({

@@ -20,12 +20,24 @@ type Props = {
   repId: string;
   podeIniciar: boolean;
   abreAs: string;
+  /** Turno já tem alguém no papel de assistente — pré-marca a caixinha no
+   * fechamento do regular (não usado quando quem fecha é o próprio assistente). */
+  temAssistente: boolean;
 };
 
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
-export function Painel({ turno, log, models, metasDiarias, repId, podeIniciar, abreAs }: Props) {
+export function Painel({
+  turno,
+  log,
+  models,
+  metasDiarias,
+  repId,
+  podeIniciar,
+  abreAs,
+  temAssistente,
+}: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -195,6 +207,8 @@ export function Painel({ turno, log, models, metasDiarias, repId, podeIniciar, a
               shiftId={turno.id}
               repId={repId}
               modelos={log.modelos}
+              assist={turno.assist}
+              teveAssistenteInicial={temAssistente}
               aoFechar={() => setFechando(false)}
             />
           )}

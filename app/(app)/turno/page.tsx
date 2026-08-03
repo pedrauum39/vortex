@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { metaDiariaDaPagina } from '@/lib/meta';
-import { criarClienteServidor } from '@/lib/supabase/server';
+import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, diasNoMes, horaBRT } from '@/lib/tempo';
 import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
@@ -81,6 +81,23 @@ export default async function TurnoPage({
 
   const log = turno?.shift_logs[0];
 
+  // Só importa pro regular: pré-marca "teve assistente" no fechamento quando
+  // o turno já tem alguém escalado E de fato trabalhando no papel de
+  // assistente. Cliente admin de propósito — o assistente é outro rep, e a
+  // RLS comum não deixa o regular ler o shift de outra pessoa.
+  let temAssistente = false;
+  if (turno && turno.funcao === 'regular') {
+    const { data: assistShift } = await criarClienteAdmin()
+      .from('shifts')
+      .select('rep_id, shift_logs(id)')
+      .eq('data', turno.data)
+      .eq('turno', turno.turno)
+      .eq('bloco', turno.bloco)
+      .eq('funcao', 'assist')
+      .maybeSingle();
+    temAssistente = !!(assistShift?.rep_id && (assistShift.shift_logs as { id: string }[] | null)?.length);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -139,6 +156,7 @@ export default async function TurnoPage({
           // precisa poder marcar isso mesmo fora do roster padrão.
           models={(models ?? []) as Model[]}
           metasDiarias={metasDiarias}
+          temAssistente={temAssistente}
           repId={rep.id}
           // Admin (e primaris) ignora a janela dos 15 minutos — precisa
           // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.
