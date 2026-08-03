@@ -58,6 +58,14 @@ export function Painel({ turno, log, models, metasDiarias, repId, podeIniciar, a
     );
   }
 
+  // Meta sempre visível, o turno inteiro: antes de bater ponto reflete quem
+  // tá marcado agora, depois reflete quem de fato foi trabalhado (fixo,
+  // mesmo editando modelos ou já com o turno fechado).
+  const modelosDaMeta = log
+    ? log.modelos
+    : models.filter((m) => selecionados.includes(m.id)).map((m) => ({ id: m.id, nome: m.nome }));
+  const metaTemValor = modelosDaMeta.some((m) => (metasDiarias[m.id] ?? 0) > 0);
+
   return (
     <section className="rounded-2xl border border-borda bg-superficie p-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -81,6 +89,16 @@ export function Painel({ turno, log, models, metasDiarias, repId, podeIniciar, a
           </span>
         )}
       </div>
+
+      {metaTemValor && (
+        <p className="mt-2 text-sm text-texto-fraco">
+          Meta do turno:{' '}
+          {modelosDaMeta
+            .filter((m) => (metasDiarias[m.id] ?? 0) > 0)
+            .map((m) => `${m.nome} ${dinheiro(metasDiarias[m.id])}`)
+            .join(' · ')}
+        </p>
+      )}
 
       {(!log || editandoModelos) && (
         <div className="mt-6">
