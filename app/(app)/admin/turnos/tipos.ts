@@ -8,7 +8,6 @@ export type LinhaShift = {
   funcao: Funcao;
   rep_id: string | null;
   origem: string;
-  cover_cargo: Cargo | null;
   reps: { nome_curto: string; cargo: Cargo; valor_hora: number } | null;
   shift_logs: {
     id: string;

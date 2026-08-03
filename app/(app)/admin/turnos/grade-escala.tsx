@@ -3,29 +3,18 @@
 import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import { diaLegivel } from '@/lib/tempo';
-import {
-  CARGOS_COVER,
-  ROTULO_COVER,
-  TURNOS,
-  rotuloTurno,
-  type Bloco,
-  type Cargo,
-  type Funcao,
-  type Rep,
-  type Turno,
-} from '@/lib/tipos';
+import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep, type Turno } from '@/lib/tipos';
 import { salvarGrade } from './actions';
 
 type Valores = Record<string, string | null>;
-type Covers = Record<string, Cargo | null>;
 
 const chaveDe = (data: string, turno: Turno, bloco: Bloco, funcao: Funcao) =>
   `${data}|${turno}|${bloco}|${funcao}`;
 
 /**
  * A escala em grade, como a planilha: cada célula é um select com todo mundo
- * do time, mais um segundo select de "cover" pra quando é alguém de fora
- * cobrindo o slot. Trocar qualquer um só atualiza a tela — fica marcado como
+ * do time (inclusive os reps de "Cover" pra quando ninguém do time pode
+ * fazer o turno). Trocar o valor só atualiza a tela — fica marcado como
  * pendente até o admin clicar "Salvar alterações", que manda todas as
  * células mudadas de uma vez.
  */
@@ -33,33 +22,21 @@ export function GradeEscala({
   dias,
   reps,
   valores: valoresIniciais,
-  covers: coversIniciais,
 }: {
   dias: string[];
   reps: Rep[];
   valores: Valores;
-  covers: Covers;
 }) {
   const [valores, setValores] = useState(valoresIniciais);
-  const [covers, setCovers] = useState(coversIniciais);
   const [pendentes, setPendentes] = useState<Set<string>>(new Set());
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const router = useRouter();
 
-  function alterarRep(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) {
+  function alterar(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) {
     const chave = chaveDe(data, turno, bloco, funcao);
     const valor = repId || null;
     setValores((v) => ({ ...v, [chave]: valor }));
-    // Slot vazio não pode ser cover.
-    if (!valor) setCovers((c) => ({ ...c, [chave]: null }));
-    setPendentes((p) => new Set(p).add(chave));
-    setErro(null);
-  }
-
-  function alterarCover(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, coverCargo: string) {
-    const chave = chaveDe(data, turno, bloco, funcao);
-    setCovers((c) => ({ ...c, [chave]: (coverCargo || null) as Cargo | null }));
     setPendentes((p) => new Set(p).add(chave));
     setErro(null);
   }
@@ -72,7 +49,7 @@ export function GradeEscala({
       await salvarGrade(
         [...pendentes].map((chave) => {
           const [data, turno, bloco, funcao] = chave.split('|') as [string, Turno, Bloco, Funcao];
-          return { data, turno, bloco, funcao, repId: valores[chave] ?? null, coverCargo: covers[chave] ?? null };
+          return { data, turno, bloco, funcao, repId: valores[chave] ?? null };
         }),
       );
       setPendentes(new Set());
@@ -124,11 +101,9 @@ export function GradeEscala({
                 dias={dias}
                 reps={reps}
                 valores={valores}
-                covers={covers}
                 pendentes={pendentes}
                 salvando={salvando}
-                onChangeRep={alterarRep}
-                onChangeCover={alterarCover}
+                onChange={alterar}
               />
             ))}
           </tbody>
@@ -143,21 +118,17 @@ function BlocoDaGrade({
   dias,
   reps,
   valores,
-  covers,
   pendentes,
   salvando,
-  onChangeRep,
-  onChangeCover,
+  onChange,
 }: {
   bloco: Bloco;
   dias: string[];
   reps: Rep[];
   valores: Valores;
-  covers: Covers;
   pendentes: Set<string>;
   salvando: boolean;
-  onChangeRep: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
-  onChangeCover: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, coverCargo: string) => void;
+  onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
 }) {
   return (
     <>
@@ -176,11 +147,9 @@ function BlocoDaGrade({
             dias={dias}
             reps={reps}
             valores={valores}
-            covers={covers}
             pendentes={pendentes}
             salvando={salvando}
-            onChangeRep={onChangeRep}
-            onChangeCover={onChangeCover}
+            onChange={onChange}
           />
           <LinhaDaGrade
             rotulo="  Assistant"
@@ -190,11 +159,9 @@ function BlocoDaGrade({
             dias={dias}
             reps={reps}
             valores={valores}
-            covers={covers}
             pendentes={pendentes}
             salvando={salvando}
-            onChangeRep={onChangeRep}
-            onChangeCover={onChangeCover}
+            onChange={onChange}
             fraco
           />
         </Fragment>
@@ -211,11 +178,9 @@ function LinhaDaGrade({
   dias,
   reps,
   valores,
-  covers,
   pendentes,
   salvando,
-  onChangeRep,
-  onChangeCover,
+  onChange,
   fraco,
 }: {
   rotulo: string;
@@ -225,11 +190,9 @@ function LinhaDaGrade({
   dias: string[];
   reps: Rep[];
   valores: Valores;
-  covers: Covers;
   pendentes: Set<string>;
   salvando: boolean;
-  onChangeRep: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
-  onChangeCover: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, coverCargo: string) => void;
+  onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
   fraco?: boolean;
 }) {
   return (
@@ -238,13 +201,12 @@ function LinhaDaGrade({
       {dias.map((dia) => {
         const chave = chaveDe(dia, turno, bloco, funcao);
         const valor = valores[chave] ?? '';
-        const cover = covers[chave] ?? '';
         const pendente = pendentes.has(chave);
         return (
           <td key={dia} className="px-1.5 py-1.5">
             <select
               value={valor}
-              onChange={(e) => onChangeRep(dia, turno, bloco, funcao, e.target.value)}
+              onChange={(e) => onChange(dia, turno, bloco, funcao, e.target.value)}
               disabled={salvando}
               className={`w-full rounded-lg border bg-fundo px-1.5 py-1.5 text-xs outline-none focus:border-accent disabled:opacity-50 ${
                 pendente
@@ -258,21 +220,6 @@ function LinhaDaGrade({
               {reps.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.nome_curto}
-                </option>
-              ))}
-            </select>
-            <select
-              value={cover}
-              onChange={(e) => onChangeCover(dia, turno, bloco, funcao, e.target.value)}
-              disabled={salvando || !valor}
-              className={`mt-1 w-full rounded-lg border bg-fundo px-1.5 py-1 text-[0.65rem] outline-none focus:border-accent disabled:opacity-40 ${
-                cover ? 'border-amber-400/70 text-amber-300' : 'border-dashed border-borda text-texto-fraco'
-              }`}
-            >
-              <option value="">— cover</option>
-              {CARGOS_COVER.map((c) => (
-                <option key={c} value={c}>
-                  {ROTULO_COVER[c]}
                 </option>
               ))}
             </select>

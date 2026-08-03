@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { CARGOS_COVER, ROTULO_COVER, TURNOS, rotuloTurno, type Bloco, type Cargo, type Funcao, type Rep } from '@/lib/tipos';
+import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep } from '@/lib/tipos';
 import { criarTurno } from './actions';
 
 const campo =
@@ -13,7 +13,6 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
   const [bloco, setBloco] = useState<Bloco>('I');
   const [funcao, setFuncao] = useState<Funcao>('regular');
   const [repId, setRepId] = useState(reps[0]?.id ?? '');
-  const [coverCargo, setCoverCargo] = useState<Cargo | ''>('');
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -24,7 +23,7 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
       setErro(null);
       setOk(false);
       try {
-        await criarTurno({ data, turno, bloco, funcao, repId, coverCargo: coverCargo || null });
+        await criarTurno({ data, turno, bloco, funcao, repId });
         setOk(true);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
@@ -78,22 +77,6 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
             {reps.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.nome_curto} · {rotuloTurno(r.turno)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-texto-fraco">
-          Cover
-          <select
-            value={coverCargo}
-            onChange={(e) => setCoverCargo(e.target.value as Cargo | '')}
-            className={campo}
-          >
-            <option value="">não é cover</option>
-            {CARGOS_COVER.map((c) => (
-              <option key={c} value={c}>
-                {ROTULO_COVER[c]}
               </option>
             ))}
           </select>

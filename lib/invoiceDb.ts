@@ -11,7 +11,7 @@ import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
 import { somarDias } from '@/lib/tempo';
-import { cargoEfetivo, type Bloco, type Cargo, type Turno } from '@/lib/tipos';
+import type { Bloco, Cargo, Turno } from '@/lib/tipos';
 
 /** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
  * — um T6T1 datado 31/07 pertence a agosto, não julho. Sem isto ele some do
@@ -26,7 +26,6 @@ type LinhaShift = {
   data: string;
   turno: Turno;
   bloco: Bloco;
-  cover_cargo: Cargo | null;
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
@@ -39,7 +38,6 @@ type LinhaShift = {
 type LinhaSiblingRegular = {
   rep_id: string | null;
   reps: { cargo: Cargo; valor_hora: number } | null;
-  cover_cargo: Cargo | null;
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
@@ -50,7 +48,7 @@ type LinhaSiblingRegular = {
 };
 
 const CAMPOS =
-  'id, data, turno, bloco, cover_cargo, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
+  'id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
 
 async function montarModelos(
   db: ReturnType<typeof criarClienteAdmin>,
@@ -140,7 +138,7 @@ export async function buscarSlotsDoRep(
       bloco: shift.bloco,
       regular: {
         repId,
-        cargo: cargoEfetivo(cargo, shift.cover_cargo),
+        cargo,
         valorHora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
@@ -170,7 +168,7 @@ export async function buscarSlotsDoRep(
     const { data: siblingRows } = await db
       .from('shifts')
       .select(
-        'rep_id, reps(cargo, valor_hora), cover_cargo, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
@@ -186,7 +184,7 @@ export async function buscarSlotsDoRep(
       bloco: shift.bloco,
       regular: {
         repId: sibling.rep_id,
-        cargo: cargoEfetivo(sibling.reps?.cargo ?? 'tertius', sibling.cover_cargo),
+        cargo: sibling.reps?.cargo ?? 'tertius',
         valorHora: sibling.reps?.valor_hora ?? 0,
         clockIn: new Date(regularLog.clock_in_at),
         clockOut: regularLog.clock_out_at ? new Date(regularLog.clock_out_at) : null,

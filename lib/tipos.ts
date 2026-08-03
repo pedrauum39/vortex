@@ -16,24 +16,6 @@ export const ROTULO_CARGO: Record<Cargo, string> = {
   tertius: 'Tertius',
 };
 
-/**
- * Cover: alguém de fora do slot cobrindo o turno. O admin escolhe em qual
- * nível isso paga — não existe "cover grand_primaris" porque as adições de
- * Team/Party do Grand Primaris são amarradas à patente de verdade, não a um
- * cover; "Primaris" aqui usa a taxa do Knight Primaris (5,5%).
- */
-export const CARGOS_COVER: Cargo[] = ['tertius', 'secundus', 'knight_primaris'];
-
-export const ROTULO_COVER: Partial<Record<Cargo, string>> = {
-  tertius: 'Cover Tertius',
-  secundus: 'Cover Secundus',
-  knight_primaris: 'Cover Primaris',
-};
-
-/** O cargo que de fato paga nesse turno: o do cover, se houver, senão o cargo real do rep. */
-export const cargoEfetivo = (cargoDoRep: Cargo, coverCargo: Cargo | null): Cargo =>
-  coverCargo ?? cargoDoRep;
-
 export type Role = 'rep' | 'admin';
 export type Bloco = 'I' | 'II';
 export type Funcao = 'regular' | 'assist';

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { brtParaUtc } from '@/lib/tempo';
-import type { Bloco, Cargo, Funcao, Turno } from '@/lib/tipos';
+import type { Bloco, Funcao, Turno } from '@/lib/tipos';
 
 async function exigirAdmin() {
   const rep = await exigirRep();
@@ -38,8 +38,6 @@ export async function criarTurno(dados: {
   bloco: Bloco;
   funcao: Funcao;
   repId: string;
-  /** Setado quando é um cover: paga como esse cargo em vez do cargo real do rep. */
-  coverCargo: Cargo | null;
 }) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -52,7 +50,6 @@ export async function criarTurno(dados: {
       funcao: dados.funcao,
       rep_id: dados.repId,
       origem: 'manual',
-      cover_cargo: dados.coverCargo,
     },
     { onConflict: 'data,turno,bloco,funcao' },
   );
@@ -61,14 +58,7 @@ export async function criarTurno(dados: {
   revalidar();
 }
 
-type Slot = {
-  data: string;
-  turno: Turno;
-  bloco: Bloco;
-  funcao: Funcao;
-  repId: string | null;
-  coverCargo: Cargo | null;
-};
+type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: string | null };
 
 /**
  * Define quem ocupa um slot da grade.
@@ -81,7 +71,7 @@ type Slot = {
 async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServidor>>, slot: Slot) {
   const { data: existente } = await supabase
     .from('shifts')
-    .select('id, rep_id, cover_cargo')
+    .select('id, rep_id')
     .eq('data', slot.data)
     .eq('turno', slot.turno)
     .eq('bloco', slot.bloco)
@@ -101,21 +91,7 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
       funcao: slot.funcao,
       rep_id: slot.repId,
       origem: 'manual',
-      cover_cargo: slot.coverCargo,
     });
-    if (error) throw new Error(error.message);
-  } else if (
-    slot.repId &&
-    existente &&
-    existente.rep_id === slot.repId &&
-    (existente.cover_cargo ?? null) !== (slot.coverCargo ?? null)
-  ) {
-    // Mesmo dono do slot, só o nível de cover mudou — não é troca de pessoa,
-    // não precisa apagar/recriar (perderia ponto/statement à toa).
-    const { error } = await supabase
-      .from('shifts')
-      .update({ cover_cargo: slot.coverCargo })
-      .eq('id', existente.id);
     if (error) throw new Error(error.message);
   }
 }
@@ -178,6 +154,23 @@ export async function simularPonto(dados: {
     .from('shift_log_models')
     .insert(dados.modeloIds.map((modelId) => ({ shift_log_id: log.id, model_id: modelId })));
   if (erroModelos) throw new Error(erroModelos.message);
+
+  revalidar();
+}
+
+/**
+ * Adiciona uma modelo ao ponto sem mexer no resto — pra abrir uma statement
+ * de uma modelo que faltou, sem precisar reabrir "editar ponto" e reescolher
+ * entrada/saída.
+ */
+export async function adicionarModeloAoPonto(shiftLogId: string, modeloId: string) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase
+    .from('shift_log_models')
+    .upsert({ shift_log_id: shiftLogId, model_id: modeloId }, { onConflict: 'shift_log_id,model_id' });
+  if (error) throw new Error(error.message);
 
   revalidar();
 }

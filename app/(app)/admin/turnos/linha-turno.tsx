@@ -6,8 +6,15 @@ import type { LinhaInvoice } from '@/lib/invoice';
 import { LINHAS } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
 import type { Bloco, Model } from '@/lib/tipos';
-import { ROTULO_COVER, rotuloTurno } from '@/lib/tipos';
-import { apagarPonto, apagarStatement, apagarTurno, simularPonto, simularStatement } from './actions';
+import { rotuloTurno } from '@/lib/tipos';
+import {
+  adicionarModeloAoPonto,
+  apagarPonto,
+  apagarStatement,
+  apagarTurno,
+  simularPonto,
+  simularStatement,
+} from './actions';
 import type { LinhaShift } from './tipos';
 
 const dinheiro = (valor: number) =>
@@ -64,14 +71,7 @@ export function LinhaTurno({
             'Regular'
           )}
         </td>
-        <td className="px-3 py-2.5">
-          {shift.reps?.nome_curto ?? '—'}
-          {shift.cover_cargo && (
-            <span className="ml-2 rounded-md bg-amber-400/10 px-2 py-0.5 text-xs text-amber-300">
-              {ROTULO_COVER[shift.cover_cargo]}
-            </span>
-          )}
-        </td>
+        <td className="px-3 py-2.5">{shift.reps?.nome_curto ?? '—'}</td>
         <td className="px-3 py-2.5">
           {log ? (
             <div className="flex items-center gap-2">
@@ -140,6 +140,28 @@ export function LinhaTurno({
                   </div>
                 );
               })}
+              {(() => {
+                const jaTem = new Set(log.shift_log_models.map((m) => m.model_id));
+                const restantes = models.filter((m) => !jaTem.has(m.id));
+                if (restantes.length === 0) return null;
+                return (
+                  <select
+                    value=""
+                    disabled={pendente}
+                    onChange={(e) => {
+                      if (e.target.value) rodar(() => adicionarModeloAoPonto(log.id, e.target.value));
+                    }}
+                    className="w-fit rounded-md border border-dashed border-borda bg-fundo px-1.5 py-1 text-xs text-texto-fraco outline-none focus:border-accent disabled:opacity-50"
+                  >
+                    <option value="">+ modelo</option>
+                    {restantes.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nome}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
             </div>
           )}
         </td>

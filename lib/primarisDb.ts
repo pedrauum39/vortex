@@ -8,7 +8,7 @@ import { percentualAtingido } from './meta';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { somarDias } from './tempo';
-import { cargoEfetivo, type Bloco, type Cargo, type Turno } from './tipos';
+import type { Bloco, Cargo, Turno } from './tipos';
 
 const arred = (valor: number) => Math.round(valor * 100) / 100;
 
@@ -35,7 +35,6 @@ type LinhaShift = {
   turno: Turno;
   rep_id: string | null;
   reps: { cargo: Cargo } | null;
-  cover_cargo: Cargo | null;
   shift_logs: {
     shift_log_models: { model_id: string; models: { nome: string; bloco: Bloco } }[];
     statements: {
@@ -62,7 +61,7 @@ export async function buscarVendasDaEmpresa(
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, rep_id, reps(cargo), cover_cargo, shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, rep_id, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
     )
     .eq('funcao', 'regular')
     .gte('data', inicioBusca)
@@ -97,7 +96,7 @@ export async function buscarVendasDaEmpresa(
 
       vendas.push({
         repId: shift.rep_id,
-        repCargo: cargoEfetivo(shift.reps.cargo, shift.cover_cargo),
+        repCargo: shift.reps.cargo,
         modeloId: model_id,
         modeloBloco: modelo.bloco,
         vendidoTotal: totalDasLinhas(delta),
