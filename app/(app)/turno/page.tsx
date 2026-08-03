@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import { metaDiariaDaPagina } from '@/lib/meta';
 import { criarClienteServidor } from '@/lib/supabase/server';
-import { diaLegivel, horaBRT } from '@/lib/tempo';
+import { diaLegivel, diasNoMes, horaBRT } from '@/lib/tempo';
 import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
@@ -69,6 +70,15 @@ export default async function TurnoPage({
 
   const { data: models } = await supabase.from('models').select('*').eq('ativa', true).order('nome');
 
+  // Meta diária de cada página nesse turno: meta mensal da página, repartida
+  // pelo percentual fixo do turno (42/28/30%) e pelos dias do mês — mesma
+  // conta de lib/meta.ts usada no dashboard e em /admin/reps/[id].
+  const diasDoMes = diasNoMes(data.slice(0, 7));
+  const metasDiarias: Record<string, number> = {};
+  for (const m of (models ?? []) as Model[]) {
+    metasDiarias[m.id] = metaDiariaDaPagina(m.meta_mensal, turnoDoSlot, diasDoMes);
+  }
+
   const log = turno?.shift_logs[0];
 
   return (
@@ -128,6 +138,7 @@ export default async function TurnoPage({
           // ter feito uma modelo de outro time (ex.: cobrindo alguém), e
           // precisa poder marcar isso mesmo fora do roster padrão.
           models={(models ?? []) as Model[]}
+          metasDiarias={metasDiarias}
           repId={rep.id}
           // Admin (e primaris) ignora a janela dos 15 minutos — precisa
           // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.

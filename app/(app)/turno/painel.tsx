@@ -15,12 +15,17 @@ type Props = {
     horas: number;
   } | null;
   models: Model[];
+  /** Meta diária de cada página nesse turno (id da modelo -> valor). */
+  metasDiarias: Record<string, number>;
   repId: string;
   podeIniciar: boolean;
   abreAs: string;
 };
 
-export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props) {
+const dinheiro = (valor: number) =>
+  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
+
+export function Painel({ turno, log, models, metasDiarias, repId, podeIniciar, abreAs }: Props) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -84,12 +89,22 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
             {selecionados.length > 1 ? 's' : ''}{' '}
             <span className="text-xs">(o padrão do time já vem marcado — ajuste se for diferente)</span>
           </p>
-          <ListaModelos modelos={doTime} selecionados={selecionados} onAlternar={alternar} />
+          <ListaModelos
+            modelos={doTime}
+            selecionados={selecionados}
+            metasDiarias={metasDiarias}
+            onAlternar={alternar}
+          />
 
           {outras.length > 0 && (
             <div className="mt-3">
               <p className="text-xs text-texto-fraco">Fez uma modelo de outro time?</p>
-              <ListaModelos modelos={outras} selecionados={selecionados} onAlternar={alternar} />
+              <ListaModelos
+                modelos={outras}
+                selecionados={selecionados}
+                metasDiarias={metasDiarias}
+                onAlternar={alternar}
+              />
             </div>
           )}
 
@@ -182,32 +197,40 @@ export function Painel({ turno, log, models, repId, podeIniciar, abreAs }: Props
 function ListaModelos({
   modelos,
   selecionados,
+  metasDiarias,
   onAlternar,
 }: {
   modelos: Model[];
   selecionados: string[];
+  metasDiarias: Record<string, number>;
   onAlternar: (id: string) => void;
 }) {
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      {modelos.map((m) => (
-        <label
-          key={m.id}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-            selecionados.includes(m.id)
-              ? 'border-accent bg-accent-fraco text-accent'
-              : 'border-borda text-texto-fraco'
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={selecionados.includes(m.id)}
-            onChange={() => onAlternar(m.id)}
-            className="size-4 accent-[var(--color-accent)]"
-          />
-          {m.nome}
-        </label>
-      ))}
+      {modelos.map((m) => {
+        const meta = metasDiarias[m.id];
+        return (
+          <label
+            key={m.id}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+              selecionados.includes(m.id)
+                ? 'border-accent bg-accent-fraco text-accent'
+                : 'border-borda text-texto-fraco'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selecionados.includes(m.id)}
+              onChange={() => onAlternar(m.id)}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            <span>
+              {m.nome}
+              {meta > 0 && <span className="ml-1.5 text-xs opacity-75">· meta {dinheiro(meta)}</span>}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }
