@@ -134,14 +134,25 @@ export async function simularPonto(dados: {
 
   if (dados.modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
 
+  const entrada = localParaUtc(dados.entrada);
+  const saida = dados.saida ? localParaUtc(dados.saida) : null;
+  // O banco também trava isso (shift_logs_saida_ordenada), mas sem checar
+  // aqui o erro chega cru — um turno T6/T1 vira a noite, então esquecer de
+  // avançar a data da saída pro dia seguinte já bateu essa constraint.
+  if (saida && saida < entrada) {
+    throw new Error(
+      'Saída não pode ser antes da entrada. Turno que vira a noite (T6/T1) precisa da saída datada no dia seguinte.',
+    );
+  }
+
   const { data: log, error } = await supabase
     .from('shift_logs')
     .upsert(
       {
         shift_id: dados.shiftId,
         rep_id: dados.repId,
-        clock_in_at: localParaUtc(dados.entrada).toISOString(),
-        clock_out_at: dados.saida ? localParaUtc(dados.saida).toISOString() : null,
+        clock_in_at: entrada.toISOString(),
+        clock_out_at: saida ? saida.toISOString() : null,
       },
       { onConflict: 'shift_id,rep_id' },
     )

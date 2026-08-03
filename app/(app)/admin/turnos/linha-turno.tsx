@@ -7,6 +7,7 @@ import { LINHAS } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
 import type { Bloco, Model } from '@/lib/tipos';
 import { rotuloTurno } from '@/lib/tipos';
+import { janelaDoTurno } from '@/lib/turno';
 import {
   adicionarModeloAoPonto,
   apagarPonto,
@@ -211,8 +212,23 @@ export function LinhaTurno({
                 log?.shift_log_models.map((m) => m.model_id) ??
                 models.filter((m) => m.bloco === shift.bloco).map((m) => m.id)
               }
-              entradaAtual={log ? datetimeLocalBRT(new Date(log.clock_in_at)) : ''}
-              saidaAtual={log?.clock_out_at ? datetimeLocalBRT(new Date(log.clock_out_at)) : ''}
+              // Sem ponto ainda, começa com a janela oficial do turno já
+              // preenchida — o T6T1 vira a noite (21h de um dia até 5h do
+              // seguinte), e deixar em branco fazia o admin digitar a mesma
+              // data nos dois campos, o que quebra a constraint de saída
+              // não poder ser antes da entrada.
+              entradaAtual={
+                log
+                  ? datetimeLocalBRT(new Date(log.clock_in_at))
+                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data).inicio)
+              }
+              saidaAtual={
+                log
+                  ? log.clock_out_at
+                    ? datetimeLocalBRT(new Date(log.clock_out_at))
+                    : ''
+                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data).fim)
+              }
               pendente={pendente}
               onSalvar={(entrada, saida, modeloIds) =>
                 rodar(() =>
