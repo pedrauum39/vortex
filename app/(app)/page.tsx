@@ -96,8 +96,14 @@ export default async function Dashboard() {
       .order('data')
       .limit(10),
     supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
-    buscarMetasDoRep(supabase, rep.id, inicioMes, fimMes, diasDoMes),
-    buscarRecordeDoRep(supabase, rep.id),
+    // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
+    // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
+    // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
+    // bloqueia isso pra sessão comum, e o delta caía sempre como "pendente"
+    // (contando zero) por não conseguir enxergar o statement de quem veio
+    // antes, mesmo quando o print do próprio rep estava certinho.
+    buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMes),
+    buscarRecordeDoRep(criarClienteAdmin(), rep.id),
     buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
     buscarRegraVigente(criarClienteAdmin(), fimMes),
     cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
