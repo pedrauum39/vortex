@@ -22,10 +22,12 @@ export function GradeEscala({
   dias,
   reps,
   valores: valoresIniciais,
+  podeEditar,
 }: {
   dias: string[];
   reps: Rep[];
   valores: Valores;
+  podeEditar: boolean;
 }) {
   const [valores, setValores] = useState(valoresIniciais);
   const [pendentes, setPendentes] = useState<Set<string>>(new Set());
@@ -63,24 +65,26 @@ export function GradeEscala({
 
   return (
     <div className="rounded-2xl border border-borda bg-superficie">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-borda px-4 py-3">
-        <p className="text-sm text-texto-fraco">
-          {pendentes.size > 0
-            ? `${pendentes.size} alteração(ões) pendente(s)`
-            : 'Sem alterações pendentes'}
-        </p>
-        <div className="flex items-center gap-3">
-          {erro && <span className="text-xs text-red-400">{erro}</span>}
-          <button
-            type="button"
-            disabled={pendentes.size === 0 || salvando}
-            onClick={salvar}
-            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-40"
-          >
-            {salvando ? 'Salvando…' : 'Salvar alterações'}
-          </button>
+      {podeEditar && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-borda px-4 py-3">
+          <p className="text-sm text-texto-fraco">
+            {pendentes.size > 0
+              ? `${pendentes.size} alteração(ões) pendente(s)`
+              : 'Sem alterações pendentes'}
+          </p>
+          <div className="flex items-center gap-3">
+            {erro && <span className="text-xs text-red-400">{erro}</span>}
+            <button
+              type="button"
+              disabled={pendentes.size === 0 || salvando}
+              onClick={salvar}
+              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-40"
+            >
+              {salvando ? 'Salvando…' : 'Salvar alterações'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[68rem] border-collapse text-sm">
           <thead>
@@ -104,6 +108,7 @@ export function GradeEscala({
                 pendentes={pendentes}
                 salvando={salvando}
                 onChange={alterar}
+                podeEditar={podeEditar}
               />
             ))}
           </tbody>
@@ -121,6 +126,7 @@ function BlocoDaGrade({
   pendentes,
   salvando,
   onChange,
+  podeEditar,
 }: {
   bloco: Bloco;
   dias: string[];
@@ -129,6 +135,7 @@ function BlocoDaGrade({
   pendentes: Set<string>;
   salvando: boolean;
   onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
+  podeEditar: boolean;
 }) {
   return (
     <>
@@ -150,6 +157,7 @@ function BlocoDaGrade({
             pendentes={pendentes}
             salvando={salvando}
             onChange={onChange}
+            podeEditar={podeEditar}
           />
           <LinhaDaGrade
             rotulo="  Assistant"
@@ -162,6 +170,7 @@ function BlocoDaGrade({
             pendentes={pendentes}
             salvando={salvando}
             onChange={onChange}
+            podeEditar={podeEditar}
             fraco
           />
         </Fragment>
@@ -181,6 +190,7 @@ function LinhaDaGrade({
   pendentes,
   salvando,
   onChange,
+  podeEditar,
   fraco,
 }: {
   rotulo: string;
@@ -193,6 +203,7 @@ function LinhaDaGrade({
   pendentes: Set<string>;
   salvando: boolean;
   onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
+  podeEditar: boolean;
   fraco?: boolean;
 }) {
   return (
@@ -202,6 +213,16 @@ function LinhaDaGrade({
         const chave = chaveDe(dia, turno, bloco, funcao);
         const valor = valores[chave] ?? '';
         const pendente = pendentes.has(chave);
+
+        if (!podeEditar) {
+          const nome = reps.find((r) => r.id === valor)?.nome_curto;
+          return (
+            <td key={dia} className="px-2.5 py-2.5 text-xs text-texto-fraco">
+              {nome ?? '—'}
+            </td>
+          );
+        }
+
         return (
           <td key={dia} className="px-1.5 py-1.5">
             <select

@@ -1,8 +1,12 @@
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import type { Model } from '@/lib/tipos';
 import { FormularioModelo, LinhaModelo } from './linha-modelo';
 
 export default async function AdminModels() {
+  const rep = await exigirRep();
+  const podeEditar = ehAdmin(rep);
+
   const supabase = await criarClienteServidor();
   const { data } = await supabase.from('models').select('*').order('bloco').order('nome');
   const models = (data ?? []) as Model[];
@@ -21,7 +25,7 @@ export default async function AdminModels() {
                 {models
                   .filter((m) => m.bloco === bloco)
                   .map((m) => (
-                    <LinhaModelo key={m.id} model={m} />
+                    <LinhaModelo key={m.id} model={m} podeEditar={podeEditar} />
                   ))}
                 {models.filter((m) => m.bloco === bloco).length === 0 && (
                   <tr>
@@ -34,7 +38,7 @@ export default async function AdminModels() {
             </table>
           </div>
 
-          <FormularioModelo bloco={bloco} />
+          {podeEditar && <FormularioModelo bloco={bloco} />}
         </div>
       ))}
     </div>

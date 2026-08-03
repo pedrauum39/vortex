@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ehAdmin, exigirRep } from '@/lib/auth';
+import { exigirRep, podeVerAdmin } from '@/lib/auth';
 import { rotuloTurno } from '@/lib/tipos';
 import { Nav } from './nav';
 
@@ -19,8 +19,8 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             VORTEX
           </Link>
           <Nav
-            admin={ehAdmin(rep)}
-            primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris'}
+            admin={podeVerAdmin(rep)}
+            primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' || rep.observador}
           />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-texto-fraco sm:block">

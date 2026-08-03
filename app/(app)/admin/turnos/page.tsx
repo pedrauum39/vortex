@@ -1,3 +1,4 @@
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { buscarAnterior } from '@/lib/statementDb';
@@ -22,6 +23,11 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   const inicio = de ?? segundaDaSemana(dataBRT());
   const fim = somarDias(inicio, 6);
   const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
+
+  // Observador enxerga esta tela (admin/layout já deixou passar), mas nenhum
+  // dos controles de escrita abaixo — só admin/primaris de verdade edita.
+  const rep = await exigirRep();
+  const podeEditar = ehAdmin(rep);
 
   const supabase = await criarClienteServidor();
 
@@ -128,9 +134,9 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
           componente ao trocar de semana e nunca reinicializa o useState
           interno com os valores novos — a grade fica presa nos valores da
           primeira semana que carregou, pra sempre, não importa a URL. */}
-      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} />
+      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} podeEditar={podeEditar} />
 
-      <FormularioTurno reps={reps} inicio={inicio} />
+      {podeEditar && <FormularioTurno reps={reps} inicio={inicio} />}
 
       {shifts.length === 0 ? (
         <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">
@@ -162,6 +168,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
                   // admin pode simular um ponto que trabalhou modelo de outro
                   // time também (mesmo caso do clock-in real).
                   models={models}
+                  podeEditar={podeEditar}
                 />
               ))}
             </tbody>

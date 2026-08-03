@@ -44,6 +44,8 @@ export type Rep = {
   role: Role;
   valor_hora: number;
   ativo: boolean;
+  /** Acompanha admin/schedule/primaris sem poder editar nada — não é do time (ex.: Thomas, OM). */
+  observador: boolean;
 };
 
 /** Uma modelo (perfil de conteúdo) do roster de um dos dois times. */

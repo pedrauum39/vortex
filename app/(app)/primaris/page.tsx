@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function Primaris({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
-  if (rep.cargo !== 'grand_primaris' && rep.cargo !== 'knight_primaris') redirect('/');
+  const ehPrimaris = rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris';
+  if (!ehPrimaris && !rep.observador) redirect('/');
 
   const { mes: mesParam } = await searchParams;
   const mes = mesParam ?? mesAtual();

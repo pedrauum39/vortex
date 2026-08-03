@@ -13,7 +13,7 @@ import {
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
-export function LinhaModelo({ model }: { model: Model }) {
+export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: boolean }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(model.nome);
   const [metaMensal, setMetaMensal] = useState(model.meta_mensal);
@@ -91,31 +91,33 @@ export function LinhaModelo({ model }: { model: Model }) {
             </button>
           </div>
         ) : (
-          <div className="inline-flex gap-3">
-            <button type="button" onClick={() => setEditando(true)} className="text-xs text-accent hover:underline">
-              renomear
-            </button>
-            <button
-              type="button"
-              disabled={pendente}
-              onClick={() => rodar(() => definirAtivaModelo(model.id, !model.ativa))}
-              className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
-            >
-              {model.ativa ? 'desativar' : 'reativar'}
-            </button>
-            <button
-              type="button"
-              disabled={pendente}
-              onClick={() => {
-                if (confirm(`Apagar "${model.nome}"? Turnos que usam essa modelo ficam sem modelo.`)) {
-                  rodar(() => apagarModelo(model.id));
-                }
-              }}
-              className="text-xs text-red-400 hover:underline disabled:opacity-50"
-            >
-              apagar
-            </button>
-          </div>
+          podeEditar && (
+            <div className="inline-flex gap-3">
+              <button type="button" onClick={() => setEditando(true)} className="text-xs text-accent hover:underline">
+                renomear
+              </button>
+              <button
+                type="button"
+                disabled={pendente}
+                onClick={() => rodar(() => definirAtivaModelo(model.id, !model.ativa))}
+                className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
+              >
+                {model.ativa ? 'desativar' : 'reativar'}
+              </button>
+              <button
+                type="button"
+                disabled={pendente}
+                onClick={() => {
+                  if (confirm(`Apagar "${model.nome}"? Turnos que usam essa modelo ficam sem modelo.`)) {
+                    rodar(() => apagarModelo(model.id));
+                  }
+                }}
+                className="text-xs text-red-400 hover:underline disabled:opacity-50"
+              >
+                apagar
+              </button>
+            </div>
+          )
         )}
       </td>
     </tr>

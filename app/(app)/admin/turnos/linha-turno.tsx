@@ -35,10 +35,12 @@ export function LinhaTurno({
   shift,
   linha,
   models,
+  podeEditar,
 }: {
   shift: LinhaShift;
   linha: LinhaInvoice | null;
   models: Model[];
+  podeEditar: boolean;
 }) {
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -82,22 +84,28 @@ export function LinhaTurno({
                 {' · '}
                 {log.shift_log_models.map((m) => m.models.nome).join(' + ') || 'sem modelo'}
               </span>
-              <button type="button" onClick={() => setFormPonto((v) => !v)} className="text-xs text-accent hover:underline">
-                editar
-              </button>
-              <button
-                type="button"
-                disabled={pendente}
-                onClick={() => rodar(() => apagarPonto(log.id))}
-                className="text-xs text-red-400 hover:underline disabled:opacity-50"
-              >
-                apagar
-              </button>
+              {podeEditar && (
+                <>
+                  <button type="button" onClick={() => setFormPonto((v) => !v)} className="text-xs text-accent hover:underline">
+                    editar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pendente}
+                    onClick={() => rodar(() => apagarPonto(log.id))}
+                    className="text-xs text-red-400 hover:underline disabled:opacity-50"
+                  >
+                    apagar
+                  </button>
+                </>
+              )}
             </div>
-          ) : (
+          ) : podeEditar ? (
             <button type="button" onClick={() => setFormPonto(true)} className="text-xs text-accent hover:underline">
               simular ponto
             </button>
+          ) : (
+            <span className="text-texto-fraco">—</span>
           )}
         </td>
         <td className="px-3 py-2.5">
@@ -113,23 +121,27 @@ export function LinhaTurno({
                     {st ? (
                       <>
                         <span>{dinheiro(st.net_total)}</span>
-                        <button
-                          type="button"
-                          onClick={() => setModeloDoForm(model_id)}
-                          className="text-xs text-accent hover:underline"
-                        >
-                          editar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={pendente}
-                          onClick={() => rodar(() => apagarStatement(st.id))}
-                          className="text-xs text-red-400 hover:underline disabled:opacity-50"
-                        >
-                          apagar
-                        </button>
+                        {podeEditar && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setModeloDoForm(model_id)}
+                              className="text-xs text-accent hover:underline"
+                            >
+                              editar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pendente}
+                              onClick={() => rodar(() => apagarStatement(st.id))}
+                              className="text-xs text-red-400 hover:underline disabled:opacity-50"
+                            >
+                              apagar
+                            </button>
+                          </>
+                        )}
                       </>
-                    ) : (
+                    ) : podeEditar ? (
                       <button
                         type="button"
                         onClick={() => setModeloDoForm(model_id)}
@@ -137,11 +149,13 @@ export function LinhaTurno({
                       >
                         simular statement
                       </button>
+                    ) : (
+                      <span className="text-texto-fraco">—</span>
                     )}
                   </div>
                 );
               })}
-              {(() => {
+              {podeEditar && (() => {
                 const jaTem = new Set(log.shift_log_models.map((m) => m.model_id));
                 const restantes = models.filter((m) => !jaTem.has(m.id));
                 if (restantes.length === 0) return null;
@@ -177,18 +191,20 @@ export function LinhaTurno({
           )}
         </td>
         <td className="whitespace-nowrap px-4 py-2.5 text-right">
-          <button
-            type="button"
-            disabled={pendente}
-            onClick={() => {
-              if (confirm('Apagar este turno? Ponto e statements dele somem junto.')) {
-                rodar(() => apagarTurno(shift.id));
-              }
-            }}
-            className="text-xs text-red-400 hover:underline disabled:opacity-50"
-          >
-            apagar turno
-          </button>
+          {podeEditar && (
+            <button
+              type="button"
+              disabled={pendente}
+              onClick={() => {
+                if (confirm('Apagar este turno? Ponto e statements dele somem junto.')) {
+                  rodar(() => apagarTurno(shift.id));
+                }
+              }}
+              className="text-xs text-red-400 hover:underline disabled:opacity-50"
+            >
+              apagar turno
+            </button>
+          )}
         </td>
       </tr>
 
@@ -200,7 +216,7 @@ export function LinhaTurno({
         </tr>
       )}
 
-      {formPonto && (
+      {podeEditar && formPonto && (
         <tr className="border-b border-borda bg-superficie-alta/50">
           <td colSpan={9} className="px-4 py-3">
             <FormPonto
@@ -241,7 +257,7 @@ export function LinhaTurno({
         </tr>
       )}
 
-      {modeloDoForm && log && (
+      {podeEditar && modeloDoForm && log && (
         <tr className="border-b border-borda bg-superficie-alta/50">
           <td colSpan={9} className="px-4 py-3">
             <FormStatement

@@ -1,8 +1,12 @@
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import type { Rep } from '@/lib/tipos';
 import { LinhaRep } from './linha-rep';
 
 export default async function AdminReps() {
+  const rep = await exigirRep();
+  const podeEditar = ehAdmin(rep);
+
   const supabase = await criarClienteServidor();
   const { data } = await supabase.from('reps').select('*').order('turno').order('papel');
   const reps = (data ?? []) as Rep[];
@@ -23,8 +27,8 @@ export default async function AdminReps() {
           </tr>
         </thead>
         <tbody>
-          {reps.map((rep) => (
-            <LinhaRep key={rep.id} rep={rep} />
+          {reps.map((r) => (
+            <LinhaRep key={r.id} rep={r} podeEditar={podeEditar} />
           ))}
         </tbody>
       </table>

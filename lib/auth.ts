@@ -40,3 +40,13 @@ export async function exigirRep(): Promise<Rep> {
 export function ehAdmin(rep: Rep | null): boolean {
   return !!rep && (rep.role === 'admin' || rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris');
 }
+
+/**
+ * Enxerga as telas de admin (só olhar, sem editar nada) — admin/primaris de
+ * verdade, ou um observador (ex.: Thomas, OM, acompanha o time sem fazer
+ * parte dele). Todo botão de escrita continua travado por ehAdmin(), não
+ * por este — observador nunca passa nele.
+ */
+export function podeVerAdmin(rep: Rep | null): boolean {
+  return ehAdmin(rep) || !!rep?.observador;
+}

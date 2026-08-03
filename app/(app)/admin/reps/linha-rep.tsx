@@ -9,7 +9,7 @@ const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'terti
 
 const campo = 'w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent';
 
-export function LinhaRep({ rep }: { rep: Rep }) {
+export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean }) {
   const [editando, setEditando] = useState(false);
   const [dados, setDados] = useState(rep);
   const [pendente, executar] = useTransition();
@@ -52,16 +52,18 @@ export function LinhaRep({ rep }: { rep: Rep }) {
         <td className="px-3 py-2.5">${rep.valor_hora}</td>
         <td className="px-3 py-2.5">{rep.ativo ? 'sim' : 'não'}</td>
         <td className="px-3 py-2.5">
-          <CelulaLogin rep={rep} />
+          <CelulaLogin rep={rep} podeEditar={podeEditar} />
         </td>
         <td className="px-4 py-2.5 text-right">
-          <button
-            type="button"
-            onClick={() => setEditando(true)}
-            className="text-xs text-accent hover:underline"
-          >
-            editar
-          </button>
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className="text-xs text-accent hover:underline"
+            >
+              editar
+            </button>
+          )}
         </td>
       </tr>
     );
@@ -127,7 +129,7 @@ export function LinhaRep({ rep }: { rep: Rep }) {
         />
       </td>
       <td className="px-3 py-2.5">
-        <CelulaLogin rep={rep} />
+        <CelulaLogin rep={rep} podeEditar={podeEditar} />
       </td>
       <td className="px-4 py-2.5 text-right">
         <div className="flex items-center justify-end gap-2">
@@ -176,7 +178,7 @@ function sugestaoEmail(nomeCurto: string): string {
  * Liga o rep a uma conta do Supabase Auth já criada por fora (Dashboard).
  * Não cria conta nem senha aqui — só procura pelo e-mail e grava o id.
  */
-function CelulaLogin({ rep }: { rep: Rep }) {
+function CelulaLogin({ rep, podeEditar }: { rep: Rep; podeEditar: boolean }) {
   const [email, setEmail] = useState(() => sugestaoEmail(rep.nome_curto));
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -185,28 +187,34 @@ function CelulaLogin({ rep }: { rep: Rep }) {
     return (
       <div className="flex items-center gap-2">
         <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-xs text-accent">vinculado</span>
-        <button
-          type="button"
-          disabled={pendente}
-          onClick={() => {
-            if (confirm(`Desvincular o login de ${rep.nome_curto}? Ele não vai conseguir mais entrar.`)) {
-              executar(async () => {
-                setErro(null);
-                try {
-                  await desvincularLogin(rep.id);
-                } catch (e) {
-                  setErro(e instanceof Error ? e.message : 'Não deu.');
-                }
-              });
-            }
-          }}
-          className="text-xs text-red-400 hover:underline disabled:opacity-50"
-        >
-          desvincular
-        </button>
+        {podeEditar && (
+          <button
+            type="button"
+            disabled={pendente}
+            onClick={() => {
+              if (confirm(`Desvincular o login de ${rep.nome_curto}? Ele não vai conseguir mais entrar.`)) {
+                executar(async () => {
+                  setErro(null);
+                  try {
+                    await desvincularLogin(rep.id);
+                  } catch (e) {
+                    setErro(e instanceof Error ? e.message : 'Não deu.');
+                  }
+                });
+              }
+            }}
+            className="text-xs text-red-400 hover:underline disabled:opacity-50"
+          >
+            desvincular
+          </button>
+        )}
         {erro && <span className="text-xs text-red-400">{erro}</span>}
       </div>
     );
+  }
+
+  if (!podeEditar) {
+    return <span className="text-xs text-texto-fraco">não vinculado</span>;
   }
 
   return (
