@@ -11,6 +11,8 @@ type Busca = { mes?: string };
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
+const percentual = (valor: number | null) => (valor === null ? '—' : `${valor.toFixed(1)}%`);
+
 const NOME_TIME: Record<Bloco, string> = { I: 'Time 1 · Vortex I', II: 'Time 2 · Vortex II' };
 
 // Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
@@ -71,12 +73,14 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
       <section>
         <h2 className="mb-2 text-sm font-medium text-texto-fraco">Por rep</h2>
         <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-          <table className="w-full min-w-[28rem] border-collapse text-sm">
+          <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-borda text-left text-texto-fraco">
                 <th className="px-4 py-3 font-medium">Rep</th>
                 <th className="px-3 py-3 font-medium">Cargo</th>
-                <th className="px-4 py-3 text-right font-medium">Vendido no mês</th>
+                <th className="px-3 py-3 text-right font-medium">Vendido no mês</th>
+                <th className="px-3 py-3 text-right font-medium">Meta</th>
+                <th className="px-4 py-3 text-right font-medium">% atingida</th>
               </tr>
             </thead>
             <tbody>
@@ -84,7 +88,9 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
                 <tr key={r.repId} className="border-b border-borda last:border-0">
                   <td className="px-4 py-2.5">{r.nomeCurto}</td>
                   <td className="px-3 py-2.5 text-texto-fraco">{ROTULO_CARGO[r.cargo]}</td>
-                  <td className="px-4 py-2.5 text-right font-medium">{dinheiro(r.vendido)}</td>
+                  <td className="px-3 py-2.5 text-right font-medium">{dinheiro(r.vendido)}</td>
+                  <td className="px-3 py-2.5 text-right text-texto-fraco">{dinheiro(r.meta)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium">{percentual(r.percentual)}</td>
                 </tr>
               ))}
             </tbody>

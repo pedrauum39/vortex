@@ -4,10 +4,10 @@
 // venda própria, leva uma fatia da comissão do regular.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { percentualAtingido } from './meta';
+import { metaDiariaDaPagina, percentualAtingido } from './meta';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
-import { somarDias } from './tempo';
+import { diasNoMes, somarDias } from './tempo';
 import type { Bloco, Cargo, Turno } from './tipos';
 
 const arred = (valor: number) => Math.round(valor * 100) / 100;
@@ -24,6 +24,7 @@ export type VendaDeModelo = {
   repCargo: Cargo;
   modeloId: string;
   modeloBloco: Bloco;
+  turno: Turno;
   /** As 5 categorias — o que de fato foi vendido no turno. */
   vendidoTotal: number;
   /** Só as comissionáveis (gorjetas+publicações+mensagens) — base do % de comissão. */
@@ -99,6 +100,7 @@ export async function buscarVendasDaEmpresa(
         repCargo: shift.reps.cargo,
         modeloId: model_id,
         modeloBloco: modelo.bloco,
+        turno: shift.turno,
         vendidoTotal: totalDasLinhas(delta),
         vendidoComissionavel: baseComissao(delta),
       });
@@ -118,7 +120,15 @@ export type ResumoPagina = {
 };
 
 export type ResumoPrimaris = {
-  porRep: { repId: string; nomeCurto: string; cargo: Cargo; vendido: number }[];
+  porRep: {
+    repId: string;
+    nomeCurto: string;
+    cargo: Cargo;
+    vendido: number;
+    /** Meta parcial: só os turnos que ele já trabalhou no mês — a mesma conta do dashboard pessoal. */
+    meta: number;
+    percentual: number | null;
+  }[];
   porPagina: ResumoPagina[];
   porTime: Record<Bloco, { vendido: number; meta: number; percentual: number | null }>;
   total: { vendido: number; meta: number; percentual: number | null };
@@ -138,21 +148,37 @@ export async function buscarResumoPrimaris(
 
   const reps = (repsData ?? []) as { id: string; nome_curto: string; cargo: Cargo }[];
   const models = (modelsData ?? []) as { id: string; nome: string; bloco: Bloco; meta_mensal: number }[];
+  const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
+  // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
+  // direto dele sem precisar de mais um parâmetro.
+  const diasDoMes = diasNoMes(inicio.slice(0, 7));
 
   const vendidoPorRep = new Map<string, number>();
   const vendidoPorModelo = new Map<string, number>();
+  const metaPorRep = new Map<string, number>();
   for (const v of vendas) {
     vendidoPorRep.set(v.repId, (vendidoPorRep.get(v.repId) ?? 0) + v.vendidoTotal);
     vendidoPorModelo.set(v.modeloId, (vendidoPorModelo.get(v.modeloId) ?? 0) + v.vendidoTotal);
+    // Meta parcial: soma a meta diária de cada modelo nos turnos que ele já
+    // trabalhou, mesma conta do dashboard pessoal — dá pra comparar o
+    // ritmo de vendas mesmo antes do mês fechar.
+    const metaDaPagina = metaDiariaDaPagina(metaPorModelo.get(v.modeloId) ?? 0, v.turno, diasDoMes);
+    metaPorRep.set(v.repId, (metaPorRep.get(v.repId) ?? 0) + metaDaPagina);
   }
 
   const porRep = reps
-    .map((r) => ({
-      repId: r.id,
-      nomeCurto: r.nome_curto,
-      cargo: r.cargo,
-      vendido: arred(vendidoPorRep.get(r.id) ?? 0),
-    }))
+    .map((r) => {
+      const vendido = arred(vendidoPorRep.get(r.id) ?? 0);
+      const meta = arred(metaPorRep.get(r.id) ?? 0);
+      return {
+        repId: r.id,
+        nomeCurto: r.nome_curto,
+        cargo: r.cargo,
+        vendido,
+        meta,
+        percentual: percentualAtingido(vendido, meta),
+      };
+    })
     .sort((a, b) => b.vendido - a.vendido);
 
   const porPagina: ResumoPagina[] = models.map((m) => {
