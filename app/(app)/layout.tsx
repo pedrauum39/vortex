@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { rotuloTurno } from '@/lib/tipos';
 import { Nav } from './nav';
@@ -10,10 +11,13 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
     <div className="relative flex min-h-dvh flex-col">
       <header className="border-b border-borda bg-superficie/60 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-          <span className="flex items-center gap-2 text-lg font-semibold tracking-tight text-accent">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-lg font-semibold tracking-tight text-accent"
+          >
             <Image src="/vortex-logo.png" alt="" width={48} height={48} className="rounded-full" />
             VORTEX
-          </span>
+          </Link>
           <Nav
             admin={ehAdmin(rep)}
             primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris'}
