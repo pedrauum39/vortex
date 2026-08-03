@@ -5,8 +5,8 @@ import { reduzirImagem } from '@/lib/imagem';
 import type { LinhaInvoice } from '@/lib/invoice';
 import { LINHAS } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
-import type { Model } from '@/lib/tipos';
-import { rotuloTurno } from '@/lib/tipos';
+import type { Bloco, Model } from '@/lib/tipos';
+import { ROTULO_COVER, rotuloTurno } from '@/lib/tipos';
 import { apagarPonto, apagarStatement, apagarTurno, simularPonto, simularStatement } from './actions';
 import type { LinhaShift } from './tipos';
 
@@ -64,7 +64,14 @@ export function LinhaTurno({
             'Regular'
           )}
         </td>
-        <td className="px-3 py-2.5">{shift.reps?.nome_curto ?? '—'}</td>
+        <td className="px-3 py-2.5">
+          {shift.reps?.nome_curto ?? '—'}
+          {shift.cover_cargo && (
+            <span className="ml-2 rounded-md bg-amber-400/10 px-2 py-0.5 text-xs text-amber-300">
+              {ROTULO_COVER[shift.cover_cargo]}
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2.5">
           {log ? (
             <div className="flex items-center gap-2">
@@ -176,8 +183,12 @@ export function LinhaTurno({
             <FormPonto
               repId={shift.rep_id!}
               shiftId={shift.id}
+              bloco={shift.bloco}
               models={models}
-              modelosAtuais={log?.shift_log_models.map((m) => m.model_id) ?? models.map((m) => m.id)}
+              modelosAtuais={
+                log?.shift_log_models.map((m) => m.model_id) ??
+                models.filter((m) => m.bloco === shift.bloco).map((m) => m.id)
+              }
               entradaAtual={log ? datetimeLocalBRT(new Date(log.clock_in_at)) : ''}
               saidaAtual={log?.clock_out_at ? datetimeLocalBRT(new Date(log.clock_out_at)) : ''}
               pendente={pendente}
@@ -212,6 +223,7 @@ export function LinhaTurno({
 }
 
 function FormPonto({
+  bloco,
   models,
   modelosAtuais,
   entradaAtual,
@@ -222,6 +234,7 @@ function FormPonto({
 }: {
   repId: string;
   shiftId: string;
+  bloco: Bloco;
   models: Model[];
   modelosAtuais: string[];
   entradaAtual: string;
@@ -240,21 +253,30 @@ function FormPonto({
     );
   }
 
+  const doTime = models.filter((m) => m.bloco === bloco);
+  const outras = models.filter((m) => m.bloco !== bloco);
+
+  const checkbox = (m: Model) => (
+    <label
+      key={m.id}
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+        modeloIds.includes(m.id) ? 'border-accent bg-accent-fraco text-accent' : 'border-borda text-texto-fraco'
+      }`}
+    >
+      <input type="checkbox" checked={modeloIds.includes(m.id)} onChange={() => alternar(m.id)} className="size-3.5" />
+      {m.nome}
+    </label>
+  );
+
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {models.map((m) => (
-          <label
-            key={m.id}
-            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
-              modeloIds.includes(m.id) ? 'border-accent bg-accent-fraco text-accent' : 'border-borda text-texto-fraco'
-            }`}
-          >
-            <input type="checkbox" checked={modeloIds.includes(m.id)} onChange={() => alternar(m.id)} className="size-3.5" />
-            {m.nome}
-          </label>
-        ))}
-      </div>
+      <div className="flex flex-wrap gap-2">{doTime.map(checkbox)}</div>
+      {outras.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-texto-fraco">outro time:</span>
+          {outras.map(checkbox)}
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-texto-fraco">
           Entrada (BRT)

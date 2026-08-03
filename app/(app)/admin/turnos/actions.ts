@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { brtParaUtc } from '@/lib/tempo';
-import type { Bloco, Funcao, Turno } from '@/lib/tipos';
+import type { Bloco, Cargo, Funcao, Turno } from '@/lib/tipos';
 
 async function exigirAdmin() {
   const rep = await exigirRep();
@@ -38,6 +38,8 @@ export async function criarTurno(dados: {
   bloco: Bloco;
   funcao: Funcao;
   repId: string;
+  /** Setado quando é um cover: paga como esse cargo em vez do cargo real do rep. */
+  coverCargo: Cargo | null;
 }) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -50,6 +52,7 @@ export async function criarTurno(dados: {
       funcao: dados.funcao,
       rep_id: dados.repId,
       origem: 'manual',
+      cover_cargo: dados.coverCargo,
     },
     { onConflict: 'data,turno,bloco,funcao' },
   );
@@ -58,7 +61,14 @@ export async function criarTurno(dados: {
   revalidar();
 }
 
-type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: string | null };
+type Slot = {
+  data: string;
+  turno: Turno;
+  bloco: Bloco;
+  funcao: Funcao;
+  repId: string | null;
+  coverCargo: Cargo | null;
+};
 
 /**
  * Define quem ocupa um slot da grade.
@@ -71,7 +81,7 @@ type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: s
 async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServidor>>, slot: Slot) {
   const { data: existente } = await supabase
     .from('shifts')
-    .select('id, rep_id')
+    .select('id, rep_id, cover_cargo')
     .eq('data', slot.data)
     .eq('turno', slot.turno)
     .eq('bloco', slot.bloco)
@@ -91,7 +101,21 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
       funcao: slot.funcao,
       rep_id: slot.repId,
       origem: 'manual',
+      cover_cargo: slot.coverCargo,
     });
+    if (error) throw new Error(error.message);
+  } else if (
+    slot.repId &&
+    existente &&
+    existente.rep_id === slot.repId &&
+    (existente.cover_cargo ?? null) !== (slot.coverCargo ?? null)
+  ) {
+    // Mesmo dono do slot, só o nível de cover mudou — não é troca de pessoa,
+    // não precisa apagar/recriar (perderia ponto/statement à toa).
+    const { error } = await supabase
+      .from('shifts')
+      .update({ cover_cargo: slot.coverCargo })
+      .eq('id', existente.id);
     if (error) throw new Error(error.message);
   }
 }

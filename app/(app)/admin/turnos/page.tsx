@@ -3,7 +3,7 @@ import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolv
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
-import type { Model, Rep } from '@/lib/tipos';
+import { cargoEfetivo, type Cargo, type Model, type Rep } from '@/lib/tipos';
 import { FormularioTurno } from './formulario-turno';
 import { GradeEscala } from './grade-escala';
 import { LinhaTurno } from './linha-turno';
@@ -29,7 +29,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, funcao, rep_id, origem, cover_cargo, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .gte('data', inicio)
       .lte('data', fim)
@@ -45,8 +45,11 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   const models = (modelsData ?? []) as Model[];
 
   const valoresDaGrade: Record<string, string | null> = {};
+  const coversDaGrade: Record<string, Cargo | null> = {};
   for (const s of shifts) {
-    valoresDaGrade[`${s.data}|${s.turno}|${s.bloco}|${s.funcao}`] = s.rep_id;
+    const chave = `${s.data}|${s.turno}|${s.bloco}|${s.funcao}`;
+    valoresDaGrade[chave] = s.rep_id;
+    coversDaGrade[chave] = s.cover_cargo;
   }
 
   // Agrupa por slot (data+turno+bloco) para achar o par regular/assist e
@@ -94,7 +97,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       bloco: regular.bloco,
       regular: {
         repId: regular.rep_id!,
-        cargo: regular.reps.cargo,
+        cargo: cargoEfetivo(regular.reps.cargo, regular.cover_cargo),
         valorHora: regular.reps.valor_hora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
@@ -128,7 +131,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
           componente ao trocar de semana e nunca reinicializa o useState
           interno com os valores novos — a grade fica presa nos valores da
           primeira semana que carregou, pra sempre, não importa a URL. */}
-      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} />
+      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} covers={coversDaGrade} />
 
       <FormularioTurno reps={reps} inicio={inicio} />
 
@@ -158,7 +161,10 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
                   key={s.id}
                   shift={s}
                   linha={linhasPorShift.get(s.id) ?? null}
-                  models={models.filter((m) => m.bloco === s.bloco)}
+                  // Todas as modelos ativas, não só as do time do turno — o
+                  // admin pode simular um ponto que trabalhou modelo de outro
+                  // time também (mesmo caso do clock-in real).
+                  models={models}
                 />
               ))}
             </tbody>
