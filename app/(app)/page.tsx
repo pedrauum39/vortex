@@ -11,6 +11,7 @@ import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/te
 import {
   HORARIOS,
   ROTULO_CARGO,
+  TURNOS,
   rotuloTurno,
   type Bloco,
   type Cargo,
@@ -37,6 +38,41 @@ const nomeDoTurno = (t: MeuTurno, rosterPorBloco: Map<Bloco, string>) =>
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
+type SlotVazio = { data: string; turno: Turno; bloco: Bloco };
+
+/**
+ * Turnos regulares sem ninguém escalado, de hoje em diante — só pros
+ * primaris, pra saberem que precisam procurar um cover. Só considera datas
+ * que JÁ têm algum turno materializado (a escala foi gerada pra elas); uma
+ * data futura sem nenhuma linha ainda não é "vazia", só não foi gerada.
+ */
+async function buscarTurnosVazios(hoje: string): Promise<SlotVazio[]> {
+  const { data } = await criarClienteAdmin()
+    .from('shifts')
+    .select('data, turno, bloco, rep_id')
+    .eq('funcao', 'regular')
+    .gte('data', hoje)
+    .order('data');
+
+  const porData = new Map<string, { turno: Turno; bloco: Bloco; rep_id: string | null }[]>();
+  for (const s of (data ?? []) as { data: string; turno: Turno; bloco: Bloco; rep_id: string | null }[]) {
+    const linhas = porData.get(s.data) ?? [];
+    linhas.push(s);
+    porData.set(s.data, linhas);
+  }
+
+  const vazios: SlotVazio[] = [];
+  for (const [data_, linhas] of [...porData].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const turno of TURNOS) {
+      for (const bloco of ['I', 'II'] as Bloco[]) {
+        const preenchido = linhas.some((l) => l.turno === turno && l.bloco === bloco && l.rep_id);
+        if (!preenchido) vazios.push({ data: data_, turno, bloco });
+      }
+    }
+  }
+  return vazios;
+}
+
 export default async function Dashboard() {
   const rep = await exigirRep();
   const hoje = dataBRT();
@@ -51,7 +87,7 @@ export default async function Dashboard() {
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
-  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus] = await Promise.all([
+  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus, turnosVazios] = await Promise.all([
     supabase
       .from('shifts')
       .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
@@ -65,6 +101,7 @@ export default async function Dashboard() {
     buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
     buscarRegraVigente(criarClienteAdmin(), fimMes),
     cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
+    cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
   ]);
 
   const linhasInvoice = slots
@@ -96,6 +133,20 @@ export default async function Dashboard() {
         <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
           {rep.nome_curto}
         </h1>
+
+        {turnosVazios.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {turnosVazios.map((v) => (
+              <p
+                key={`${v.data}|${v.turno}|${v.bloco}`}
+                className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
+              >
+                Turno do dia {diaLegivel(v.data)}, {rotuloTurno(v.turno)} (Time {v.bloco === 'I' ? '1' : '2'}) está
+                vazio, procure cover.
+              </p>
+            ))}
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-6">
           <div>

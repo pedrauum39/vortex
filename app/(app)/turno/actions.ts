@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { exigirRep } from '@/lib/auth';
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import type { LinhasNet } from '@/lib/statement';
 import { buscarAnterior, type Anterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
@@ -35,7 +35,7 @@ export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
     .single();
   if (!shift) throw new Error('Turno não encontrado.');
 
-  if (rep.role !== 'admin' && !podeIniciar(shift.turno as Turno, shift.data as string)) {
+  if (!ehAdmin(rep) && !podeIniciar(shift.turno as Turno, shift.data as string)) {
     throw new Error(`O ponto só abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno.`);
   }
 

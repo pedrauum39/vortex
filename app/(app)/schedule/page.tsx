@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { exigirRep } from '@/lib/auth';
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, segundaDaSemana, somarDias } from '@/lib/tempo';
 import { TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
@@ -65,13 +65,13 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
       {aba === 'time' ? (
         <AbaTime
           dias={dias}
-          admin={rep.role === 'admin'}
+          admin={ehAdmin(rep)}
           inicio={inicio}
           fim={fim}
           meuNome={rep.nome_curto}
         />
       ) : (
-        <AbaMeus repId={rep.id} inicio={inicio} fim={fim} admin={rep.role === 'admin'} />
+        <AbaMeus repId={rep.id} inicio={inicio} fim={fim} admin={ehAdmin(rep)} />
       )}
     </div>
   );

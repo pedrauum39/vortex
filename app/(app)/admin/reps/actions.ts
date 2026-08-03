@@ -1,13 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { exigirRep } from '@/lib/auth';
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import type { Cargo, Papel, Turno } from '@/lib/tipos';
 
 async function exigirAdmin() {
   const rep = await exigirRep();
-  if (rep.role !== 'admin') throw new Error('Só admin.');
+  if (!ehAdmin(rep)) throw new Error('Só admin.');
 }
 
 export async function atualizarRep(

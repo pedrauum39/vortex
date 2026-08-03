@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { exigirRep } from '@/lib/auth';
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { rotuloTurno } from '@/lib/tipos';
 import { Nav } from './nav';
 
@@ -15,7 +15,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             VORTEX
           </span>
           <Nav
-            admin={rep.role === 'admin'}
+            admin={ehAdmin(rep)}
             primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris'}
           />
           <div className="ml-auto flex items-center gap-3">

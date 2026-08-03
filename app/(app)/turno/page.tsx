@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { exigirRep } from '@/lib/auth';
+import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, horaBRT } from '@/lib/tempo';
 import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
@@ -129,9 +129,9 @@ export default async function TurnoPage({
           // precisa poder marcar isso mesmo fora do roster padrão.
           models={(models ?? []) as Model[]}
           repId={rep.id}
-          // Admin ignora a janela dos 15 minutos — precisa testar o fluxo
-          // (OCR, comissão) sem esperar a hora certa do turno.
-          podeIniciar={rep.role === 'admin' || podeIniciar(turnoDoSlot, data)}
+          // Admin (e primaris) ignora a janela dos 15 minutos — precisa
+          // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.
+          podeIniciar={ehAdmin(rep) || podeIniciar(turnoDoSlot, data)}
           abreAs={horaBRT(
             new Date(
               janelaDoTurno(turnoDoSlot, data).inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000,
