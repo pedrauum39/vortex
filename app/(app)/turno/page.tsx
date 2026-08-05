@@ -37,32 +37,57 @@ export default async function TurnoPage({
   const { turno: turnoEscolhido } = await searchParams;
   const supabase = await criarClienteServidor();
 
+  const CAMPOS_TURNO =
+    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
+
   // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
   // o admin pode ter escalado alguém num turno diferente do de costume, e
   // isso precisa aparecer aqui igual. Cada turno tem sua própria regra de
   // qual dia é "hoje" (o T6/T1 cruza a meia-noite), então checa os três.
   const candidatas = [...new Set(TURNOS.map((t) => dataDoTurnoAtual(t)))];
 
-  const { data: turnos } = await supabase
-    .from('shifts')
-    .select(
-      'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
-    )
-    // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
-    // sem isto ele cairia no turno de outra pessoa.
-    .eq('rep_id', rep.id)
-    .in('data', candidatas);
+  const [{ data: paraIniciar }, { data: emAberto }] = await Promise.all([
+    supabase
+      .from('shifts')
+      .select(CAMPOS_TURNO)
+      // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo —
+      // sem isto ele cairia no turno de outra pessoa.
+      .eq('rep_id', rep.id)
+      .in('data', candidatas),
+    // Turno que já foi iniciado e ainda não foi fechado, não importa a data —
+    // sem isto, um T6/T1 de ontem que passou das 5h (fim da janela oficial)
+    // sumia da lista de candidatos assim que a data "atual" do T6/T1 virava
+    // pra hoje à noite, e o rep não conseguia mais achar o turno aberto pra
+    // finalizar, só o próximo (ainda nem começado). shift_logs!inner força
+    // o join a exigir log — sem isso o filtro em clock_out_at não restringe
+    // pra quem nem começou o turno ainda.
+    supabase
+      .from('shifts')
+      .select(
+        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
+      )
+      .eq('rep_id', rep.id)
+      .is('shift_logs.clock_out_at', null),
+  ]);
 
   // Pode haver mais de um turno "atual" ao mesmo tempo (ex.: admin escalou um
-  // extra além do turno de costume no mesmo dia) — os três turnos oficiais
-  // cobrem o dia inteiro sem sobrepor horário, então isto quase nunca dá só
-  // um resultado; precisa de escolha, não de um .find() pegando o primeiro
-  // às cegas.
-  const candidatos = ((turnos ?? []) as unknown as TurnoDoDia[]).filter(
-    (t) => t.data === dataDoTurnoAtual(t.turno),
-  );
+  // extra além do turno de costume no mesmo dia, ou tem um em aberto pra
+  // fechar e outro pra começar) — precisa de escolha, não de pegar o
+  // primeiro às cegas.
+  const porId = new Map<string, TurnoDoDia>();
+  for (const t of (paraIniciar ?? []) as unknown as TurnoDoDia[]) {
+    if (t.data === dataDoTurnoAtual(t.turno)) porId.set(t.id, t);
+  }
+  for (const t of (emAberto ?? []) as unknown as TurnoDoDia[]) {
+    porId.set(t.id, t);
+  }
+  const candidatos = [...porId.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+
   const turno =
     candidatos.find((t) => t.turno === turnoEscolhido) ??
+    // Sem escolha explícita, prioriza o que já está em andamento (precisa
+    // fechar) sobre o próximo (ainda nem começou).
+    candidatos.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
     candidatos.find((t) => t.shift_logs[0]) ??
     candidatos[0];
   const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
