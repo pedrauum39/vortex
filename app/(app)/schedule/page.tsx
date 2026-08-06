@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
-import { dataBRT, diaLegivel, segundaDaSemana, somarDias } from '@/lib/tempo';
+import { dataBRT, diaLegivel, limitesDoMes, segundaDaSemana, somarDias, somarMeses } from '@/lib/tempo';
 import { TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
 import { BotaoGerar } from './botao-gerar';
+import { MeusTurnos, type MeuTurno } from './meus-turnos';
 
-type Busca = { aba?: string; de?: string };
+type Busca = { aba?: string; de?: string; mesCal?: string };
 
 // Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
 // URL — uma semana que estava vazia antes de gerar a escala continua
@@ -14,11 +15,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function Schedule({ searchParams }: { searchParams: Promise<Busca> }) {
   const rep = await exigirRep();
-  const { aba = 'meus', de } = await searchParams;
+  const { aba = 'meus', de, mesCal } = await searchParams;
 
   const inicio = de ?? segundaDaSemana(dataBRT());
   const fim = somarDias(inicio, 6);
   const dias = Array.from({ length: 7 }, (_, i) => somarDias(inicio, i));
+  const mesCalendario = mesCal ?? inicio.slice(0, 7);
 
   return (
     <div className="space-y-6">
@@ -71,7 +73,14 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
           meuNome={rep.nome_curto}
         />
       ) : (
-        <AbaMeus repId={rep.id} inicio={inicio} fim={fim} admin={ehAdmin(rep)} />
+        <AbaMeus
+          repId={rep.id}
+          inicio={inicio}
+          fim={fim}
+          admin={ehAdmin(rep)}
+          aba={aba}
+          mesCal={mesCalendario}
+        />
       )}
     </div>
   );
@@ -79,35 +88,27 @@ export default async function Schedule({ searchParams }: { searchParams: Promise
 
 // --------------------------------------------------------------- meus turnos
 
-type MeuTurno = {
-  id: string;
-  data: string;
-  turno: Turno;
-  bloco: Bloco;
-  funcao: 'regular' | 'assist';
-  origem: 'gerado' | 'manual';
-  shift_logs: {
-    clock_in_at: string;
-    clock_out_at: string | null;
-    shift_log_models: { models: { nome: string } }[];
-  }[];
-};
-
 async function AbaMeus({
   repId,
   inicio,
   fim,
   admin,
+  aba,
+  mesCal,
 }: {
   repId: string;
   inicio: string;
   fim: string;
   admin: boolean;
+  aba: string;
+  mesCal: string;
 }) {
   const supabase = await criarClienteServidor();
+  const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mesCal);
+
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto "Meus turnos" mostraria o time inteiro para o admin.
-  const [{ data }, { data: modelsData }] = await Promise.all([
+  const [{ data }, { data: modelsData }, { data: mesData }] = await Promise.all([
     supabase
       .from('shifts')
       .select(
@@ -118,60 +119,32 @@ async function AbaMeus({
       .lte('data', fim)
       .order('data'),
     supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
+    supabase.from('shifts').select('data').eq('rep_id', repId).gte('data', inicioMes).lte('data', fimMes),
   ]);
 
-  const rosterPorBloco = new Map<Bloco, string>();
+  const rosterPorBloco: Record<string, string> = {};
   for (const m of modelsData ?? []) {
-    rosterPorBloco.set(
-      m.bloco as Bloco,
-      [rosterPorBloco.get(m.bloco as Bloco), m.nome].filter(Boolean).join(', '),
-    );
+    const bloco = m.bloco as Bloco;
+    rosterPorBloco[bloco] = [rosterPorBloco[bloco], m.nome].filter(Boolean).join(', ');
   }
 
   const turnos = (data ?? []) as unknown as MeuTurno[];
-  if (turnos.length === 0) return <Vazia admin={admin} inicio={inicio} fim={fim} />;
-
+  const diasComTurno = [...new Set((mesData ?? []).map((s) => s.data as string))];
   const hoje = dataBRT();
 
   return (
-    <ul className="divide-y divide-borda rounded-2xl border border-borda bg-superficie">
-      {turnos.map((t) => {
-        const log = t.shift_logs[0];
-        // Antes do clock-in real, mostra o roster padrão do time — é pra
-        // isso que ele existe (/admin/models).
-        const modelos = log?.shift_log_models.map((m) => m.models.nome).join(' + ');
-        return (
-          <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-base">
-            <span className={t.data === hoje ? 'font-medium text-accent' : ''}>
-              {diaLegivel(t.data)}
-            </span>
-            <span className="text-texto-fraco">{rotuloTurno(t.turno)}</span>
-            <span className="text-texto-fraco">
-              {modelos || rosterPorBloco.get(t.bloco) || `Bloco ${t.bloco}`}
-            </span>
-            {t.funcao === 'assist' && (
-              <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
-                Assistant
-              </span>
-            )}
-            {t.origem === 'manual' && (
-              <span className="rounded-md border border-borda px-2 py-0.5 text-sm text-texto-fraco">
-                alterado
-              </span>
-            )}
-            <span className="ml-auto text-sm text-texto-fraco">
-              {log?.clock_out_at
-                ? 'concluído'
-                : log
-                  ? 'em andamento'
-                  : t.data < hoje
-                    ? 'sem registro'
-                    : ''}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <MeusTurnos
+      turnos={turnos}
+      rosterPorBloco={rosterPorBloco}
+      hoje={hoje}
+      admin={admin}
+      inicio={inicio}
+      fim={fim}
+      mesCal={mesCal}
+      diasComTurno={diasComTurno}
+      mesAnteriorHref={`/schedule?aba=${aba}&de=${inicio}&mesCal=${somarMeses(mesCal, -1)}`}
+      mesSeguinteHref={`/schedule?aba=${aba}&de=${inicio}&mesCal=${somarMeses(mesCal, 1)}`}
+    />
   );
 }
 

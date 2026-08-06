@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 const ROTAS = [
   { href: '/', rotulo: 'Início' },
   { href: '/schedule', rotulo: 'Schedule' },
-  { href: '/turno', rotulo: 'Turno' },
+  { href: '/turno', rotulo: 'Turnos' },
   { href: '/invoice', rotulo: 'Invoice' },
 ];
 
