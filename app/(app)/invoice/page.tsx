@@ -15,6 +15,9 @@ const dinheiro = (valor: number) =>
 
 const centavos = (valor: number) => Math.round(valor * 100) / 100;
 
+const percentualComissao = (fracao: number) =>
+  `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+
 // Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
 // URL — um mês que ainda não tinha turno algum continua aparecendo vazio
 // depois, até o cache expirar sozinho.
@@ -69,7 +72,8 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
       </div>
 
       <p className="text-sm text-texto-fraco">
-        {rep.nome_curto} · {ROTULO_CARGO[rep.cargo]} · {dinheiro(rep.valor_hora)}/h
+        {rep.nome_curto} · {ROTULO_CARGO[rep.cargo]} · {percentualComissao(regra.percentual[rep.cargo])} ·{' '}
+        {dinheiro(rep.valor_hora)}/h
       </p>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
