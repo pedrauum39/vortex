@@ -30,6 +30,7 @@ export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean })
           cargo: dados.cargo,
           valor_hora: dados.valor_hora,
           ativo: dados.ativo,
+          observador: dados.observador,
         });
         setEditando(false);
       } catch (e) {
@@ -51,6 +52,7 @@ export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean })
         <td className="px-3 py-2.5">{ROTULO_CARGO[rep.cargo]}</td>
         <td className="px-3 py-2.5">${rep.valor_hora}</td>
         <td className="px-3 py-2.5">{rep.ativo ? 'sim' : 'não'}</td>
+        <td className="px-3 py-2.5">{rep.observador ? 'sim' : 'não'}</td>
         <td className="px-3 py-2.5">
           <CelulaLogin rep={rep} podeEditar={podeEditar} />
         </td>
@@ -125,6 +127,14 @@ export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean })
           type="checkbox"
           checked={dados.ativo}
           onChange={(e) => setDados({ ...dados, ativo: e.target.checked })}
+          className="size-4 accent-[var(--color-accent)]"
+        />
+      </td>
+      <td className="px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={dados.observador}
+          onChange={(e) => setDados({ ...dados, observador: e.target.checked })}
           className="size-4 accent-[var(--color-accent)]"
         />
       </td>

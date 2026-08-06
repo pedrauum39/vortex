@@ -20,12 +20,41 @@ export async function atualizarRep(
     cargo: Cargo;
     valor_hora: number;
     ativo: boolean;
+    observador: boolean;
   },
 ) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
   const { error } = await supabase.from('reps').update(dados).eq('id', repId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/admin/reps');
+}
+
+/**
+ * Cria uma linha nova em reps — não cria conta nem senha, só a linha que
+ * depois aparece em /cadastro pra pessoa se auto-vincular (mesmo padrão do
+ * Thomas). `papel` não é escolhido aqui, igual na edição — só importa pro
+ * rodízio da escala, que reps novos (tipicamente observador) não entram.
+ */
+export async function criarRep(dados: {
+  nome_curto: string;
+  nome_oficial: string;
+  turno: Turno;
+  cargo: Cargo;
+  valor_hora: number;
+  ativo: boolean;
+  observador: boolean;
+}) {
+  await exigirAdmin();
+
+  if (!dados.nome_curto.trim() || !dados.nome_oficial.trim()) {
+    throw new Error('Nome curto e nome oficial são obrigatórios.');
+  }
+
+  const supabase = await criarClienteServidor();
+  const { error } = await supabase.from('reps').insert({ ...dados, papel: 'A', role: 'rep' });
   if (error) throw new Error(error.message);
 
   revalidatePath('/admin/reps');

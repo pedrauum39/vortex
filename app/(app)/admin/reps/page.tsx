@@ -2,6 +2,7 @@ import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import type { Rep } from '@/lib/tipos';
 import { LinhaRep } from './linha-rep';
+import { NovaLinhaRep } from './nova-linha-rep';
 
 export default async function AdminReps() {
   const rep = await exigirRep();
@@ -13,7 +14,7 @@ export default async function AdminReps() {
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-      <table className="w-full min-w-[62rem] border-collapse text-sm">
+      <table className="w-full min-w-[68rem] border-collapse text-sm">
         <thead>
           <tr className="border-b border-borda text-left text-texto-fraco">
             <th className="px-4 py-3 font-medium">Nome curto</th>
@@ -22,6 +23,7 @@ export default async function AdminReps() {
             <th className="px-3 py-3 font-medium">Cargo</th>
             <th className="px-3 py-3 font-medium">$/h</th>
             <th className="px-3 py-3 font-medium">Ativo</th>
+            <th className="px-3 py-3 font-medium">Observador</th>
             <th className="px-3 py-3 font-medium">Login</th>
             <th className="px-4 py-3" />
           </tr>
@@ -30,6 +32,7 @@ export default async function AdminReps() {
           {reps.map((r) => (
             <LinhaRep key={r.id} rep={r} podeEditar={podeEditar} />
           ))}
+          {podeEditar && <NovaLinhaRep />}
         </tbody>
       </table>
     </div>
