@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
-import { metaDiariaDaPagina } from '@/lib/meta';
+import { corDaMeta, metaDiariaDaPagina, percentualAtingido, temRaio } from '@/lib/meta';
+import { buscarMetasDoRep, buscarRecordeDoRep } from '@/lib/metaDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
-import { diaLegivel, diasNoMes, horaBRT } from '@/lib/tempo';
+import { diaLegivel, diasNoMes, horaBRT, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
@@ -11,7 +12,11 @@ import {
   janelaDoTurno,
   podeIniciar,
 } from '@/lib/turno';
+import { CORES, IconeRaio } from '../meta-visual';
 import { Painel } from './painel';
+
+const dinheiro = (valor: number) =>
+  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
 type TurnoDoDia = {
   id: string;
@@ -31,10 +36,10 @@ type TurnoDoDia = {
 export default async function TurnoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ turno?: string }>;
+  searchParams: Promise<{ turno?: string; mes?: string }>;
 }) {
   const rep = await exigirRep();
-  const { turno: turnoEscolhido } = await searchParams;
+  const { turno: turnoEscolhido, mes: mesParam } = await searchParams;
   const supabase = await criarClienteServidor();
 
   const CAMPOS_TURNO =
@@ -123,6 +128,17 @@ export default async function TurnoPage({
     temAssistente = !!(assistShift?.rep_id && (assistShift.shift_logs as { id: string }[] | null)?.length);
   }
 
+  const mes = mesParam ?? mesAtual();
+  const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mes);
+  const diasDoMesHistorico = diasNoMes(mes);
+
+  const [metas, recorde] = await Promise.all([
+    buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMesHistorico),
+    buscarRecordeDoRep(criarClienteAdmin(), rep.id),
+  ]);
+
+  const historico = metas.linhas.filter((l) => l.trabalhado);
+
   return (
     <div className="space-y-6">
       <div>
@@ -193,6 +209,89 @@ export default async function TurnoPage({
           )}
         />
       )}
+
+      <section className="rounded-2xl border border-borda bg-superficie p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-medium">Histórico de turnos</h2>
+          <div className="ml-auto flex items-center gap-1 text-sm">
+            <Link
+              href={`/turno?mes=${somarMeses(mes, -1)}`}
+              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+            >
+              ←
+            </Link>
+            <span className="px-2 capitalize text-texto-fraco">{mesLegivel(mes)}</span>
+            <Link
+              href={`/turno?mes=${somarMeses(mes, 1)}`}
+              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+            >
+              →
+            </Link>
+          </div>
+        </div>
+
+        {historico.length === 0 ? (
+          <p className="mt-4 text-sm text-texto-fraco">Nenhum turno trabalhado neste mês.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[40rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-borda text-left text-texto-fraco">
+                  <th className="px-3 py-2.5 font-medium">Data</th>
+                  <th className="px-3 py-2.5 font-medium">Turno</th>
+                  <th className="px-3 py-2.5 font-medium">Modelo(s)</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Meta do turno</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Total feito</th>
+                  <th className="px-3 py-2.5 text-right font-medium">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.map((l) => {
+                  const percentual = percentualAtingido(l.vendido, l.metaDoTurno);
+                  const ehRecorde = recorde?.data === l.data && recorde?.turno === l.turno;
+                  return (
+                    <tr
+                      key={`${l.data}-${l.turno}`}
+                      className={`border-b border-borda last:border-0 ${
+                        ehRecorde ? 'ring-2 ring-inset ring-accent' : ''
+                      }`}
+                    >
+                      <td className="px-3 py-3">{diaLegivel(l.data)}</td>
+                      <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                      <td className="px-3 py-3 text-accent">{l.paginas.join(' + ')}</td>
+                      <td className="px-3 py-3 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
+                      <td className="px-3 py-3 text-right">
+                        {dinheiro(l.vendido)}
+                        {l.pendente && (
+                          <span className="ml-2 rounded-md border border-amber-500/40 px-2 py-0.5 text-xs text-amber-300">
+                            em aberto
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {percentual === null ? (
+                          <span className="text-texto-fraco">—</span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
+                            {percentual.toFixed(1)}%
+                            {temRaio(percentual) && <IconeRaio className="size-4" />}
+                          </span>
+                        )}
+                        {ehRecorde && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-accent">
+                            Recorde
+                            {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

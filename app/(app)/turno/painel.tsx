@@ -82,7 +82,7 @@ export function Painel({
     <section className="rounded-2xl border border-borda bg-superficie p-6">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-xl font-medium">
-          {log ? log.modelos.map((m) => m.nome).join(' + ') : `Bloco ${turno.bloco}`}
+          {log ? log.modelos.map((m) => m.nome).join(' + ') : `Vortex ${turno.bloco}`}
         </span>
         {log && log.modelos.length > 1 && (
           <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
@@ -103,13 +103,20 @@ export function Painel({
       </div>
 
       {metaTemValor && (
-        <p className="mt-2 text-sm text-texto-fraco">
-          Meta do turno:{' '}
-          {modelosDaMeta
-            .filter((m) => (metasDiarias[m.id] ?? 0) > 0)
-            .map((m) => `${m.nome} ${dinheiro(metasDiarias[m.id])}`)
-            .join(' · ')}
-        </p>
+        <div className="mt-2 text-sm text-texto-fraco">
+          <p>
+            Meta do turno:{' '}
+            <span className="font-medium text-texto">
+              {dinheiro(modelosDaMeta.reduce((soma, m) => soma + (metasDiarias[m.id] ?? 0), 0))}
+            </span>
+          </p>
+          <p className="mt-0.5">
+            {modelosDaMeta
+              .filter((m) => (metasDiarias[m.id] ?? 0) > 0)
+              .map((m) => `${m.nome}: ${dinheiro(metasDiarias[m.id])}`)
+              .join(' · ')}
+          </p>
+        </div>
       )}
 
       {(!log || editandoModelos) && (
