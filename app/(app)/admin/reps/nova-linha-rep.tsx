@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Turno } from '@/lib/tipos';
 import { criarRep } from './actions';
 
-const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'tertius'];
+const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'tertius', 'admin_5c'];
 
 const campo = 'w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent';
 

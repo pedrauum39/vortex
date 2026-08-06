@@ -23,6 +23,8 @@ export const REGRA_PADRAO: RegraComissao = {
     knight_primaris: 0.055,
     secundus: 0.04,
     tertius: 0.035,
+    // Cargo de acesso (Admin 5C), não trabalha turno — nunca entra na base de comissão.
+    admin_5c: 0,
   },
   fatia_assistente: 0.1,
 };

@@ -43,10 +43,11 @@ export function ehAdmin(rep: Rep | null): boolean {
 
 /**
  * Enxerga as telas de admin (só olhar, sem editar nada) — admin/primaris de
- * verdade, ou um observador (ex.: Thomas, OM, acompanha o time sem fazer
- * parte dele). Todo botão de escrita continua travado por ehAdmin(), não
- * por este — observador nunca passa nele.
+ * verdade, um observador (ex.: Thomas, OM, acompanha o time sem fazer parte
+ * dele), ou o cargo Admin 5C (mesmo acesso do observador, só que vinculado
+ * ao cargo em vez de uma flag por pessoa). Todo botão de escrita continua
+ * travado por ehAdmin(), não por este — nenhum dos dois passa nele.
  */
 export function podeVerAdmin(rep: Rep | null): boolean {
-  return ehAdmin(rep) || !!rep?.observador;
+  return ehAdmin(rep) || !!rep?.observador || rep?.cargo === 'admin_5c';
 }

@@ -7,13 +7,14 @@ export type Papel = 'A' | 'B' | 'C';
  * Cargo é o que define o percentual de comissão, e é independente do `papel`:
  * papel é a posição no rodízio da escala, cargo é a patente do rep.
  */
-export type Cargo = 'grand_primaris' | 'knight_primaris' | 'secundus' | 'tertius';
+export type Cargo = 'grand_primaris' | 'knight_primaris' | 'secundus' | 'tertius' | 'admin_5c';
 
 export const ROTULO_CARGO: Record<Cargo, string> = {
   grand_primaris: 'Gran Primaris',
   knight_primaris: 'Knight Primaris',
   secundus: 'Secundus',
   tertius: 'Tertius',
+  admin_5c: 'Admin 5C',
 };
 
 export type Role = 'rep' | 'admin';

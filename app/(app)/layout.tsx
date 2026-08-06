@@ -20,7 +20,12 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
           </Link>
           <Nav
             admin={podeVerAdmin(rep)}
-            primaris={rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' || rep.observador}
+            primaris={
+              rep.cargo === 'grand_primaris' ||
+              rep.cargo === 'knight_primaris' ||
+              rep.cargo === 'admin_5c' ||
+              rep.observador
+            }
           />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-texto-fraco sm:block">
