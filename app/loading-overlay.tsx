@@ -49,8 +49,12 @@ export function LoadingOverlay() {
     function aoClicar(evento: MouseEvent) {
       if (ehCliqueDeNavegacao(evento)) setVisivel(true);
     }
-    document.addEventListener('click', aoClicar);
-    return () => document.removeEventListener('click', aoClicar);
+    // Captura, não bubble: precisa rodar ANTES do onClick do next/link (que
+    // chama preventDefault() pra navegar via SPA) — na fase de bubble, quem
+    // registrou o listener primeiro roda primeiro, e o React registra o dele
+    // bem mais cedo (na hidratação) do que este efeito consegue montar.
+    document.addEventListener('click', aoClicar, { capture: true });
+    return () => document.removeEventListener('click', aoClicar, { capture: true });
   }, []);
 
   useEffect(() => {
