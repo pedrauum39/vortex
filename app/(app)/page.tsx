@@ -3,7 +3,7 @@ import { exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
-import { corDaMeta, temRaio, type CorMeta } from '@/lib/meta';
+import { corDaMeta, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
@@ -19,6 +19,7 @@ import {
   type Turno,
 } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
+import { CORES, IconeRaio } from './meta-visual';
 
 type MeuTurno = {
   id: string;
@@ -184,7 +185,7 @@ export default async function Dashboard() {
               {hojeSlots.map((t) => (
                 <div key={t.id}>
                   <p className="text-xl font-medium">
-                    {rotuloTurno(t.turno)} · {nomeDoTurno(t, rosterPorBloco)}
+                    {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
                     {t.funcao === 'assist' && (
                       <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
                         Assistant
@@ -229,7 +230,7 @@ export default async function Dashboard() {
               <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
                 <span>{diaLegivel(t.data)}</span>
                 <span className="text-texto-fraco">
-                  {rotuloTurno(t.turno)} · {nomeDoTurno(t, rosterPorBloco)}
+                  {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
                   {t.funcao === 'assist' && ' · Assistant'}
                 </span>
               </li>
@@ -240,13 +241,6 @@ export default async function Dashboard() {
     </div>
   );
 }
-
-const CORES: Record<CorMeta, string> = {
-  vermelho: 'text-red-400',
-  amarelo: 'text-amber-300',
-  verde: 'text-green-400',
-  'azul-neon': 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.75)]',
-};
 
 function CartaoMeta({ percentual }: { percentual: number | null }) {
   if (percentual === null) {
@@ -295,14 +289,6 @@ function Cartao({
       <p className="mt-1 text-2xl font-semibold">{valor}</p>
       {nota && <p className="mt-0.5 text-xs text-texto-fraco">{nota}</p>}
     </div>
-  );
-}
-
-function IconeRaio() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-5">
-      <path d="M13 2 3 14h7l-1 8 11-14h-7l0-6Z" />
-    </svg>
   );
 }
 
