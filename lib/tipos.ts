@@ -10,7 +10,7 @@ export type Papel = 'A' | 'B' | 'C';
 export type Cargo = 'grand_primaris' | 'knight_primaris' | 'secundus' | 'tertius';
 
 export const ROTULO_CARGO: Record<Cargo, string> = {
-  grand_primaris: 'Grand Primaris',
+  grand_primaris: 'Gran Primaris',
   knight_primaris: 'Knight Primaris',
   secundus: 'Secundus',
   tertius: 'Tertius',
