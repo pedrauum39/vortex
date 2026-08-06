@@ -111,33 +111,33 @@ export function MeusTurnos({
         </ul>
       )}
 
-      <div className="mx-auto w-full max-w-[80rem] rounded-2xl border border-borda bg-superficie p-6">
+      <div className="mx-auto w-full max-w-[40rem] rounded-2xl border border-borda bg-superficie p-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-medium capitalize text-texto-fraco">{mesLegivel(mesCal)}</h3>
+          <h3 className="text-sm font-medium capitalize text-texto-fraco">{mesLegivel(mesCal)}</h3>
           <div className="ml-auto flex items-center gap-1 text-sm">
             <Link
               href={mesAnteriorHref}
-              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+              className="rounded-lg border border-borda px-2 py-1 text-texto-fraco hover:text-texto"
             >
               ←
             </Link>
             <Link
               href={mesSeguinteHref}
-              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+              className="rounded-lg border border-borda px-2 py-1 text-texto-fraco hover:text-texto"
             >
               →
             </Link>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-7 gap-2 text-center text-sm text-texto-fraco">
+        <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-texto-fraco">
           {DIAS_SEMANA.map((d) => (
-            <div key={d} className="py-1">
+            <div key={d} className="py-0.5">
               {d}
             </div>
           ))}
         </div>
-        <div className="mt-2 grid grid-cols-7 gap-2">
+        <div className="mt-1 grid grid-cols-7 gap-1">
           {grade.map((data, i) => {
             if (!data) return <div key={`vazio-${i}`} />;
             const temTurno = diasComTurnoSet.has(data);
@@ -148,7 +148,7 @@ export function MeusTurnos({
                 key={data}
                 onMouseEnter={() => temTurno && setDiaHover(data)}
                 onMouseLeave={() => setDiaHover(null)}
-                className={`flex aspect-square items-center justify-center rounded-lg text-lg transition ${
+                className={`flex aspect-square items-center justify-center rounded-lg text-sm transition ${
                   temTurno ? 'cursor-default bg-accent-fraco text-accent' : 'text-texto-fraco'
                 } ${ehHoje ? 'ring-2 ring-accent' : ''}`}
               >
