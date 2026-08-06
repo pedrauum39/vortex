@@ -20,12 +20,13 @@ export type MeuTurno = {
   }[];
 };
 
-const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 
-/** Grade do mês, uma célula por dia (null nas células de padding antes do dia 1). */
+/** Grade do mês, uma célula por dia (null nas células de padding antes do dia 1). Semana começa na segunda. */
 function gradeDoMes(mes: string): (string | null)[] {
   const [ano, m] = mes.split('-').map(Number);
-  const offset = new Date(Date.UTC(ano, m - 1, 1)).getUTCDay();
+  const diaSemana1 = new Date(Date.UTC(ano, m - 1, 1)).getUTCDay();
+  const offset = (diaSemana1 + 6) % 7;
   const total = diasNoMes(mes);
   const celulas: (string | null)[] = Array(offset).fill(null);
   for (let dia = 1; dia <= total; dia++) {
@@ -110,33 +111,33 @@ export function MeusTurnos({
         </ul>
       )}
 
-      <div className="w-fit max-w-[34rem] rounded-2xl border border-borda bg-superficie p-4">
+      <div className="mx-auto w-full max-w-[80rem] rounded-2xl border border-borda bg-superficie p-6">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium capitalize text-texto-fraco">{mesLegivel(mesCal)}</h3>
+          <h3 className="text-base font-medium capitalize text-texto-fraco">{mesLegivel(mesCal)}</h3>
           <div className="ml-auto flex items-center gap-1 text-sm">
             <Link
               href={mesAnteriorHref}
-              className="rounded-lg border border-borda px-2 py-1 text-texto-fraco hover:text-texto"
+              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
             >
               ←
             </Link>
             <Link
               href={mesSeguinteHref}
-              className="rounded-lg border border-borda px-2 py-1 text-texto-fraco hover:text-texto"
+              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
             >
               →
             </Link>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-texto-fraco">
+        <div className="mt-4 grid grid-cols-7 gap-2 text-center text-sm text-texto-fraco">
           {DIAS_SEMANA.map((d) => (
-            <div key={d} className="py-0.5">
+            <div key={d} className="py-1">
               {d}
             </div>
           ))}
         </div>
-        <div className="mt-1 grid grid-cols-7 gap-1">
+        <div className="mt-2 grid grid-cols-7 gap-2">
           {grade.map((data, i) => {
             if (!data) return <div key={`vazio-${i}`} />;
             const temTurno = diasComTurnoSet.has(data);
@@ -147,7 +148,7 @@ export function MeusTurnos({
                 key={data}
                 onMouseEnter={() => temTurno && setDiaHover(data)}
                 onMouseLeave={() => setDiaHover(null)}
-                className={`flex aspect-square items-center justify-center rounded-lg text-sm transition ${
+                className={`flex aspect-square items-center justify-center rounded-lg text-lg transition ${
                   temTurno ? 'cursor-default bg-accent-fraco text-accent' : 'text-texto-fraco'
                 } ${ehHoje ? 'ring-2 ring-accent' : ''}`}
               >
