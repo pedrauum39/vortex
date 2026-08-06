@@ -35,3 +35,35 @@ body::before {
     radial-gradient(60rem 40rem at 15% -10%, rgb(56 189 248 / 0.10), transparent 70%),
     radial-gradient(50rem 35rem at 95% 0%, rgb(14 165 233 / 0.07), transparent 70%);
 }
+
+/* Overlay de loading entre navegações — "tempestade" no texto VORTEX. */
+@keyframes tempestade {
+  0%, 8%, 12%, 45%, 100% {
+    text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+  }
+  10% {
+    text-shadow:
+      0 0 24px rgba(125, 211, 252, 1),
+      0 0 44px rgba(56, 189, 248, 0.85);
+  }
+  47% {
+    text-shadow:
+      0 0 28px rgba(224, 242, 254, 1),
+      0 0 48px rgba(56, 189, 248, 0.9);
+  }
+}
+
+@keyframes raio-flash {
+  0%, 85%, 100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  90% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  95% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
