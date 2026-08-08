@@ -269,20 +269,36 @@ export default async function TurnoPage({
                         )}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        {percentual === null ? (
-                          <span className="text-texto-fraco">—</span>
-                        ) : (
-                          <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
-                            {percentual.toFixed(1)}%
-                            {temRaio(percentual) && <IconeRaio className="size-4" />}
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="inline-flex items-center gap-1">
+                            {percentual === null ? (
+                              <span className="text-texto-fraco">—</span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
+                                {percentual.toFixed(1)}%
+                                {temRaio(percentual) && <IconeRaio className="size-4" />}
+                              </span>
+                            )}
+                            {ehRecorde && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
+                                Recorde
+                                {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
+                              </span>
+                            )}
                           </span>
-                        )}
-                        {ehRecorde && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-accent">
-                            Recorde
-                            {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
-                          </span>
-                        )}
+                          {l.porPagina.length > 1 && (
+                            <div className="text-xs text-texto-fraco">
+                              {l.porPagina.map((p) => {
+                                const pctPagina = percentualAtingido(p.vendido, p.meta);
+                                return (
+                                  <div key={p.nome}>
+                                    {p.nome} {pctPagina === null ? '—' : `${pctPagina.toFixed(0)}%`}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

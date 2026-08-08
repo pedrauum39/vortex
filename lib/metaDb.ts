@@ -34,6 +34,8 @@ type LinhaShift = {
   }[];
 };
 
+export type VendaDaPaginaNoTurno = { nome: string; vendido: number; meta: number };
+
 export type LinhaMetaTurno = {
   data: string;
   turno: Turno;
@@ -42,6 +44,8 @@ export type LinhaMetaTurno = {
   planejado: boolean;
   metaDoTurno: number;
   vendido: number;
+  /** Vendido e meta por página — só preenchido quando trabalhado (double tem mais de uma). */
+  porPagina: VendaDaPaginaNoTurno[];
   pendente: boolean;
   trabalhado: boolean;
 };
@@ -63,9 +67,10 @@ async function vendidoDoTurno(
   data: string,
   modelos: { id: string }[],
   statements: LinhaShift['shift_logs'][number]['statements'],
-): Promise<{ vendido: number; pendente: boolean }> {
+): Promise<{ vendido: number; pendente: boolean; porPagina: { id: string; vendido: number }[] }> {
   let vendido = 0;
   let pendente = false;
+  const porPagina: { id: string; vendido: number }[] = [];
 
   for (const { id: modeloId } of modelos) {
     const statement = statements.find((s) => s.model_id === modeloId) ?? null;
@@ -82,10 +87,12 @@ async function vendidoDoTurno(
       indicacoes: Number(statement.net_indicacoes),
     };
     const anteriorLinhas = anterior.tipo === 'ok' ? anterior.linhas : null;
-    vendido += totalDasLinhas(deltaTurno(linhasAtuais, anteriorLinhas));
+    const vendidoPagina = totalDasLinhas(deltaTurno(linhasAtuais, anteriorLinhas));
+    vendido += vendidoPagina;
+    porPagina.push({ id: modeloId, vendido: vendidoPagina });
   }
 
-  return { vendido, pendente };
+  return { vendido, pendente, porPagina };
 }
 
 /**
@@ -143,9 +150,9 @@ export async function buscarMetasDoRep(
       trabalhado,
     });
 
-    const { vendido, pendente } = trabalhado
+    const { vendido, pendente, porPagina } = trabalhado
       ? await vendidoDoTurno(db, shift.turno, shift.data, paginas, log!.statements)
-      : { vendido: 0, pendente: false };
+      : { vendido: 0, pendente: false, porPagina: [] as { id: string; vendido: number }[] };
 
     totalVendido += vendido;
 
@@ -154,6 +161,15 @@ export async function buscarMetasDoRep(
       0,
     );
 
+    const porPaginaComMeta: VendaDaPaginaNoTurno[] = porPagina.map((p) => {
+      const pagina = paginas.find((pg) => pg.id === p.id);
+      return {
+        nome: pagina?.nome ?? '',
+        vendido: p.vendido,
+        meta: metaDiariaDaPagina(pagina?.meta ?? 0, shift.turno, diasDoMes),
+      };
+    });
+
     linhas.push({
       data: shift.data,
       turno: shift.turno,
@@ -161,6 +177,7 @@ export async function buscarMetasDoRep(
       planejado: !trabalhado,
       metaDoTurno,
       vendido,
+      porPagina: porPaginaComMeta,
       pendente,
       trabalhado,
     });
