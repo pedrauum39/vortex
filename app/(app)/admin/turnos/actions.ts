@@ -161,11 +161,33 @@ export async function simularPonto(dados: {
     .single();
   if (error) throw new Error(error.message);
 
-  await supabase.from('shift_log_models').delete().eq('shift_log_id', log.id);
-  const { error: erroModelos } = await supabase
+  // Upsert primeiro, delete só de quem saiu depois — mesmo motivo do
+  // trocarModelos() em app/(app)/turno/actions.ts: apagar tudo e reinserir
+  // tudo cria uma janela onde uma chamada concorrente/reenviada pode colidir
+  // com "duplicate key value violates unique constraint" (bateu de verdade
+  // em produção nesse mesmo padrão em /turno).
+  const { error: erroUpsertModelos } = await supabase.from('shift_log_models').upsert(
+    dados.modeloIds.map((modelId) => ({ shift_log_id: log.id, model_id: modelId })),
+    { onConflict: 'shift_log_id,model_id', ignoreDuplicates: true },
+  );
+  if (erroUpsertModelos) throw new Error(erroUpsertModelos.message);
+
+  const { data: modelosAtuais } = await supabase
     .from('shift_log_models')
-    .insert(dados.modeloIds.map((modelId) => ({ shift_log_id: log.id, model_id: modelId })));
-  if (erroModelos) throw new Error(erroModelos.message);
+    .select('model_id')
+    .eq('shift_log_id', log.id);
+  const modelosRemovidos = (modelosAtuais ?? [])
+    .map((m) => m.model_id as string)
+    .filter((id) => !dados.modeloIds.includes(id));
+
+  if (modelosRemovidos.length > 0) {
+    const { error: erroModelos } = await supabase
+      .from('shift_log_models')
+      .delete()
+      .eq('shift_log_id', log.id)
+      .in('model_id', modelosRemovidos);
+    if (erroModelos) throw new Error(erroModelos.message);
+  }
 
   revalidar();
 }

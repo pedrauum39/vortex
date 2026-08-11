@@ -54,23 +54,47 @@ export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
   revalidar();
 }
 
-/** Substitui a lista de modelos deste turno — o rep corrigindo uma escolha errada. */
+/**
+ * Substitui a lista de modelos deste turno — o rep corrigindo uma escolha
+ * errada (ex.: esqueceu de marcar a Kaylin no início e adiciona depois).
+ *
+ * Upsert primeiro, delete só de quem saiu depois — nunca existe um instante
+ * em que uma modelo que continua marcada fica sem linha nenhuma. O código
+ * antigo apagava tudo e reinseria tudo; se essa ação rodasse duas vezes (ex.:
+ * duplo clique, ou uma requisição lenta que o navegador reenvia), as duas
+ * chamadas corriam em paralelo e uma inserção podia colidir com uma linha que
+ * a outra chamada já tinha acabado de criar — "duplicate key value violates
+ * unique constraint" (bateu de verdade em produção, /turno, incidente real).
+ * `ignoreDuplicates` faz o upsert nunca falhar nesse cenário.
+ */
 export async function trocarModelos(logId: string, modeloIds: string[]) {
   await exigirRep();
   const supabase = await criarClienteServidor();
 
   if (modeloIds.length === 0) throw new Error('Escolha ao menos uma modelo.');
 
-  const { error: erroDelete } = await supabase
-    .from('shift_log_models')
-    .delete()
-    .eq('shift_log_id', logId);
-  if (erroDelete) throw new Error(erroDelete.message);
+  const { error: erroUpsert } = await supabase.from('shift_log_models').upsert(
+    modeloIds.map((modelId) => ({ shift_log_id: logId, model_id: modelId })),
+    { onConflict: 'shift_log_id,model_id', ignoreDuplicates: true },
+  );
+  if (erroUpsert) throw new Error(erroUpsert.message);
 
-  const { error } = await supabase
+  const { data: atuais } = await supabase
     .from('shift_log_models')
-    .insert(modeloIds.map((modelId) => ({ shift_log_id: logId, model_id: modelId })));
-  if (error) throw new Error(error.message);
+    .select('model_id')
+    .eq('shift_log_id', logId);
+  const removidos = (atuais ?? [])
+    .map((m) => m.model_id as string)
+    .filter((id) => !modeloIds.includes(id));
+
+  if (removidos.length > 0) {
+    const { error: erroDelete } = await supabase
+      .from('shift_log_models')
+      .delete()
+      .eq('shift_log_id', logId)
+      .in('model_id', removidos);
+    if (erroDelete) throw new Error(erroDelete.message);
+  }
 
   revalidar();
 }
