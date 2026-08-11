@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { exigirRep } from '@/lib/auth';
+import { corDaMeta, temRaio } from '@/lib/meta';
 import { buscarResumoPrimaris, type ResumoPagina } from '@/lib/primarisDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import { limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, type Bloco } from '@/lib/tipos';
+import { CORES, IconeRaio } from '../meta-visual';
 
 type Busca = { mes?: string };
 
@@ -101,12 +103,13 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
       <section>
         <h2 className="mb-2 text-sm font-medium text-texto-fraco">Por página</h2>
         <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-          <table className="w-full min-w-[36rem] border-collapse text-sm">
+          <table className="w-full min-w-[44rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-borda text-left text-texto-fraco">
                 <th className="px-4 py-3 font-medium">Página</th>
                 <th className="px-3 py-3 font-medium">Time</th>
                 <th className="px-4 py-3 font-medium">Meta do mês</th>
+                <th className="px-4 py-3 text-right font-medium">Projeção (ritmo atual)</th>
               </tr>
             </thead>
             <tbody>
@@ -128,6 +131,23 @@ function LinhaPagina({ pagina }: { pagina: ResumoPagina }) {
       <td className="px-3 py-3 text-texto-fraco">{pagina.bloco === 'I' ? 'Vortex I' : 'Vortex II'}</td>
       <td className="px-4 py-3">
         <BarraMeta vendido={pagina.vendido} meta={pagina.meta} percentual={pagina.percentual} compacta />
+      </td>
+      <td className="px-4 py-3 text-right">
+        {pagina.projecao === null ? (
+          <span className="text-texto-fraco">—</span>
+        ) : (
+          <div>
+            <div className="font-medium">{dinheiro(pagina.projecao)}</div>
+            {pagina.percentualProjetado !== null && (
+              <div
+                className={`mt-0.5 inline-flex items-center gap-1 text-xs ${CORES[corDaMeta(pagina.percentualProjetado)]}`}
+              >
+                {percentual(pagina.percentualProjetado)}
+                {temRaio(pagina.percentualProjetado) && <IconeRaio className="size-3.5" />}
+              </div>
+            )}
+          </div>
+        )}
       </td>
     </tr>
   );

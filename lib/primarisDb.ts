@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
-import { diasNoMes, somarDias } from './tempo';
+import { dataBRT, diasNoMes, somarDias } from './tempo';
 import type { Bloco, Cargo, Turno } from './tipos';
 
 const arred = (valor: number) => Math.round(valor * 100) / 100;
@@ -17,6 +17,23 @@ const arred = (valor: number) => Math.round(valor * 100) / 100;
 function dentroDoPeriodo(turno: Turno, data: string, inicio: string, fim: string): boolean {
   const dia = diaDoStatement(turno, data);
   return dia >= inicio && dia <= fim;
+}
+
+/**
+ * Quantos dias do mês `mes` ('YYYY-MM') já passaram, olhando a data de hoje.
+ * Mês futuro (ainda não começou) = 0. Mês já fechado = todos os dias dele.
+ */
+function diasPassadosDoMes(mes: string, hoje: string): number {
+  const mesDeHoje = hoje.slice(0, 7);
+  if (mesDeHoje < mes) return 0;
+  if (mesDeHoje > mes) return diasNoMes(mes);
+  return Number(hoje.slice(8, 10));
+}
+
+/** Projeção linear de fim de mês: ritmo de venda até hoje, extrapolado pro mês inteiro. */
+function projecaoDoMes(vendido: number, diasPassados: number, diasDoMes: number): number | null {
+  if (diasPassados <= 0) return null;
+  return Math.round((vendido / diasPassados) * diasDoMes * 100) / 100;
 }
 
 export type VendaDeModelo = {
@@ -117,6 +134,9 @@ export type ResumoPagina = {
   vendido: number;
   meta: number;
   percentual: number | null;
+  /** Ritmo de venda até hoje, extrapolado pro mês inteiro — null antes do mês começar. */
+  projecao: number | null;
+  percentualProjetado: number | null;
 };
 
 export type ResumoPrimaris = {
@@ -151,7 +171,9 @@ export async function buscarResumoPrimaris(
   const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
   // direto dele sem precisar de mais um parâmetro.
-  const diasDoMes = diasNoMes(inicio.slice(0, 7));
+  const mes = inicio.slice(0, 7);
+  const diasDoMes = diasNoMes(mes);
+  const diasPassados = diasPassadosDoMes(mes, dataBRT());
 
   const vendidoPorRep = new Map<string, number>();
   const vendidoPorModelo = new Map<string, number>();
@@ -183,6 +205,7 @@ export async function buscarResumoPrimaris(
 
   const porPagina: ResumoPagina[] = models.map((m) => {
     const vendido = arred(vendidoPorModelo.get(m.id) ?? 0);
+    const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
     return {
       modeloId: m.id,
       nome: m.nome,
@@ -190,6 +213,8 @@ export async function buscarResumoPrimaris(
       vendido,
       meta: m.meta_mensal,
       percentual: percentualAtingido(vendido, m.meta_mensal),
+      projecao,
+      percentualProjetado: projecao === null ? null : percentualAtingido(projecao, m.meta_mensal),
     };
   });
 
