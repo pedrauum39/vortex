@@ -6,8 +6,8 @@
 // assistente, em slots diferentes — por isso duas buscas separadas. Um regular
 // pode ter trabalhado 1 ou 2 modelos (double) no mesmo turno.
 
-import { diaDoStatement } from '@/lib/statement';
-import { buscarAnterior } from '@/lib/statementDb';
+import { diaDoStatement, type LinhasNet } from '@/lib/statement';
+import { resolverAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
 import { somarDias } from '@/lib/tempo';
@@ -21,6 +21,16 @@ function dentroDoPeriodo(turno: Turno, data: string, inicio: string, fim: string
   return dia >= inicio && dia <= fim;
 }
 
+type LinhaStatement = {
+  model_id: string;
+  net_assinaturas: number;
+  net_gorjetas: number;
+  net_publicacoes: number;
+  net_mensagens: number;
+  net_indicacoes: number;
+  anterior_manual: LinhasNet | null;
+};
+
 type LinhaShift = {
   id: string;
   data: string;
@@ -31,7 +41,7 @@ type LinhaShift = {
     clock_out_at: string | null;
     saiu_antes: boolean;
     shift_log_models: { model_id: string }[];
-    statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
+    statements: LinhaStatement[];
   }[];
 };
 
@@ -43,12 +53,14 @@ type LinhaSiblingRegular = {
     clock_out_at: string | null;
     saiu_antes: boolean;
     shift_log_models: { model_id: string }[];
-    statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
+    statements: LinhaStatement[];
   }[];
 };
 
-const CAMPOS =
-  'id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))';
+const CAMPOS_STATEMENTS =
+  'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior_manual)';
+
+const CAMPOS = `id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`;
 
 async function montarModelos(
   db: ReturnType<typeof criarClienteAdmin>,
@@ -60,7 +72,7 @@ async function montarModelos(
 
   for (const { model_id } of log.shift_log_models) {
     const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
-    const anterior = await buscarAnterior(db, turno, data, model_id);
+    const anterior = await resolverAnterior(db, turno, data, model_id, statement?.anterior_manual);
 
     modelos.push({
       modeloId: model_id,
@@ -123,7 +135,7 @@ export async function buscarSlotsDoRep(
     const { data: siblingRows } = await db
       .from('shifts')
       .select(
-        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        `rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`,
       )
       .eq('data', shift.data)
       .eq('turno', shift.turno)
@@ -168,7 +180,7 @@ export async function buscarSlotsDoRep(
     const { data: siblingRows } = await db
       .from('shifts')
       .select(
-        'rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        `rep_id, reps(cargo, valor_hora), shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`,
       )
       .eq('data', shift.data)
       .eq('turno', shift.turno)

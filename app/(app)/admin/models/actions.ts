@@ -17,11 +17,38 @@ function revalidar() {
   revalidatePath('/turno');
 }
 
-export async function criarModelo(nome: string, bloco: Bloco) {
+export async function criarModelo(
+  nome: string,
+  bloco: Bloco,
+  independente: boolean,
+  externa: boolean,
+) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  const { error } = await supabase.from('models').insert({ nome, bloco });
+  const { error } = await supabase.from('models').insert({ nome, bloco, independente, externa });
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
+/** Sem cadeia de desconto confiável (ex.: Kaylin) — ver lib/statementDb.ts. */
+export async function definirIndependente(id: string, independente: boolean) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('models').update({ independente }).eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
+/** Página fora dos dois times (ex.: "Kylie") — só conta invoice pessoal, nunca meta/bônus. */
+export async function definirExterna(id: string, externa: boolean) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('models').update({ externa }).eq('id', id);
   if (error) throw new Error(error.message);
 
   revalidar();

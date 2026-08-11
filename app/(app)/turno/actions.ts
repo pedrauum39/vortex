@@ -104,6 +104,8 @@ export type ReportModelo = {
   ocrRaw: unknown;
   corrigidoManualmente: boolean;
   refundConfirmado: boolean;
+  /** Print anterior digitado/lido na hora — só "turno independente" (T2T3/T4T5). */
+  anteriorManual: LinhasNet | null;
 };
 
 export type DadosReport = {
@@ -140,6 +142,7 @@ export async function finalizarTurno(logId: string, dados: DadosReport) {
       net_indicacoes: r.linhas.indicacoes,
       corrigido_manualmente: r.corrigidoManualmente,
       refund_confirmado: r.refundConfirmado,
+      anterior_manual: r.anteriorManual,
     })),
     { onConflict: 'shift_log_id,model_id' },
   );

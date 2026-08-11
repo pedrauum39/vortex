@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import type { Bloco, Model } from '@/lib/tipos';
+import type { Bloco, Model, Turno as TurnoTipo } from '@/lib/tipos';
 import { iniciarTurno, trocarModelos } from './actions';
 import { ModalReport } from './modal-report';
 
 type Props = {
-  turno: { id: string; bloco: Bloco; assist: boolean };
+  turno: { id: string; bloco: Bloco; tipo: TurnoTipo; assist: boolean };
   log: {
     id: string;
     entrada: string;
     saida: string | null;
-    modelos: { id: string; nome: string }[];
+    modelos: { id: string; nome: string; independente: boolean }[];
     horas: number;
   } | null;
   models: Model[];
@@ -213,6 +213,7 @@ export function Painel({
               logId={log.id}
               shiftId={turno.id}
               repId={repId}
+              turno={turno.tipo}
               modelos={log.modelos}
               assist={turno.assist}
               teveAssistenteInicial={temAssistente}

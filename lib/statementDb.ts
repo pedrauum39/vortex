@@ -76,3 +76,21 @@ export async function buscarAnterior(
     },
   };
 }
+
+/**
+ * Mesma coisa que `buscarAnterior()`, mas prioriza um valor digitado/lido por
+ * OCR na hora (`anteriorManual`) — usado no "turno independente" (T2T3/T4T5
+ * de uma modelo `independente`/`externa`, ex.: Kaylin, "Kylie"), onde não dá
+ * pra confiar na cadeia automática. Vale só pra ESTE statement, nunca vira
+ * elo permanente — o próximo turno de verdade continua descontando normal.
+ */
+export async function resolverAnterior(
+  db: SupabaseClient,
+  turno: Turno,
+  data: string,
+  modeloId: string,
+  anteriorManual: LinhasNet | null | undefined,
+): Promise<Anterior> {
+  if (anteriorManual) return { tipo: 'ok', linhas: anteriorManual };
+  return buscarAnterior(db, turno, data, modeloId);
+}

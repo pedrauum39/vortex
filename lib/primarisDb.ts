@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
-import { buscarAnterior } from './statementDb';
+import { resolverAnterior } from './statementDb';
 import { dataBRT, diasNoMes, somarDias } from './tempo';
 import type { Bloco, Cargo, Turno } from './tipos';
 
@@ -54,7 +54,7 @@ type LinhaShift = {
   rep_id: string | null;
   reps: { cargo: Cargo } | null;
   shift_logs: {
-    shift_log_models: { model_id: string; models: { nome: string; bloco: Bloco } }[];
+    shift_log_models: { model_id: string; models: { nome: string; bloco: Bloco; externa: boolean } }[];
     statements: {
       model_id: string;
       net_assinaturas: number;
@@ -62,6 +62,7 @@ type LinhaShift = {
       net_publicacoes: number;
       net_mensagens: number;
       net_indicacoes: number;
+      anterior_manual: LinhasNet | null;
     }[];
   }[];
 };
@@ -79,7 +80,7 @@ export async function buscarVendasDaEmpresa(
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, rep_id, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, rep_id, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco, externa)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior_manual))',
     )
     .eq('funcao', 'regular')
     .gte('data', inicioBusca)
@@ -96,10 +97,15 @@ export async function buscarVendasDaEmpresa(
     if (!log || !shift.rep_id || !shift.reps) continue;
 
     for (const { model_id, models: modelo } of log.shift_log_models) {
+      // Página fora dos dois times (ex.: "Kylie") nunca conta pra venda da
+      // empresa — nem meta em /primaris, nem Party/Team addition. Só conta
+      // pro invoice pessoal de quem trabalhou (lib/invoiceDb.ts, intocado).
+      if (modelo.externa) continue;
+
       const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
       if (!statement) continue;
 
-      const anterior = await buscarAnterior(db, shift.turno, shift.data, model_id);
+      const anterior = await resolverAnterior(db, shift.turno, shift.data, model_id, statement.anterior_manual);
       if (anterior.tipo === 'pendente') continue;
 
       const linhasAtuais: LinhasNet = {
@@ -163,7 +169,15 @@ export async function buscarResumoPrimaris(
   const [vendas, { data: repsData }, { data: modelsData }] = await Promise.all([
     buscarVendasDaEmpresa(db, inicio, fim),
     db.from('reps').select('id, nome_curto, cargo').eq('ativo', true).order('nome_curto'),
-    db.from('models').select('id, nome, bloco, meta_mensal').eq('ativa', true).order('bloco').order('nome'),
+    // externa=false: página fora dos dois times (ex. "Kylie") não entra no
+    // resumo por página/time/total — só conta invoice pessoal de quem trabalhou.
+    db
+      .from('models')
+      .select('id, nome, bloco, meta_mensal')
+      .eq('ativa', true)
+      .eq('externa', false)
+      .order('bloco')
+      .order('nome'),
   ]);
 
   const reps = (repsData ?? []) as { id: string; nome_curto: string; cargo: Cargo }[];

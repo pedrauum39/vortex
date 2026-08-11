@@ -29,7 +29,7 @@ type TurnoDoDia = {
     clock_in_at: string;
     clock_out_at: string | null;
     saiu_antes: boolean;
-    shift_log_models: { model_id: string; models: { nome: string } }[];
+    shift_log_models: { model_id: string; models: { nome: string; independente: boolean } }[];
   }[];
 };
 
@@ -43,7 +43,7 @@ export default async function TurnoPage({
   const supabase = await criarClienteServidor();
 
   const CAMPOS_TURNO =
-    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
+    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome, independente)))';
 
   // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
   // o admin pode ter escalado alguém num turno diferente do de costume, e
@@ -69,7 +69,7 @@ export default async function TurnoPage({
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
+        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome, independente)))',
       )
       .eq('rep_id', rep.id)
       .is('shift_logs.clock_out_at', null),
@@ -174,14 +174,18 @@ export default async function TurnoPage({
         </div>
       ) : (
         <Painel
-          turno={{ id: turno.id, bloco: turno.bloco, assist: turno.funcao === 'assist' }}
+          turno={{ id: turno.id, bloco: turno.bloco, tipo: turnoDoSlot, assist: turno.funcao === 'assist' }}
           log={
             log
               ? {
                   id: log.id,
                   entrada: horaBRT(new Date(log.clock_in_at)),
                   saida: log.clock_out_at ? horaBRT(new Date(log.clock_out_at)) : null,
-                  modelos: log.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome })),
+                  modelos: log.shift_log_models.map((m) => ({
+                    id: m.model_id,
+                    nome: m.models.nome,
+                    independente: m.models.independente,
+                  })),
                   horas: horasDoTurno(
                     turnoDoSlot,
                     data,

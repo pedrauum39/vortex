@@ -1,18 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { reduzirImagem } from '@/lib/imagem';
-import {
-  LINHAS,
-  baseComissao,
-  deltaTurno,
-  linhasQueCairam,
-  somaConfere,
-  totalDasLinhas,
-  type LinhasNet,
-} from '@/lib/statement';
+import { useEffect, useState } from 'react';
+import { baseComissao, deltaTurno, linhasQueCairam, totalDasLinhas, type LinhasNet } from '@/lib/statement';
 import type { Anterior } from '@/lib/statementDb';
+import type { Turno } from '@/lib/tipos';
 import { statementAnterior } from './actions';
+import { CapturaPrint, type ResultadoPrint } from './captura-print';
+
+const dinheiro = (valor: number) =>
+  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
 const ROTULO: Record<string, string> = {
   assinaturas: 'Assinaturas',
@@ -21,11 +17,6 @@ const ROTULO: Record<string, string> = {
   mensagens: 'Mensagens',
   indicacoes: 'Indicações',
 };
-
-const VAZIO: LinhasNet = { assinaturas: 0, gorjetas: 0, publicacoes: 0, mensagens: 0, indicacoes: 0 };
-
-const dinheiro = (valor: number) =>
-  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
 export type ResultadoModelo = {
   linhas: LinhasNet;
@@ -36,216 +27,111 @@ export type ResultadoModelo = {
   refundConfirmado: boolean;
   lendo: boolean;
   pronto: boolean;
+  /** Print anterior digitado/lido na hora — só quando "turno independente" (T2T3/T4T5). */
+  anteriorManual: LinhasNet | null;
 };
 
 export function ReportModelo({
   shiftId,
   modeloId,
   modeloNome,
+  turno,
+  independente,
   onChange,
 }: {
   shiftId: string;
   modeloId: string;
   modeloNome: string;
+  turno: Turno;
+  independente: boolean;
   onChange: (resultado: ResultadoModelo) => void;
 }) {
-  const [anterior, setAnterior] = useState<Anterior | null>(null);
-  const [linhas, setLinhas] = useState<LinhasNet>(VAZIO);
-  const [totalImpresso, setTotalImpresso] = useState(0);
-  const [editou, setEditou] = useState(false);
+  // T6T1 de modelo independente já volta sempre 'primeiro' no servidor (sem
+  // pedir nada, é o primeiro turno do dia) — só T2T3/T4T5 precisam do print
+  // anterior na mão, porque essa modelo não segue a cadeia automática
+  // (ninguém do time trabalha ela toda vez, então o turno de verdade
+  // anterior quase nunca tem o statement dela).
+  const precisaAnteriorManual = independente && turno !== 'T6T1';
 
-  const [blob, setBlob] = useState<Blob | null>(null);
-  const [previa, setPrevia] = useState<string | null>(null);
-  const [ocrRaw, setOcrRaw] = useState<unknown>(null);
-  const [lendo, setLendo] = useState(false);
-  const [avisoOcr, setAvisoOcr] = useState<string | null>(null);
+  const [anteriorAuto, setAnteriorAuto] = useState<Anterior | null>(null);
+  const [anterior, setAnterior] = useState<ResultadoPrint | null>(null);
+  const [atual, setAtual] = useState<ResultadoPrint | null>(null);
   const [refundConfirmado, setRefundConfirmado] = useState(false);
 
   useEffect(() => {
+    if (precisaAnteriorManual) return;
     statementAnterior(shiftId, modeloId)
-      .then(setAnterior)
-      .catch(() => setAnterior({ tipo: 'pendente' }));
-  }, [shiftId, modeloId]);
+      .then(setAnteriorAuto)
+      .catch(() => setAnteriorAuto({ tipo: 'pendente' }));
+  }, [shiftId, modeloId, precisaAnteriorManual]);
 
-  const base = anterior?.tipo === 'ok' ? anterior.linhas : null;
-  const podeCalcular = anterior?.tipo === 'ok' || anterior?.tipo === 'primeiro';
-  const caiu = linhasQueCairam(linhas, base);
-  const somaBate = somaConfere(linhas, totalImpresso);
-  const doTurno = deltaTurno(linhas, base);
-  const preenchido = totalDasLinhas(linhas) > 0;
-  const pronto = preenchido && somaBate && (caiu.length === 0 || refundConfirmado);
+  const base: LinhasNet | null = precisaAnteriorManual
+    ? anterior && anterior.preenchido
+      ? anterior.linhas
+      : null
+    : anteriorAuto?.tipo === 'ok'
+      ? anteriorAuto.linhas
+      : null;
+
+  const podeCalcular = precisaAnteriorManual
+    ? !!(anterior && anterior.preenchido)
+    : anteriorAuto?.tipo === 'ok' || anteriorAuto?.tipo === 'primeiro';
+
+  const linhasAtuais = atual?.linhas ?? { assinaturas: 0, gorjetas: 0, publicacoes: 0, mensagens: 0, indicacoes: 0 };
+  const caiu = linhasQueCairam(linhasAtuais, base);
+  const doTurno = deltaTurno(linhasAtuais, base);
+  const preenchido = atual?.preenchido ?? false;
+  const somaBateAtual = atual?.somaBate ?? false;
+  const anteriorPronto = !precisaAnteriorManual || (anterior?.preenchido ?? false);
+  const pronto = preenchido && somaBateAtual && (caiu.length === 0 || refundConfirmado) && anteriorPronto;
 
   useEffect(() => {
     onChange({
-      linhas,
-      netTotal: totalImpresso || totalDasLinhas(linhas),
-      blob,
-      ocrRaw,
-      corrigidoManualmente: editou,
+      linhas: linhasAtuais,
+      netTotal: atual?.totalImpresso || totalDasLinhas(linhasAtuais),
+      blob: atual?.blob ?? null,
+      ocrRaw: atual?.ocrRaw ?? null,
+      corrigidoManualmente: atual?.editou ?? false,
       refundConfirmado,
-      lendo,
+      lendo: atual?.lendo ?? false,
       pronto,
+      anteriorManual: precisaAnteriorManual && anterior?.preenchido ? anterior.linhas : null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linhas, totalImpresso, blob, ocrRaw, editou, refundConfirmado, lendo, pronto]);
-
-  const lerPrint = useCallback(async (arquivo: Blob) => {
-    setLendo(true);
-    setAvisoOcr(null);
-    try {
-      const { blob, base64 } = await reduzirImagem(arquivo);
-      setBlob(blob);
-      setPrevia(`data:image/jpeg;base64,${base64}`);
-
-      const resposta = await fetch('/api/ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagem: base64, tipo: 'image/jpeg' }),
-      });
-
-      if (!resposta.ok) {
-        setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
-        return;
-      }
-
-      const lido = await resposta.json();
-      setOcrRaw(lido);
-      setLinhas({
-        assinaturas: lido.net.assinaturas,
-        gorjetas: lido.net.gorjetas,
-        publicacoes: lido.net.publicacoes,
-        mensagens: lido.net.mensagens,
-        indicacoes: lido.net.indicacoes,
-      });
-      setTotalImpresso(lido.net.total);
-      setEditou(false);
-    } catch {
-      setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
-    } finally {
-      setLendo(false);
-    }
-  }, []);
-
-  function limparPrint() {
-    setBlob(null);
-    setPrevia(null);
-    setOcrRaw(null);
-    setAvisoOcr(null);
-    setLinhas(VAZIO);
-    setTotalImpresso(0);
-    setEditou(false);
-  }
+  }, [atual, refundConfirmado, pronto, precisaAnteriorManual, anterior]);
 
   return (
     <div className="rounded-xl border border-borda p-4">
       <p className="text-sm font-medium text-accent">{modeloNome}</p>
 
-      <div
-        tabIndex={0}
-        onDrop={(e) => {
-          e.preventDefault();
-          const arquivo = e.dataTransfer.files?.[0];
-          if (arquivo?.type.startsWith('image/')) lerPrint(arquivo);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onPaste={(e) => {
-          const imagem = [...e.clipboardData.items]
-            .find((item) => item.type.startsWith('image/'))
-            ?.getAsFile();
-          if (imagem) {
-            e.preventDefault();
-            lerPrint(imagem);
-          }
-        }}
-        className="mt-2 rounded-lg border border-dashed border-borda bg-fundo p-3 text-center outline-none focus:border-accent"
-      >
-        {previa ? (
-          <div className="relative inline-block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previa} alt="Print do statement" className="mx-auto max-h-32 rounded border border-borda" />
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                limparPrint();
-              }}
-              aria-label="Remover print"
-              title="Remover print"
-              className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold leading-none text-white hover:bg-red-600"
-            >
-              ×
-            </button>
-          </div>
-        ) : (
-          <p className="text-xs text-texto-fraco">
-            Clique aqui e cole com <kbd className="rounded bg-superficie-alta px-1.5 py-0.5">Ctrl+V</kbd> ou arraste
-          </p>
-        )}
-        <label className="mt-2 inline-block cursor-pointer text-xs text-accent hover:underline">
-          {previa ? 'trocar imagem' : 'escolher arquivo'}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => e.target.files?.[0] && lerPrint(e.target.files[0])}
-            className="hidden"
-          />
-        </label>
-      </div>
-
-      {lendo && <p className="mt-2 text-xs text-accent">Lendo o print…</p>}
-      {avisoOcr && <p className="mt-2 text-xs text-amber-300">{avisoOcr}</p>}
-
-      <div className="mt-3 space-y-1.5">
-        {LINHAS.map((linha) => (
-          <div key={linha} className="flex items-center gap-2">
-            <label className="w-28 shrink-0 text-xs text-texto-fraco" htmlFor={`${modeloId}-${linha}`}>
-              {ROTULO[linha]}
-            </label>
-            <input
-              id={`${modeloId}-${linha}`}
-              type="number"
-              step="0.01"
-              value={linhas[linha]}
-              onChange={(e) => {
-                setLinhas({ ...linhas, [linha]: Number(e.target.value) });
-                setEditou(true);
-              }}
-              className={`w-full rounded-lg border bg-fundo px-2 py-1.5 text-right text-sm outline-none focus:border-accent ${
-                caiu.includes(linha) ? 'border-amber-500/60' : 'border-borda'
-              }`}
-            />
-          </div>
-        ))}
-        <div className="flex items-center gap-2 border-t border-borda pt-1.5">
-          <label className="w-28 shrink-0 text-xs font-medium" htmlFor={`${modeloId}-total`}>
-            TOTAL
-          </label>
-          <input
-            id={`${modeloId}-total`}
-            type="number"
-            step="0.01"
-            value={totalImpresso}
-            onChange={(e) => {
-              setTotalImpresso(Number(e.target.value));
-              setEditou(true);
-            }}
-            className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-right text-sm outline-none focus:border-accent"
-          />
-        </div>
-      </div>
-
-      {preenchido && !somaBate && (
-        <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-          A soma das linhas dá {dinheiro(totalDasLinhas(linhas))} e o total está{' '}
-          {dinheiro(totalImpresso)}.
+      {precisaAnteriorManual && (
+        <p className="mt-1 rounded-lg border border-accent/30 bg-accent-fraco px-2.5 py-2 text-xs text-accent">
+          Essa modelo não segue a cadeia automática de descontos — envie (ou digite) o print de{' '}
+          <strong>antes</strong> desse turno e o de <strong>agora</strong>, pra calcular certo o que foi
+          vendido nele.
         </p>
       )}
+
+      {precisaAnteriorManual && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-texto-fraco">Print de antes deste turno</p>
+          <div className="mt-1">
+            <CapturaPrint idPrefix={`${modeloId}-anterior`} onChange={setAnterior} />
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3">
+        {precisaAnteriorManual && <p className="text-xs font-medium text-texto-fraco">Print de agora</p>}
+        <div className="mt-1">
+          <CapturaPrint idPrefix={`${modeloId}-atual`} onChange={setAtual} />
+        </div>
+      </div>
 
       {caiu.length > 0 && (
         <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
           <p>
-            Conferir se houve refund — {caiu.map((l) => ROTULO[l]).join(', ')} veio menor que no
-            turno anterior.
+            Conferir se houve refund — {caiu.map((l) => ROTULO[l]).join(', ')} veio menor que no turno anterior.
           </p>
           <button
             type="button"
@@ -258,7 +144,7 @@ export function ReportModelo({
         </div>
       )}
 
-      {anterior?.tipo === 'pendente' && (
+      {!precisaAnteriorManual && anteriorAuto?.tipo === 'pendente' && (
         <p className="mt-2 rounded-lg border border-borda bg-fundo px-2 py-1.5 text-xs text-texto-fraco">
           O turno anterior desta modelo ainda não enviou o print. O valor se ajusta sozinho
           quando ele chegar.

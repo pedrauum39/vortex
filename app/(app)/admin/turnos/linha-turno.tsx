@@ -3,7 +3,7 @@
 import { useCallback, useState, useTransition } from 'react';
 import { reduzirImagem } from '@/lib/imagem';
 import type { LinhaInvoice } from '@/lib/invoice';
-import { LINHAS } from '@/lib/statement';
+import { LINHAS, type LinhasNet } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
 import type { Bloco, Model } from '@/lib/tipos';
 import { rotuloTurno } from '@/lib/tipos';
@@ -264,8 +264,16 @@ export function LinhaTurno({
               modeloNome={log.shift_log_models.find((m) => m.model_id === modeloDoForm)?.models.nome ?? ''}
               atual={log.statements.find((s) => s.model_id === modeloDoForm) ?? null}
               pendente={pendente}
-              onSalvar={(vals) =>
-                rodar(() => simularStatement({ shiftLogId: log.id, modeloId: modeloDoForm, ...vals }))
+              // T6T1 de modelo independente já vira sempre 'primeiro' no
+              // servidor (é o primeiro turno do dia) — só T2T3/T4T5 precisam
+              // do print anterior na mão (sem cadeia confiável pra buscar sozinho).
+              precisaAnteriorManual={
+                (models.find((m) => m.id === modeloDoForm)?.independente ?? false) && shift.turno !== 'T6T1'
+              }
+              onSalvar={(vals, anteriorManual) =>
+                rodar(() =>
+                  simularStatement({ shiftLogId: log.id, modeloId: modeloDoForm, ...vals, anteriorManual }),
+                )
               }
               onCancelar={() => setModeloDoForm(null)}
             />
@@ -360,69 +368,57 @@ function FormPonto({
   );
 }
 
-function FormStatement({
-  modeloNome,
-  atual,
-  pendente,
-  onSalvar,
-  onCancelar,
+const VAZIO: LinhasNet = { assinaturas: 0, gorjetas: 0, publicacoes: 0, mensagens: 0, indicacoes: 0 };
+
+function LinhasComOcr({
+  titulo,
+  vals,
+  onVals,
 }: {
-  modeloNome: string;
-  atual: LinhaShift['shift_logs'][number]['statements'][number] | null;
-  pendente: boolean;
-  onSalvar: (vals: {
-    assinaturas: number;
-    gorjetas: number;
-    publicacoes: number;
-    mensagens: number;
-    indicacoes: number;
-  }) => void;
-  onCancelar: () => void;
+  titulo?: string;
+  vals: LinhasNet;
+  onVals: (v: LinhasNet) => void;
 }) {
-  const [vals, setVals] = useState({
-    assinaturas: atual?.net_assinaturas ?? 0,
-    gorjetas: atual?.net_gorjetas ?? 0,
-    publicacoes: atual?.net_publicacoes ?? 0,
-    mensagens: atual?.net_mensagens ?? 0,
-    indicacoes: atual?.net_indicacoes ?? 0,
-  });
   const [lendo, setLendo] = useState(false);
   const [avisoOcr, setAvisoOcr] = useState<string | null>(null);
 
-  const total = LINHAS.reduce((s, l) => s + vals[l], 0);
-
-  const lerPrint = useCallback(async (arquivo: Blob) => {
-    setLendo(true);
-    setAvisoOcr(null);
-    try {
-      const { base64 } = await reduzirImagem(arquivo);
-      const resposta = await fetch('/api/ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagem: base64, tipo: 'image/jpeg' }),
-      });
-      if (!resposta.ok) {
+  const lerPrint = useCallback(
+    async (arquivo: Blob) => {
+      setLendo(true);
+      setAvisoOcr(null);
+      try {
+        const { base64 } = await reduzirImagem(arquivo);
+        const resposta = await fetch('/api/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imagem: base64, tipo: 'image/jpeg' }),
+        });
+        if (!resposta.ok) {
+          setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
+          return;
+        }
+        const lido = await resposta.json();
+        onVals({
+          assinaturas: lido.net.assinaturas,
+          gorjetas: lido.net.gorjetas,
+          publicacoes: lido.net.publicacoes,
+          mensagens: lido.net.mensagens,
+          indicacoes: lido.net.indicacoes,
+        });
+      } catch {
         setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
-        return;
+      } finally {
+        setLendo(false);
       }
-      const lido = await resposta.json();
-      setVals({
-        assinaturas: lido.net.assinaturas,
-        gorjetas: lido.net.gorjetas,
-        publicacoes: lido.net.publicacoes,
-        mensagens: lido.net.mensagens,
-        indicacoes: lido.net.indicacoes,
-      });
-    } catch {
-      setAvisoOcr('Não deu para ler o print automaticamente. Digite os valores.');
-    } finally {
-      setLendo(false);
-    }
-  }, []);
+    },
+    [onVals],
+  );
+
+  const total = LINHAS.reduce((s, l) => s + vals[l], 0);
 
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <span className="text-xs font-medium text-accent">{modeloNome}</span>
+      {titulo && <span className="w-full text-xs font-medium text-texto-fraco">{titulo}</span>}
       <div
         onDrop={(e) => {
           e.preventDefault();
@@ -451,27 +447,77 @@ function FormStatement({
             type="number"
             step="0.01"
             value={vals[l]}
-            onChange={(e) => setVals({ ...vals, [l]: Number(e.target.value) })}
+            onChange={(e) => onVals({ ...vals, [l]: Number(e.target.value) })}
             className={`${campo} w-24`}
           />
         </label>
       ))}
       <span className="pb-1.5 text-xs text-texto-fraco">total {dinheiro(total)}</span>
-      <button
-        type="button"
-        onClick={onCancelar}
-        className="rounded-lg border border-borda px-3 py-1.5 text-xs text-texto-fraco hover:text-texto"
-      >
-        cancelar
-      </button>
-      <button
-        type="button"
-        disabled={pendente}
-        onClick={() => onSalvar(vals)}
-        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
-      >
-        gravar statement
-      </button>
+    </div>
+  );
+}
+
+function FormStatement({
+  modeloNome,
+  atual,
+  pendente,
+  precisaAnteriorManual,
+  onSalvar,
+  onCancelar,
+}: {
+  modeloNome: string;
+  atual: LinhaShift['shift_logs'][number]['statements'][number] | null;
+  pendente: boolean;
+  precisaAnteriorManual: boolean;
+  onSalvar: (
+    vals: { assinaturas: number; gorjetas: number; publicacoes: number; mensagens: number; indicacoes: number },
+    anteriorManual: LinhasNet | null,
+  ) => void;
+  onCancelar: () => void;
+}) {
+  const [vals, setVals] = useState<LinhasNet>({
+    assinaturas: atual?.net_assinaturas ?? 0,
+    gorjetas: atual?.net_gorjetas ?? 0,
+    publicacoes: atual?.net_publicacoes ?? 0,
+    mensagens: atual?.net_mensagens ?? 0,
+    indicacoes: atual?.net_indicacoes ?? 0,
+  });
+  const [anteriorVals, setAnteriorVals] = useState<LinhasNet>(VAZIO);
+  const anteriorPreenchido = LINHAS.some((l) => anteriorVals[l] > 0);
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs font-medium text-accent">{modeloNome}</span>
+
+      {precisaAnteriorManual && (
+        <>
+          <p className="rounded-lg border border-accent/30 bg-accent-fraco px-2.5 py-1.5 text-xs text-accent">
+            Essa modelo não segue a cadeia automática — precisa do print de antes deste turno E do
+            de agora.
+          </p>
+          <LinhasComOcr titulo="print de antes deste turno" vals={anteriorVals} onVals={setAnteriorVals} />
+        </>
+      )}
+
+      <LinhasComOcr titulo={precisaAnteriorManual ? 'print de agora' : undefined} vals={vals} onVals={setVals} />
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="rounded-lg border border-borda px-3 py-1.5 text-xs text-texto-fraco hover:text-texto"
+        >
+          cancelar
+        </button>
+        <button
+          type="button"
+          disabled={pendente || (precisaAnteriorManual && !anteriorPreenchido)}
+          onClick={() => onSalvar(vals, precisaAnteriorManual && anteriorPreenchido ? anteriorVals : null)}
+          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
+        >
+          gravar statement
+        </button>
+      </div>
     </div>
   );
 }

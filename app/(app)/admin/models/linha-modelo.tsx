@@ -6,6 +6,8 @@ import {
   apagarModelo,
   criarModelo,
   definirAtivaModelo,
+  definirExterna,
+  definirIndependente,
   definirMetaMensal,
   renomearModelo,
 } from './actions';
@@ -45,6 +47,16 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
           <>
             {model.nome}
             {!model.ativa && <span className="ml-2 text-xs text-texto-fraco">(inativa)</span>}
+            {model.independente && (
+              <span className="ml-2 rounded-md bg-accent-fraco px-1.5 py-0.5 text-xs text-accent">
+                independente
+              </span>
+            )}
+            {model.externa && (
+              <span className="ml-2 rounded-md border border-borda px-1.5 py-0.5 text-xs text-texto-fraco">
+                externa
+              </span>
+            )}
           </>
         )}
       </td>
@@ -107,6 +119,22 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
               <button
                 type="button"
                 disabled={pendente}
+                onClick={() => rodar(() => definirIndependente(model.id, !model.independente))}
+                className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
+              >
+                {model.independente ? 'tirar independente' : 'marcar independente'}
+              </button>
+              <button
+                type="button"
+                disabled={pendente}
+                onClick={() => rodar(() => definirExterna(model.id, !model.externa))}
+                className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
+              >
+                {model.externa ? 'tirar externa' : 'marcar externa'}
+              </button>
+              <button
+                type="button"
+                disabled={pendente}
                 onClick={() => {
                   if (confirm(`Apagar "${model.nome}"? Turnos que usam essa modelo ficam sem modelo.`)) {
                     rodar(() => apagarModelo(model.id));
@@ -126,6 +154,8 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
 
 export function FormularioModelo({ bloco }: { bloco: Bloco }) {
   const [nome, setNome] = useState('');
+  const [independente, setIndependente] = useState(false);
+  const [externa, setExterna] = useState(false);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -134,8 +164,10 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
     executar(async () => {
       setErro(null);
       try {
-        await criarModelo(nome.trim(), bloco);
+        await criarModelo(nome.trim(), bloco, independente, externa);
         setNome('');
+        setIndependente(false);
+        setExterna(false);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
       }
@@ -143,21 +175,43 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <input
-        value={nome}
-        onChange={(e) => setNome(e.target.value)}
-        placeholder="Adicionar modelo a este time"
-        className="w-full rounded-lg border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-accent"
-      />
-      <button
-        type="button"
-        disabled={pendente || !nome.trim()}
-        onClick={criar}
-        className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
-      >
-        Adicionar
-      </button>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Adicionar modelo a este time"
+          className="w-full rounded-lg border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-accent"
+        />
+        <button
+          type="button"
+          disabled={pendente || !nome.trim()}
+          onClick={criar}
+          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
+        >
+          Adicionar
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-3 text-xs text-texto-fraco">
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={independente}
+            onChange={(e) => setIndependente(e.target.checked)}
+            className="size-3.5 accent-[var(--color-accent)]"
+          />
+          independente (ex.: Kaylin — sem cadeia de desconto confiável)
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={externa}
+            onChange={(e) => setExterna(e.target.checked)}
+            className="size-3.5 accent-[var(--color-accent)]"
+          />
+          externa (fora dos dois times — só invoice pessoal, sem meta/bônus)
+        </label>
+      </div>
       {erro && <span className="text-xs text-red-400">{erro}</span>}
     </div>
   );

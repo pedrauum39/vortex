@@ -50,7 +50,19 @@ export type Rep = {
 };
 
 /** Uma modelo (perfil de conteúdo) do roster de um dos dois times. */
-export type Model = { id: string; nome: string; bloco: Bloco; ativa: boolean; meta_mensal: number };
+export type Model = {
+  id: string;
+  nome: string;
+  bloco: Bloco;
+  ativa: boolean;
+  meta_mensal: number;
+  /** Sem cadeia de desconto confiável (ex.: Kaylin) — cada turno "independente"
+   * conta o print inteiro (T6T1) ou pede o print anterior na mão (T2T3/T4T5). */
+  independente: boolean;
+  /** Página fora dos dois times (ex.: "Kylie") — só conta invoice pessoal de
+   * quem trabalhou, nunca meta nem bônus de Party/Team addition. */
+  externa: boolean;
+};
 
 export type Shift = {
   id: string;

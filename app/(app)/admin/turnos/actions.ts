@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import type { LinhasNet } from '@/lib/statement';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { brtParaUtc } from '@/lib/tempo';
 import type { Bloco, Funcao, Turno } from '@/lib/tipos';
@@ -205,6 +206,8 @@ export async function simularStatement(dados: {
   publicacoes: number;
   mensagens: number;
   indicacoes: number;
+  /** Print anterior digitado/lido na hora — só "turno independente" (T2T3/T4T5). */
+  anteriorManual: LinhasNet | null;
 }) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -223,6 +226,7 @@ export async function simularStatement(dados: {
       net_mensagens: dados.mensagens,
       net_indicacoes: dados.indicacoes,
       corrigido_manualmente: true,
+      anterior_manual: dados.anteriorManual,
     },
     { onConflict: 'shift_log_id,model_id' },
   );

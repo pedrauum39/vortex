@@ -5,7 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calcularMetas, metaDiariaDaPagina, percentualAtingido, type TurnoParaMeta } from './meta';
 import { deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
-import { buscarAnterior } from './statementDb';
+import { resolverAnterior } from './statementDb';
 import { somarDias } from './tempo';
 import type { Bloco, Model, Turno } from './tipos';
 
@@ -22,7 +22,7 @@ type LinhaShift = {
   turno: Turno;
   bloco: Bloco;
   shift_logs: {
-    shift_log_models: { model_id: string; models: { nome: string; meta_mensal: number } }[];
+    shift_log_models: { model_id: string; models: { nome: string; meta_mensal: number; externa: boolean } }[];
     statements: {
       model_id: string;
       net_assinaturas: number;
@@ -30,6 +30,7 @@ type LinhaShift = {
       net_publicacoes: number;
       net_mensagens: number;
       net_indicacoes: number;
+      anterior_manual: LinhasNet | null;
     }[];
   }[];
 };
@@ -74,7 +75,7 @@ async function vendidoDoTurno(
 
   for (const { id: modeloId } of modelos) {
     const statement = statements.find((s) => s.model_id === modeloId) ?? null;
-    const anterior = await buscarAnterior(db, turno, data, modeloId);
+    const anterior = await resolverAnterior(db, turno, data, modeloId, statement?.anterior_manual);
     if (!statement || anterior.tipo === 'pendente') {
       pendente = true;
       continue;
@@ -115,7 +116,7 @@ export async function buscarMetasDoRep(
     db
       .from('shifts')
       .select(
-        'id, data, turno, bloco, shift_logs(shift_log_models(model_id, models(nome, meta_mensal)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, shift_logs(shift_log_models(model_id, models(nome, meta_mensal, externa)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior_manual))',
       )
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
@@ -139,14 +140,23 @@ export async function buscarMetasDoRep(
     const trabalhado = !!log;
 
     const paginas = trabalhado
-      ? log!.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome, meta: m.models.meta_mensal }))
+      ? log!.shift_log_models.map((m) => ({
+          id: m.model_id,
+          nome: m.models.nome,
+          meta: m.models.meta_mensal,
+          externa: m.models.externa,
+        }))
       : roster
           .filter((m) => m.bloco === shift.bloco)
-          .map((m) => ({ id: m.id, nome: m.nome, meta: m.meta_mensal }));
+          .map((m) => ({ id: m.id, nome: m.nome, meta: m.meta_mensal, externa: m.externa }));
+
+    // Página externa (fora dos dois times, ex. "Kylie") nunca entra na meta —
+    // só conta pro total vendido (invoice pessoal de quem trabalhou nela).
+    const paginasComMeta = paginas.filter((p) => !p.externa);
 
     turnosParaMeta.push({
       turno: shift.turno,
-      metasDasPaginas: paginas.map((p) => p.meta),
+      metasDasPaginas: paginasComMeta.map((p) => p.meta),
       trabalhado,
     });
 
@@ -156,7 +166,7 @@ export async function buscarMetasDoRep(
 
     totalVendido += vendido;
 
-    const metaDoTurno = paginas.reduce(
+    const metaDoTurno = paginasComMeta.reduce(
       (soma, p) => soma + metaDiariaDaPagina(p.meta, shift.turno, diasDoMes),
       0,
     );
@@ -166,7 +176,7 @@ export async function buscarMetasDoRep(
       return {
         nome: pagina?.nome ?? '',
         vendido: p.vendido,
-        meta: metaDiariaDaPagina(pagina?.meta ?? 0, shift.turno, diasDoMes),
+        meta: pagina?.externa ? 0 : metaDiariaDaPagina(pagina?.meta ?? 0, shift.turno, diasDoMes),
       };
     });
 
@@ -210,7 +220,7 @@ export async function buscarRecordeDoRep(db: SupabaseClient, repId: string): Pro
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, shift_logs(shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, shift_logs(shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior_manual))',
     )
     .eq('rep_id', repId)
     .eq('funcao', 'regular')
