@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { corDaMeta, temRaio, type CorMeta } from '@/lib/meta';
 import { diaLegivel, diasNoMes, mesLegivel } from '@/lib/tempo';
 import { rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
 import { BotaoGerar } from './botao-gerar';
+import { IconeRaio } from '../meta-visual';
 
 export type MeuTurno = {
   id: string;
@@ -20,7 +22,21 @@ export type MeuTurno = {
   }[];
 };
 
+export type DiaDoCalendario = {
+  trabalhado: boolean;
+  percentual: number | null;
+};
+
 const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+
+// Mesma escala de corDaMeta, só que apagada — o calendário mostra 30+ dias de
+// uma vez, cor viva em todo canto ficaria "muito baiano" (pedido do usuário).
+const CORES_PASTEL: Record<CorMeta, string> = {
+  vermelho: 'bg-red-500/10 text-red-300',
+  amarelo: 'bg-amber-500/10 text-amber-200',
+  verde: 'bg-green-500/10 text-green-300',
+  'azul-neon': 'bg-cyan-500/10 text-cyan-200',
+};
 
 /** Grade do mês, uma célula por dia (null nas células de padding antes do dia 1). Semana começa na segunda. */
 function gradeDoMes(mes: string): (string | null)[] {
@@ -43,7 +59,7 @@ export function MeusTurnos({
   inicio,
   fim,
   mesCal,
-  diasComTurno,
+  diasInfo,
   mesAnteriorHref,
   mesSeguinteHref,
 }: {
@@ -54,12 +70,11 @@ export function MeusTurnos({
   inicio: string;
   fim: string;
   mesCal: string;
-  diasComTurno: string[];
+  diasInfo: Record<string, DiaDoCalendario>;
   mesAnteriorHref: string;
   mesSeguinteHref: string;
 }) {
   const [diaHover, setDiaHover] = useState<string | null>(null);
-  const diasComTurnoSet = new Set(diasComTurno);
   const grade = gradeDoMes(mesCal);
 
   return (
@@ -140,18 +155,37 @@ export function MeusTurnos({
         <div className="mt-1 grid grid-cols-7 gap-1">
           {grade.map((data, i) => {
             if (!data) return <div key={`vazio-${i}`} />;
-            const temTurno = diasComTurnoSet.has(data);
+            const info = diasInfo[data];
+            const temTurno = !!info;
             const ehHoje = data === hoje;
             const dia = Number(data.slice(-2));
+
+            // Turno já feito e com meta configurada: cor pastel da faixa
+            // atingida (igual Home/histórico de turnos, só que apagada — o
+            // mês inteiro à mostra de uma vez fica "muito baiano" em cor viva).
+            const jaFeito = info?.trabalhado && info.percentual !== null;
+            const cor = jaFeito ? corDaMeta(info!.percentual!) : null;
+            const raio = jaFeito && temRaio(info!.percentual!);
+
             return (
               <div
                 key={data}
                 onMouseEnter={() => temTurno && setDiaHover(data)}
                 onMouseLeave={() => setDiaHover(null)}
-                className={`flex aspect-square items-center justify-center rounded-lg text-sm transition ${
-                  temTurno ? 'cursor-default bg-accent-fraco text-accent' : 'text-texto-fraco'
+                className={`relative flex aspect-square items-center justify-center rounded-lg text-sm transition ${
+                  cor
+                    ? `cursor-default ${CORES_PASTEL[cor]}`
+                    : temTurno
+                      ? 'cursor-default bg-accent-fraco text-accent'
+                      : 'text-texto-fraco'
                 } ${ehHoje ? 'ring-2 ring-accent' : ''}`}
               >
+                {jaFeito && (
+                  <span className="absolute left-1 top-1 flex items-center gap-0.5 text-[8px] leading-none opacity-90">
+                    {info!.percentual!.toFixed(0)}%
+                    {raio && <IconeRaio className="size-2" />}
+                  </span>
+                )}
                 {dia}
               </div>
             );

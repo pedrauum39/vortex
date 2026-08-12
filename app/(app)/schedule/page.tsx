@@ -1,10 +1,20 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
-import { criarClienteServidor } from '@/lib/supabase/server';
-import { dataBRT, diaLegivel, limitesDoMes, segundaDaSemana, somarDias, somarMeses } from '@/lib/tempo';
+import { percentualAtingido } from '@/lib/meta';
+import { buscarMetasDoRep } from '@/lib/metaDb';
+import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
+import {
+  dataBRT,
+  diaLegivel,
+  diasNoMes,
+  limitesDoMes,
+  segundaDaSemana,
+  somarDias,
+  somarMeses,
+} from '@/lib/tempo';
 import { TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
 import { BotaoGerar } from './botao-gerar';
-import { MeusTurnos, type MeuTurno } from './meus-turnos';
+import { MeusTurnos, type DiaDoCalendario, type MeuTurno } from './meus-turnos';
 
 type Busca = { aba?: string; de?: string; mesCal?: string };
 
@@ -108,7 +118,7 @@ async function AbaMeus({
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto "Meus turnos" mostraria o time inteiro para o admin.
-  const [{ data }, { data: modelsData }, { data: mesData }] = await Promise.all([
+  const [{ data }, { data: modelsData }, metasDoMes] = await Promise.all([
     supabase
       .from('shifts')
       .select(
@@ -119,7 +129,11 @@ async function AbaMeus({
       .lte('data', fim)
       .order('data'),
     supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
-    supabase.from('shifts').select('data').eq('rep_id', repId).gte('data', inicioMes).lte('data', fimMes),
+    // Cliente admin: buscarMetasDoRep() (por baixo, buscarAnterior()) precisa
+    // ler o statement do turno ANTERIOR na cadeia, que quase sempre é de
+    // outro rep — RLS bloqueia isso pra sessão comum (armadilha já mordeu
+    // antes: métricas pessoais zeradas por não enxergar o statement alheio).
+    buscarMetasDoRep(criarClienteAdmin(), repId, inicioMes, fimMes, diasNoMes(mesCal)),
   ]);
 
   const rosterPorBloco: Record<string, string> = {};
@@ -129,7 +143,13 @@ async function AbaMeus({
   }
 
   const turnos = (data ?? []) as unknown as MeuTurno[];
-  const diasComTurno = [...new Set((mesData ?? []).map((s) => s.data as string))];
+  const diasInfo: Record<string, DiaDoCalendario> = {};
+  for (const l of metasDoMes.linhas) {
+    diasInfo[l.data] = {
+      trabalhado: l.trabalhado,
+      percentual: l.trabalhado ? percentualAtingido(l.vendido, l.metaDoTurno) : null,
+    };
+  }
   const hoje = dataBRT();
 
   return (
@@ -141,7 +161,7 @@ async function AbaMeus({
       inicio={inicio}
       fim={fim}
       mesCal={mesCal}
-      diasComTurno={diasComTurno}
+      diasInfo={diasInfo}
       mesAnteriorHref={`/schedule?aba=${aba}&de=${inicio}&mesCal=${somarMeses(mesCal, -1)}`}
       mesSeguinteHref={`/schedule?aba=${aba}&de=${inicio}&mesCal=${somarMeses(mesCal, 1)}`}
     />
@@ -193,12 +213,15 @@ async function AbaTime({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-      <table className="w-full min-w-[56rem] border-collapse text-base">
+      <table className="w-full min-w-[56rem] table-fixed border-collapse text-base">
         <thead>
           <tr className="border-b border-borda">
             <th className="w-28 px-4 py-3.5 text-left font-medium text-texto-fraco">Turno</th>
             {dias.map((dia) => (
-              <th key={dia} className="px-4 py-3.5 text-left font-medium text-texto-fraco">
+              <th
+                key={dia}
+                className="w-[calc((100%-7rem)/7)] px-4 py-3.5 text-left font-medium text-texto-fraco"
+              >
                 {diaLegivel(dia)}
               </th>
             ))}
@@ -242,7 +265,7 @@ function BlocoDeLinhas({
             return (
               <td
                 key={dia}
-                className={`px-4 py-4 align-top ${souEu ? 'rounded-lg ring-2 ring-inset ring-accent' : ''}`}
+                className={`px-4 py-4 align-top ${souEu ? 'rounded-lg bg-accent-fraco' : ''}`}
               >
                 <div>{regular?.rep_nome ?? <span className="text-texto-fraco">—</span>}</div>
                 {regular?.modelos_nome && (
