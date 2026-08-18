@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react';
 import { criarClienteBrowser } from '@/lib/supabase/client';
-import type { Turno } from '@/lib/tipos';
 import { finalizarTurno, type ReportModelo as ReportModeloDados } from './actions';
 import { ReportModelo, type ResultadoModelo } from './report-modelo';
 
@@ -10,8 +9,7 @@ type Props = {
   logId: string;
   shiftId: string;
   repId: string;
-  turno: Turno;
-  modelos: { id: string; nome: string; independente: boolean }[];
+  modelos: { id: string; nome: string }[];
   /** Assistente não reporta modelo própria — a comissão vem do turno do
    * regular, então o modal fecha sem pedir print nenhum. */
   assist: boolean;
@@ -25,7 +23,6 @@ export function ModalReport({
   logId,
   shiftId,
   repId,
-  turno,
   modelos,
   assist,
   teveAssistenteInicial,
@@ -73,7 +70,6 @@ export function ModalReport({
               ocrRaw: r.ocrRaw,
               corrigidoManualmente: r.corrigidoManualmente,
               refundConfirmado: r.refundConfirmado,
-              anteriorManual: r.anteriorManual,
             });
           }
         }
@@ -112,8 +108,6 @@ export function ModalReport({
                 shiftId={shiftId}
                 modeloId={modelo.id}
                 modeloNome={modelo.nome}
-                turno={turno}
-                independente={modelo.independente}
                 onChange={(resultado) =>
                   setResultados((atual) => ({ ...atual, [modelo.id]: resultado }))
                 }

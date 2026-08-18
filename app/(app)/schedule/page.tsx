@@ -128,7 +128,7 @@ async function AbaMeus({
       .gte('data', inicio)
       .lte('data', fim)
       .order('data'),
-    supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
+    supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
     // Cliente admin: buscarMetasDoRep() (por baixo, buscarAnterior()) precisa
     // ler o statement do turno ANTERIOR na cadeia, que quase sempre é de
     // outro rep — RLS bloqueia isso pra sessão comum (armadilha já mordeu

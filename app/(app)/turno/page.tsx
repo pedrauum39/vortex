@@ -4,7 +4,7 @@ import { corDaMeta, metaDiariaDaPagina, percentualAtingido, temRaio } from '@/li
 import { buscarMetasDoRep, buscarRecordeDoRep } from '@/lib/metaDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, diasNoMes, horaBRT, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
-import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Model, type Turno } from '@/lib/tipos';
+import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Cargo, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
   dataDoTurnoAtual,
@@ -12,8 +12,10 @@ import {
   janelaDoTurno,
   podeIniciar,
 } from '@/lib/turno';
+import { buscarTurnosExtraDoRep } from '@/lib/turnosExtraDb';
 import { CORES, IconeRaio } from '../meta-visual';
 import { Painel } from './painel';
+import { TurnoExtra } from './turno-extra';
 
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
@@ -29,21 +31,21 @@ type TurnoDoDia = {
     clock_in_at: string;
     clock_out_at: string | null;
     saiu_antes: boolean;
-    shift_log_models: { model_id: string; models: { nome: string; independente: boolean } }[];
+    shift_log_models: { model_id: string; models: { nome: string } }[];
   }[];
 };
 
 export default async function TurnoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ turno?: string; mes?: string }>;
+  searchParams: Promise<{ turno?: string; mes?: string; aba?: string }>;
 }) {
   const rep = await exigirRep();
-  const { turno: turnoEscolhido, mes: mesParam } = await searchParams;
+  const { turno: turnoEscolhido, mes: mesParam, aba = 'meus' } = await searchParams;
   const supabase = await criarClienteServidor();
 
   const CAMPOS_TURNO =
-    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome, independente)))';
+    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
 
   // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
   // o admin pode ter escalado alguém num turno diferente do de costume, e
@@ -69,7 +71,7 @@ export default async function TurnoPage({
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome, independente)))',
+        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
       )
       .eq('rep_id', rep.id)
       .is('shift_logs.clock_out_at', null),
@@ -91,14 +93,17 @@ export default async function TurnoPage({
   const turno =
     candidatos.find((t) => t.turno === turnoEscolhido) ??
     // Sem escolha explícita, prioriza o que já está em andamento (precisa
-    // fechar) sobre o próximo (ainda nem começou).
+    // fechar) sobre o próximo (ainda nem começado).
     candidatos.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
     candidatos.find((t) => t.shift_logs[0]) ??
     candidatos[0];
   const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
   const turnoDoSlot = turno?.turno ?? rep.turno;
 
-  const { data: models } = await supabase.from('models').select('*').eq('ativa', true).order('nome');
+  const [{ data: models }, { data: modelosExtras }] = await Promise.all([
+    supabase.from('models').select('*').eq('ativa', true).eq('extra', false).order('nome'),
+    supabase.from('models').select('*').eq('ativa', true).eq('extra', true).order('nome'),
+  ]);
 
   // Meta diária de cada página nesse turno: meta mensal da página, repartida
   // pelo percentual fixo do turno (42/28/30%) e pelos dias do mês — mesma
@@ -149,169 +154,233 @@ export default async function TurnoPage({
         </p>
       </div>
 
-      {candidatos.length > 1 && (
-        <div className="flex gap-2">
-          {candidatos.map((c) => (
-            <Link
-              key={c.id}
-              href={`/turno?turno=${c.turno}`}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                turno?.id === c.id
-                  ? 'border-accent bg-accent-fraco text-accent'
-                  : 'border-borda text-texto-fraco hover:text-texto'
-              }`}
-            >
-              {rotuloTurno(c.turno)}
-              {c.funcao === 'assist' && ' · Assistant'}
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="flex gap-1 border-b border-borda">
+        {[
+          { chave: 'meus', rotulo: 'Meu turno' },
+          { chave: 'extra', rotulo: 'Turno Extra' },
+        ].map(({ chave, rotulo }) => (
+          <Link
+            key={chave}
+            href={`/turno?aba=${chave}`}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm transition ${
+              aba === chave
+                ? 'border-accent text-accent'
+                : 'border-transparent text-texto-fraco hover:text-texto'
+            }`}
+          >
+            {rotulo}
+          </Link>
+        ))}
+      </div>
 
-      {!turno ? (
-        <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">
-          <p className="text-texto-fraco">Você não tem turno agora.</p>
-        </div>
+      {aba === 'extra' ? (
+        <>
+          <TurnoExtra repId={rep.id} modelosExtras={(modelosExtras ?? []) as Model[]} />
+          <TurnosExtraHistorico repId={rep.id} cargo={rep.cargo} mes={mes} />
+        </>
       ) : (
-        <Painel
-          turno={{ id: turno.id, bloco: turno.bloco, tipo: turnoDoSlot, assist: turno.funcao === 'assist' }}
-          log={
-            log
-              ? {
-                  id: log.id,
-                  entrada: horaBRT(new Date(log.clock_in_at)),
-                  saida: log.clock_out_at ? horaBRT(new Date(log.clock_out_at)) : null,
-                  modelos: log.shift_log_models.map((m) => ({
-                    id: m.model_id,
-                    nome: m.models.nome,
-                    independente: m.models.independente,
-                  })),
-                  horas: horasDoTurno(
-                    turnoDoSlot,
-                    data,
-                    new Date(log.clock_in_at),
-                    log.clock_out_at ? new Date(log.clock_out_at) : null,
-                    log.saiu_antes,
-                  ),
-                }
-              : null
-          }
-          // Todas as modelos ativas, não só as do time do turno — o rep pode
-          // ter feito uma modelo de outro time (ex.: cobrindo alguém), e
-          // precisa poder marcar isso mesmo fora do roster padrão.
-          models={(models ?? []) as Model[]}
-          metasDiarias={metasDiarias}
-          temAssistente={temAssistente}
-          repId={rep.id}
-          // Admin (e primaris) ignora a janela dos 15 minutos — precisa
-          // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.
-          podeIniciar={ehAdmin(rep) || podeIniciar(turnoDoSlot, data)}
-          abreAs={horaBRT(
-            new Date(
-              janelaDoTurno(turnoDoSlot, data).inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000,
-            ),
+        <>
+          {candidatos.length > 1 && (
+            <div className="flex gap-2">
+              {candidatos.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/turno?turno=${c.turno}`}
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${
+                    turno?.id === c.id
+                      ? 'border-accent bg-accent-fraco text-accent'
+                      : 'border-borda text-texto-fraco hover:text-texto'
+                  }`}
+                >
+                  {rotuloTurno(c.turno)}
+                  {c.funcao === 'assist' && ' · Assistant'}
+                </Link>
+              ))}
+            </div>
           )}
-        />
-      )}
 
-      <section className="rounded-2xl border border-borda bg-superficie p-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-medium">Histórico de turnos</h2>
-          <div className="ml-auto flex items-center gap-1 text-sm">
-            <Link
-              href={`/turno?mes=${somarMeses(mes, -1)}`}
-              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
-            >
-              ←
-            </Link>
-            <span className="px-2 capitalize text-texto-fraco">{mesLegivel(mes)}</span>
-            <Link
-              href={`/turno?mes=${somarMeses(mes, 1)}`}
-              className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
-            >
-              →
-            </Link>
-          </div>
-        </div>
+          {!turno ? (
+            <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">
+              <p className="text-texto-fraco">Você não tem turno agora.</p>
+            </div>
+          ) : (
+            <Painel
+              turno={{ id: turno.id, bloco: turno.bloco, tipo: turnoDoSlot, assist: turno.funcao === 'assist' }}
+              log={
+                log
+                  ? {
+                      id: log.id,
+                      entrada: horaBRT(new Date(log.clock_in_at)),
+                      saida: log.clock_out_at ? horaBRT(new Date(log.clock_out_at)) : null,
+                      modelos: log.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome })),
+                      horas: horasDoTurno(
+                        turnoDoSlot,
+                        data,
+                        new Date(log.clock_in_at),
+                        log.clock_out_at ? new Date(log.clock_out_at) : null,
+                        log.saiu_antes,
+                      ),
+                    }
+                  : null
+              }
+              // Todas as modelos ativas (menos as "extra"), não só as do time
+              // do turno — o rep pode ter feito uma modelo de outro time
+              // (ex.: cobrindo alguém), e precisa poder marcar isso mesmo
+              // fora do roster padrão.
+              models={(models ?? []) as Model[]}
+              metasDiarias={metasDiarias}
+              temAssistente={temAssistente}
+              repId={rep.id}
+              // Admin (e primaris) ignora a janela dos 15 minutos — precisa
+              // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.
+              podeIniciar={ehAdmin(rep) || podeIniciar(turnoDoSlot, data)}
+              abreAs={horaBRT(
+                new Date(
+                  janelaDoTurno(turnoDoSlot, data).inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000,
+                ),
+              )}
+            />
+          )}
 
-        {historico.length === 0 ? (
-          <p className="mt-4 text-sm text-texto-fraco">Nenhum turno trabalhado neste mês.</p>
-        ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[40rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-borda text-left text-texto-fraco">
-                  <th className="px-3 py-2.5 font-medium">Data</th>
-                  <th className="px-3 py-2.5 font-medium">Turno</th>
-                  <th className="px-3 py-2.5 font-medium">Modelo(s)</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Meta do turno</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Total feito</th>
-                  <th className="px-3 py-2.5 text-right font-medium">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historico.map((l) => {
-                  const percentual = percentualAtingido(l.vendido, l.metaDoTurno);
-                  const ehRecorde = recorde?.data === l.data && recorde?.turno === l.turno;
-                  return (
-                    <tr
-                      key={`${l.data}-${l.turno}`}
-                      className={`border-b border-borda last:border-0 ${
-                        ehRecorde ? 'ring-2 ring-inset ring-accent' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-3">{diaLegivel(l.data)}</td>
-                      <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
-                      <td className="px-3 py-3 text-accent">{l.paginas.join(' + ')}</td>
-                      <td className="px-3 py-3 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
-                      <td className="px-3 py-3 text-right">
-                        {dinheiro(l.vendido)}
-                        {l.pendente && (
-                          <span className="ml-2 rounded-md border border-amber-500/40 px-2 py-0.5 text-xs text-amber-300">
-                            em aberto
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="inline-flex items-center gap-1">
-                            {percentual === null ? (
-                              <span className="text-texto-fraco">—</span>
-                            ) : (
-                              <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
-                                {percentual.toFixed(1)}%
-                                {temRaio(percentual) && <IconeRaio className="size-4" />}
-                              </span>
-                            )}
-                            {ehRecorde && (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
-                                Recorde
-                                {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
-                              </span>
-                            )}
-                          </span>
-                          {l.porPagina.length > 1 && (
-                            <div className="text-xs text-texto-fraco">
-                              {l.porPagina.map((p) => {
-                                const pctPagina = percentualAtingido(p.vendido, p.meta);
-                                return (
-                                  <div key={p.nome}>
-                                    {p.nome} {pctPagina === null ? '—' : `${pctPagina.toFixed(0)}%`}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </td>
+          <section className="rounded-2xl border border-borda bg-superficie p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-lg font-medium">Histórico de turnos</h2>
+              <div className="ml-auto flex items-center gap-1 text-sm">
+                <Link
+                  href={`/turno?mes=${somarMeses(mes, -1)}`}
+                  className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+                >
+                  ←
+                </Link>
+                <span className="px-2 capitalize text-texto-fraco">{mesLegivel(mes)}</span>
+                <Link
+                  href={`/turno?mes=${somarMeses(mes, 1)}`}
+                  className="rounded-lg border border-borda px-2.5 py-1.5 text-texto-fraco hover:text-texto"
+                >
+                  →
+                </Link>
+              </div>
+            </div>
+
+            {historico.length === 0 ? (
+              <p className="mt-4 text-sm text-texto-fraco">Nenhum turno trabalhado neste mês.</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[40rem] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-borda text-left text-texto-fraco">
+                      <th className="px-3 py-2.5 font-medium">Data</th>
+                      <th className="px-3 py-2.5 font-medium">Turno</th>
+                      <th className="px-3 py-2.5 font-medium">Modelo(s)</th>
+                      <th className="px-3 py-2.5 text-right font-medium">Meta do turno</th>
+                      <th className="px-3 py-2.5 text-right font-medium">Total feito</th>
+                      <th className="px-3 py-2.5 text-right font-medium">%</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                  </thead>
+                  <tbody>
+                    {historico.map((l) => {
+                      const percentual = percentualAtingido(l.vendido, l.metaDoTurno);
+                      const ehRecorde = recorde?.data === l.data && recorde?.turno === l.turno;
+                      return (
+                        <tr
+                          key={`${l.data}-${l.turno}`}
+                          className={`border-b border-borda last:border-0 ${
+                            ehRecorde ? 'ring-2 ring-inset ring-accent' : ''
+                          }`}
+                        >
+                          <td className="px-3 py-3">{diaLegivel(l.data)}</td>
+                          <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                          <td className="px-3 py-3 text-accent">{l.paginas.join(' + ')}</td>
+                          <td className="px-3 py-3 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
+                          <td className="px-3 py-3 text-right">
+                            {dinheiro(l.vendido)}
+                            {l.pendente && (
+                              <span className="ml-2 rounded-md border border-amber-500/40 px-2 py-0.5 text-xs text-amber-300">
+                                em aberto
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="inline-flex items-center gap-1">
+                                {percentual === null ? (
+                                  <span className="text-texto-fraco">—</span>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
+                                    {percentual.toFixed(1)}%
+                                    {temRaio(percentual) && <IconeRaio className="size-4" />}
+                                  </span>
+                                )}
+                                {ehRecorde && (
+                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
+                                    Recorde
+                                    {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
+                                  </span>
+                                )}
+                              </span>
+                              {l.porPagina.length > 1 && (
+                                <div className="text-xs text-texto-fraco">
+                                  {l.porPagina.map((p) => {
+                                    const pctPagina = percentualAtingido(p.vendido, p.meta);
+                                    return (
+                                      <div key={p.nome}>
+                                        {p.nome} {pctPagina === null ? '—' : `${pctPagina.toFixed(0)}%`}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
+  );
+}
+
+async function TurnosExtraHistorico({ repId, cargo, mes }: { repId: string; cargo: Cargo; mes: string }) {
+  const { inicio, fim } = limitesDoMes(mes);
+  const linhas = await buscarTurnosExtraDoRep(criarClienteAdmin(), repId, cargo, inicio, fim);
+
+  return (
+    <section className="rounded-2xl border border-borda bg-superficie p-6">
+      <h2 className="text-lg font-medium">Turnos extra do mês</h2>
+      {linhas.length === 0 ? (
+        <p className="mt-4 text-sm text-texto-fraco">Nenhum turno extra lançado neste mês.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[32rem] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-borda text-left text-texto-fraco">
+                <th className="px-3 py-2.5 font-medium">Data</th>
+                <th className="px-3 py-2.5 font-medium">Turno</th>
+                <th className="px-3 py-2.5 font-medium">Modelo</th>
+                <th className="px-3 py-2.5 text-right font-medium">Vendido</th>
+                <th className="px-3 py-2.5 text-right font-medium">Comissão</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr key={l.id} className="border-b border-borda last:border-0">
+                  <td className="px-3 py-3">{diaLegivel(l.data)}</td>
+                  <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                  <td className="px-3 py-3 text-accent">{l.modeloNome}</td>
+                  <td className="px-3 py-3 text-right">{dinheiro(l.vendido)}</td>
+                  <td className="px-3 py-3 text-right font-medium">{dinheiro(l.comissao)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

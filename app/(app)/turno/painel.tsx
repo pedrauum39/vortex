@@ -11,7 +11,7 @@ type Props = {
     id: string;
     entrada: string;
     saida: string | null;
-    modelos: { id: string; nome: string; independente: boolean }[];
+    modelos: { id: string; nome: string }[];
     horas: number;
   } | null;
   models: Model[];
@@ -213,7 +213,6 @@ export function Painel({
               logId={log.id}
               shiftId={turno.id}
               repId={repId}
-              turno={turno.tipo}
               modelos={log.modelos}
               assist={turno.assist}
               teveAssistenteInicial={temAssistente}

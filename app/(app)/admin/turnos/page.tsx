@@ -43,7 +43,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       .order('turno')
       .order('bloco'),
     supabase.from('reps').select('*').order('turno').order('papel'),
-    supabase.from('models').select('*').eq('ativa', true).order('bloco').order('nome'),
+    supabase.from('models').select('*').eq('ativa', true).eq('extra', false).order('bloco').order('nome'),
   ]);
 
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];

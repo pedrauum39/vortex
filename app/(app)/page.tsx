@@ -96,7 +96,7 @@ export default async function Dashboard() {
       .gte('data', hoje)
       .order('data')
       .limit(10),
-    supabase.from('models').select('nome, bloco').eq('ativa', true).order('nome'),
+    supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
     // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
     // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
     // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
