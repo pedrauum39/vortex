@@ -1,5 +1,7 @@
 // Tipos do domínio, espelhando os enums de supabase/migrations/0001_schema.sql.
 
+import type { LinhasNet } from './statement';
+
 export type Turno = 'T2T3' | 'T4T5' | 'T6T1';
 export type Papel = 'A' | 'B' | 'C';
 
@@ -56,12 +58,23 @@ export type Model = {
   bloco: Bloco;
   ativa: boolean;
   meta_mensal: number;
-  /** Sem cadeia de desconto confiável (ex.: Kaylin) — cada turno "independente"
-   * conta o print inteiro (T6T1) ou pede o print anterior na mão (T2T3/T4T5). */
-  independente: boolean;
-  /** Página fora dos dois times (ex.: "Kylie") — só conta invoice pessoal de
-   * quem trabalhou, nunca meta nem bônus de Party/Team addition. */
-  externa: boolean;
+  /** Sem cadeia de desconto confiável (ex.: Kaylin) — nunca aparece no
+   * clock-in normal, só é reportada pela aba "Turno Extra" (turnos_extra). */
+  extra: boolean;
+};
+
+/** Um lançamento da aba "Turno Extra" — nunca passa por shifts/statements. */
+export type TurnoExtra = {
+  id: string;
+  repId: string;
+  data: string;
+  turno: Turno;
+  /** Preenchido = modelo do roster (ex. Kaylin). Null junto com nomeLivre preenchido = modelo de fora. */
+  modeloId: string | null;
+  nomeLivre: string | null;
+  atual: LinhasNet;
+  /** Null só quando turno = T6T1 (primeiro turno do dia, sem "anterior"). */
+  anterior: LinhasNet | null;
 };
 
 export type Shift = {
