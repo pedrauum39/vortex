@@ -6,8 +6,8 @@
 // assistente, em slots diferentes — por isso duas buscas separadas. Um regular
 // pode ter trabalhado 1 ou 2 modelos (double) no mesmo turno.
 
-import { diaDoStatement, type LinhasNet } from '@/lib/statement';
-import { resolverAnterior } from '@/lib/statementDb';
+import { diaDoStatement } from '@/lib/statement';
+import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
 import { somarDias } from '@/lib/tempo';
@@ -28,7 +28,6 @@ type LinhaStatement = {
   net_publicacoes: number;
   net_mensagens: number;
   net_indicacoes: number;
-  anterior_manual: LinhasNet | null;
 };
 
 type LinhaShift = {
@@ -58,7 +57,7 @@ type LinhaSiblingRegular = {
 };
 
 const CAMPOS_STATEMENTS =
-  'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior_manual)';
+  'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes)';
 
 const CAMPOS = `id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`;
 
@@ -72,7 +71,7 @@ async function montarModelos(
 
   for (const { model_id } of log.shift_log_models) {
     const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
-    const anterior = await resolverAnterior(db, turno, data, model_id, statement?.anterior_manual);
+    const anterior = await buscarAnterior(db, turno, data, model_id);
 
     modelos.push({
       modeloId: model_id,
