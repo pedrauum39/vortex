@@ -21,14 +21,6 @@ export type Anterior =
  * As linhas net do statement da MESMA modelo no turno anterior da cadeia.
  * Espera um cliente que atravesse o RLS (admin) — o turno anterior pode ser de
  * outro rep, e o que volta são só os valores acumulados do print dele.
- *
- * `models.independente = true` (ex.: Kaylin) pula a cadeia inteira e sempre
- * volta 'primeiro' — são páginas que o time não trabalha toda vez, então o
- * turno imediatamente anterior quase nunca tem o statement dela, o que
- * travava quem marcasse a modelo sem conseguir fechar o próprio turno (e,
- * por tabela, sem conseguir nem abrir o próximo). A meta dela continua
- * contando normal — 'primeiro' já credita o print inteiro como vendido,
- * igual qualquer modelo no primeiro turno de verdade da cadeia.
  */
 export async function buscarAnterior(
   db: SupabaseClient,
@@ -36,9 +28,6 @@ export async function buscarAnterior(
   data: string,
   modeloId: string,
 ): Promise<Anterior> {
-  const { data: modelo } = await db.from('models').select('independente').eq('id', modeloId).maybeSingle();
-  if (modelo?.independente) return { tipo: 'primeiro' };
-
   const anterior = turnoAnterior(turno, data);
   if (!anterior) return { tipo: 'primeiro' };
 
@@ -75,22 +64,4 @@ export async function buscarAnterior(
       indicacoes: Number(st.net_indicacoes),
     },
   };
-}
-
-/**
- * Mesma coisa que `buscarAnterior()`, mas prioriza um valor digitado/lido por
- * OCR na hora (`anteriorManual`) — usado no "turno independente" (T2T3/T4T5
- * de uma modelo `independente`/`externa`, ex.: Kaylin, "Kylie"), onde não dá
- * pra confiar na cadeia automática. Vale só pra ESTE statement, nunca vira
- * elo permanente — o próximo turno de verdade continua descontando normal.
- */
-export async function resolverAnterior(
-  db: SupabaseClient,
-  turno: Turno,
-  data: string,
-  modeloId: string,
-  anteriorManual: LinhasNet | null | undefined,
-): Promise<Anterior> {
-  if (anteriorManual) return { tipo: 'ok', linhas: anteriorManual };
-  return buscarAnterior(db, turno, data, modeloId);
 }
