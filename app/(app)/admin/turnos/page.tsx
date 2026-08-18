@@ -2,12 +2,15 @@ import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { buscarAnterior } from '@/lib/statementDb';
-import { criarClienteServidor } from '@/lib/supabase/server';
+import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
 import type { Model, Rep } from '@/lib/tipos';
+import { precisaAtencao } from '@/lib/turnoAberto';
+import { buscarTurnosExtraAdmin } from '@/lib/turnosExtraDb';
 import { FormularioTurno } from './formulario-turno';
 import { GradeEscala } from './grade-escala';
-import { LinhaTurno } from './linha-turno';
+import { ListaTurnos } from './lista-turnos';
+import { LinhaTurnoExtraAdmin } from './linha-turno-extra';
 import { NavPeriodo } from './nav-periodo';
 import type { LinhaShift } from './tipos';
 
@@ -126,6 +129,11 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     }
   }
 
+  const hoje = dataBRT();
+  const emAtencao = shifts.filter((s) => precisaAtencao(s, hoje));
+  const concluidos = shifts.filter((s) => !precisaAtencao(s, hoje));
+  const linhasPorShiftObj = Object.fromEntries(linhasPorShift);
+
   return (
     <div className="space-y-6">
       <NavPeriodo inicio={inicio} fim={fim} />
@@ -138,43 +146,57 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
 
       {podeEditar && <FormularioTurno reps={reps} inicio={inicio} />}
 
-      {shifts.length === 0 ? (
-        <div className="rounded-2xl border border-borda bg-superficie p-10 text-center">
-          <p className="text-texto-fraco">Nenhum turno neste período.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-          <table className="w-full min-w-[72rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-borda text-left text-texto-fraco">
-                <th className="px-4 py-3 font-medium">Dia</th>
-                <th className="px-3 py-3 font-medium">Turno</th>
-                <th className="px-3 py-3 font-medium">Bloco</th>
-                <th className="px-3 py-3 font-medium">Função</th>
-                <th className="px-3 py-3 font-medium">Rep</th>
-                <th className="px-3 py-3 font-medium">Ponto</th>
-                <th className="px-3 py-3 font-medium">Statements</th>
-                <th className="px-3 py-3 text-right font-medium">Comissão</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {shifts.map((s) => (
-                <LinhaTurno
-                  key={s.id}
-                  shift={s}
-                  linha={linhasPorShift.get(s.id) ?? null}
-                  // Todas as modelos ativas, não só as do time do turno — o
-                  // admin pode simular um ponto que trabalhou modelo de outro
-                  // time também (mesmo caso do clock-in real).
-                  models={models}
-                  podeEditar={podeEditar}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ListaTurnos
+        emAtencao={emAtencao}
+        concluidos={concluidos}
+        linhasPorShift={linhasPorShiftObj}
+        // Todas as modelos ativas, não só as do time do turno — o admin pode
+        // simular um ponto que trabalhou modelo de outro time também (mesmo
+        // caso do clock-in real).
+        models={models}
+        podeEditar={podeEditar}
+      />
+
+      <TurnosExtraAdmin inicio={inicio} fim={fim} podeEditar={podeEditar} />
+    </div>
+  );
+}
+
+async function TurnosExtraAdmin({
+  inicio,
+  fim,
+  podeEditar,
+}: {
+  inicio: string;
+  fim: string;
+  podeEditar: boolean;
+}) {
+  const linhas = await buscarTurnosExtraAdmin(criarClienteAdmin(), inicio, fim);
+  if (linhas.length === 0) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium text-texto-fraco">Turnos extra</p>
+      <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
+        <table className="w-full min-w-[48rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-borda text-left text-texto-fraco">
+              <th className="px-4 py-3 font-medium">Dia</th>
+              <th className="px-3 py-3 font-medium">Turno</th>
+              <th className="px-3 py-3 font-medium">Rep</th>
+              <th className="px-3 py-3 font-medium">Modelo</th>
+              <th className="px-3 py-3 text-right font-medium">Vendido</th>
+              <th className="px-3 py-3 text-right font-medium">Comissão</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => (
+              <LinhaTurnoExtraAdmin key={l.id} linha={l} podeEditar={podeEditar} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

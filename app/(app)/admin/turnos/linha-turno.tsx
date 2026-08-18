@@ -264,16 +264,8 @@ export function LinhaTurno({
               modeloNome={log.shift_log_models.find((m) => m.model_id === modeloDoForm)?.models.nome ?? ''}
               atual={log.statements.find((s) => s.model_id === modeloDoForm) ?? null}
               pendente={pendente}
-              // T6T1 de modelo independente já vira sempre 'primeiro' no
-              // servidor (é o primeiro turno do dia) — só T2T3/T4T5 precisam
-              // do print anterior na mão (sem cadeia confiável pra buscar sozinho).
-              precisaAnteriorManual={
-                (models.find((m) => m.id === modeloDoForm)?.independente ?? false) && shift.turno !== 'T6T1'
-              }
-              onSalvar={(vals, anteriorManual) =>
-                rodar(() =>
-                  simularStatement({ shiftLogId: log.id, modeloId: modeloDoForm, ...vals, anteriorManual }),
-                )
+              onSalvar={(vals) =>
+                rodar(() => simularStatement({ shiftLogId: log.id, modeloId: modeloDoForm, ...vals }))
               }
               onCancelar={() => setModeloDoForm(null)}
             />
@@ -368,8 +360,6 @@ function FormPonto({
   );
 }
 
-const VAZIO: LinhasNet = { assinaturas: 0, gorjetas: 0, publicacoes: 0, mensagens: 0, indicacoes: 0 };
-
 function LinhasComOcr({
   titulo,
   vals,
@@ -461,18 +451,19 @@ function FormStatement({
   modeloNome,
   atual,
   pendente,
-  precisaAnteriorManual,
   onSalvar,
   onCancelar,
 }: {
   modeloNome: string;
   atual: LinhaShift['shift_logs'][number]['statements'][number] | null;
   pendente: boolean;
-  precisaAnteriorManual: boolean;
-  onSalvar: (
-    vals: { assinaturas: number; gorjetas: number; publicacoes: number; mensagens: number; indicacoes: number },
-    anteriorManual: LinhasNet | null,
-  ) => void;
+  onSalvar: (vals: {
+    assinaturas: number;
+    gorjetas: number;
+    publicacoes: number;
+    mensagens: number;
+    indicacoes: number;
+  }) => void;
   onCancelar: () => void;
 }) {
   const [vals, setVals] = useState<LinhasNet>({
@@ -482,24 +473,12 @@ function FormStatement({
     mensagens: atual?.net_mensagens ?? 0,
     indicacoes: atual?.net_indicacoes ?? 0,
   });
-  const [anteriorVals, setAnteriorVals] = useState<LinhasNet>(VAZIO);
-  const anteriorPreenchido = LINHAS.some((l) => anteriorVals[l] > 0);
 
   return (
     <div className="space-y-2">
       <span className="text-xs font-medium text-accent">{modeloNome}</span>
 
-      {precisaAnteriorManual && (
-        <>
-          <p className="rounded-lg border border-accent/30 bg-accent-fraco px-2.5 py-1.5 text-xs text-accent">
-            Essa modelo não segue a cadeia automática — precisa do print de antes deste turno E do
-            de agora.
-          </p>
-          <LinhasComOcr titulo="print de antes deste turno" vals={anteriorVals} onVals={setAnteriorVals} />
-        </>
-      )}
-
-      <LinhasComOcr titulo={precisaAnteriorManual ? 'print de agora' : undefined} vals={vals} onVals={setVals} />
+      <LinhasComOcr vals={vals} onVals={setVals} />
 
       <div className="flex items-center gap-3">
         <button
@@ -511,8 +490,8 @@ function FormStatement({
         </button>
         <button
           type="button"
-          disabled={pendente || (precisaAnteriorManual && !anteriorPreenchido)}
-          onClick={() => onSalvar(vals, precisaAnteriorManual && anteriorPreenchido ? anteriorVals : null)}
+          disabled={pendente}
+          onClick={() => onSalvar(vals)}
           className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
         >
           gravar statement
