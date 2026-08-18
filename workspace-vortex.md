@@ -1,7 +1,7 @@
 # Workspace do time Vortex — estado e handoff
 
 > Documento de continuidade. Escrito para ser lido do zero em outra conversa.
-> Última atualização: 05/08/2026, depois de mais uma sessão longa em cima do site já no ar: cover como reps sintéticos, acesso de "observador" (Thomas, OM), metas visíveis no clock-in e no /primaris, fluxo de fechamento do assistente simplificado, e três bugs reais de produção achados e corrigidos (métricas pessoais zeradas por causa de RLS, turno T6T1 preso sem como fechar, gerador de escala podendo escalar um cover sozinho).
+> Última atualização: 12/08/2026, depois de uma sessão muito longa em cima do site já no ar: seis ajustes de UI (calendário mensal no Schedule, destaque de nome de modelo, rename Turno→Turnos, histórico mensal de metas, ajustes no painel, % de comissão no Invoice), overlay de loading global, o cargo Admin 5C (acesso de leitura vinculado ao cargo, igual os primaris), projeção de MTD em /primaris, e o trabalho maior da sessão: um incidente real de produção (Ignacio Canelo travado sem conseguir fechar/abrir turno por causa da Kaylin) que virou o sistema completo de "turno independente" + "página externa". Mais um segundo incidente separado (race condition dando "duplicate key" ao trocar modelos de um turno já iniciado) e três ajustes visuais finais no Schedule. Ver "SESSÃO DE 06–12/08" mais abaixo — é a maior seção nova deste documento, leia inteira antes de mexer em qualquer coisa relacionada a modelo/turno/comissão.
 
 ---
 
@@ -185,6 +185,71 @@ Dashboard, entre o nome e o bloco de turno/cargo, só pros primaris: lista turno
 
 ---
 
+## Decisões e features da SESSÃO DE 06–12/08 (UI, dois incidentes de produção, turno independente)
+
+Sessão muito longa, em cima do site já no ar com uso real todo dia. Metade foi ajuste de UI pedido direto (rápido, iterativo), metade foi puxada por incidentes reais que apareceram no meio da conversa. Na ordem:
+
+### 19. Seis ajustes de UI (Schedule, Home, Turnos, Invoice) — spec em `docs/superpowers/specs/2026-08-06-schedule-turno-invoice-ui-design.md`
+
+- **Calendário mensal em Schedule → "Meus turnos"**: abaixo da lista da semana, um calendário do mês inteiro (nav `←`/`→` própria, independente da semana), dias com turno marcados, hover num dia destaca a(s) linha(s) daquele dia na lista de cima (só quando o dia está na semana mostrada — fora disso não faz nada, decisão consciente). Semana começa na segunda. Tamanho e centralização passaram por várias rodadas até fechar em `max-w-[80rem]` (ocupa a largura toda do container da página, que é o teto real) — **não mexer no tamanho sem o usuário pedir de novo, ele já testou várias medidas**.
+- **Nome da modelo em azul** — Schedule ("Meus turnos") e Home ("Hoje" e "Próximos turnos"): o `<span>` do nome vira `text-accent` em vez de `text-texto-fraco`.
+- **Rename "Turno" → "Turnos"** no menu (`nav.tsx`) e no `<h1>` da página — só texto, rota continua `/turno`.
+- **Histórico mensal em `/turno`**: tabela abaixo do painel do turno atual, com `?mes=` navegável, usando `buscarMetasDoRep()` (já existia, mesma função da Home) filtrado a `trabalhado=true`. Colunas Data/Turno/Modelo(s)/Meta/Total feito/%, cor por faixa de meta + raio (mesma paleta da Home), linha do recorde histórico com contorno azul + selo "Recorde". Quando o turno é double, o % de cada página aparece empilhado (um nome por linha) embaixo do % geral.
+- **Painel do turno**: fallback `Bloco ${x}` → `Vortex ${x}` (só neste arquivo — os outros dois usos do mesmo fallback, em Home e Schedule, ficaram como estavam, não foi pedido). "Meta do turno" virou duas linhas: total somado primeiro, detalhamento por modelo embaixo.
+- **Invoice**: linha de cabeçalho ganhou o `%` de comissão do cargo entre o cargo e o valor/hora (`regra.percentual[rep.cargo]`, já vinha buscada).
+- Refatoração de apoio: `CORES` (paleta por faixa de meta) e `IconeRaio` saíram de dentro de `app/(app)/page.tsx` pra `app/(app)/meta-visual.tsx`, compartilhado — Home e o histórico de `/turno` importam de lá.
+
+### 20. Overlay de loading global entre navegações
+
+Pedido: como o Vercel é lento, um clique num link não dava feedback nenhum até a página seguinte carregar. `app/loading-overlay.tsx` — Client Component montado uma vez em `app/layout.tsx` (raiz, cobre `(app)` e `(auth)`): escuta clique em qualquer link interno, mostra um overlay (página anterior visível e apagada atrás — `bg-fundo/65 backdrop-blur-sm` —, logo + "VORTEX" com efeito de "tempestade" — `text-shadow` piscando tipo relâmpago + 3 ícones de raio com delay diferente, keyframes em `app/globals.css`), some quando a URL muda de verdade (`usePathname`/`useSearchParams`). Timeout de segurança de 15s pra nunca travar a tela coberta.
+
+**Bug achado e corrigido na hora**: o listener inicial escutava na fase de *bubble*, mas o `next/link` já registra o próprio `onClick` (que chama `preventDefault()`) bem mais cedo, na hidratação — como os dois estão na mesma fase, quem registra primeiro roda primeiro, e o Next sempre ganhava. Corrigido trocando pra fase de *captura* (`{ capture: true }`), que sempre roda antes de bubble não importa a ordem de registro. **Se algum dia esse overlay parecer não aparecer de novo, é essa a primeira coisa a checar.**
+
+### 21. Cargo Admin 5C
+
+Pedido inicial foi mal entendido (criei uma pessoa fixa chamada "Admin 5C" — o usuário corrigiu rindo: **é um CARGO**, não um membro). Modelo final: `cargo_t` (enum do Postgres) ganhou o valor `admin_5c` (migração 0015 só com o `alter type ... add value` — Postgres não deixa usar um valor novo de enum na mesma transação em que foi criado, por isso `pode_ver()` foi numa migração separada, 0016). Cargo vinculado ao ACESSO, igual Grand/Knight Primaris já vinculam admin de ESCRITA ao cargo deles — só que esse vincula só LEITURA (`podeVerAdmin()` em `lib/auth.ts` passa a checar `cargo === 'admin_5c'`, igual já checava `observador`; `is_admin()`/`ehAdmin()`, que controlam escrita, **nunca** ganharam esse cargo — quem tem Admin 5C nunca edita nada). Aparece no dropdown de cargo em `/admin/reps` (criar e editar). Comissão: 0% (é cargo de acesso, não trabalha turno) — teve que entrar em `REGRA_PADRAO` (`lib/comissao.ts`) e na `commission_rules.regra` do banco (senão `Record<Cargo, number>` não fecha o tipo).
+
+### 22. Projeção (MTD extrapolado) em /primaris
+
+Tabela "Por página" ganhou uma coluna "Projeção (ritmo atual)": `vendido / dias já passados do mês × dias do mês inteiro`, cor por faixa de meta + raio se >110%. `null` (mostra "—") se o mês ainda não começou; mês já fechado a projeção bate exatamente com o vendido real (sem viés). `lib/primarisDb.ts`: `diasPassadosDoMes()` e `projecaoDoMes()`, novos campos `projecao`/`percentualProjetado` em `ResumoPagina`.
+
+### 23. INCIDENTE 1 — Kaylin travando início/fechamento de turno → "turno independente" completo
+
+**O que aconteceu**: usuário pediu pra "remover a Kaylin do site" porque ela "cagou tudo" e ninguém conseguia iniciar nem fechar turno. Investigação (dados reais, não achismo): **Ignacio Canelo** ficou preso desde o dia anterior (turno T4/T5 de 10/08, Bloco I) com `clock_out_at` nulo, porque marcou Kaylin no relatório e a cadeia de desconto dela (`buscarAnterior()`) sempre volta `pendente` — ninguém do time trabalha ela toda vez (às vezes um "buffer" de fora do sistema cobre a página), então o turno *imediatamente anterior* quase nunca tem o statement dela. Como `/turno` sempre prioriza mostrar o turno em aberto antes de deixar abrir um novo, isso travava ele geral (não conseguia nem iniciar o próximo).
+
+Meio da conversa, o pedido evoluiu (o usuário foi corrigindo em tempo real, várias mensagens seguidas) de "remove ela" pra "ela tem que ser um turno individual, sem depender do turno anterior" — e depois pra "como uma aba onde o rep sobe o print do turno anterior E o dele, destacando o que ele tem que fazer" — até fechar no desenho final:
+
+- **`models.independente`** (migração 0017, `true` só pra Kaylin por enquanto): `buscarAnterior()` (`lib/statementDb.ts`) checa esse flag primeiro e, se `true`, **pula a cadeia inteira e sempre volta `'primeiro'`** — sem tentar achar o turno anterior no banco. A meta dela continua contando normal (`'primeiro'` já credita o print inteiro como vendido, igual qualquer modelo no primeiro turno de verdade da cadeia).
+  - **Desbloqueio imediato do Ignacio**: antes mesmo da correção de código, removi a linha da Kaylin do `shift_log_models` do turno preso dele (só sobrou Issy Black) — ele conseguiu fechar na hora.
+- Isso sozinho já resolvia o incidente, mas o usuário pediu a versão completa com UI de verdade: **"turno independente"**.
+  - **`statements.anterior_manual`** (jsonb, migração 0018): as 5 linhas net do turno anterior, digitadas ou lidas por OCR na hora — vale **só pra esse statement**, nunca vira elo permanente da cadeia. `resolverAnterior()` (novo, `lib/statementDb.ts`) prioriza esse valor manual antes de cair no `buscarAnterior()` automático (que, por sua vez, já lida com `independente`).
+  - Regra de quando pedir o quê: **T2/T3 e T4/T5** de uma modelo independente pedem os dois prints (antes do turno **e** de agora) — sem cadeia confiável pra puxar sozinho. **T6/T1** só pede o de agora, porque "é sempre o primeiro turno do dia" (regra do usuário, não questionada — ele conhece a operação real do time, eu só implementei).
+  - `app/(app)/turno/captura-print.tsx` — componente novo, extraído de `ReportModelo`: upload/colar/arrastar + OCR, ou digitar na mão, as 5 linhas + total. Reutilizado 2x dentro de `ReportModelo` (rep, `/turno`) quando é preciso o anterior manual.
+  - Mesma UI (duplicada, não componentizada — layout diferente, horizontal vs vertical) em `FormStatement` dentro de `app/(app)/admin/turnos/linha-turno.tsx`, pro admin lançar manualmente.
+- **`models.externa`** (migração 0018, mesma leva): pensado originalmente pra Kaylin, mas o usuário deixou claro que ela **continua contando meta normal** (ela é do time, só muda como o turno abre/fecha) — `externa` é pra um caso DIFERENTE, uma página que não pertence a NENHUM dos dois times (exemplo dado: "Kylie", nome aleatório/hipotético, não existe de verdade ainda). Página `externa=true`: conta só o **invoice pessoal** de quem trabalhou (comissão normal pela cargo do rep), **nunca** meta nem bônus de Party/Team addition dos primaris — `lib/metaDb.ts` e `lib/primarisDb.ts` passam a filtrar por esse campo. Aparece no histórico de `/turno` com o valor vendido, mas sem % (não tem meta pra comparar contra).
+  - `/admin/models`: checkboxes "independente" e "externa" ao criar uma modelo nova, mais botão de ligar/desligar em qualquer modelo já existente.
+
+**Lição geral, documentada no código**: `Record<Cargo, number>` (regra de comissão) e enums do Postgres em geral precisam de disciplina extra quando se adiciona um valor novo — não esquecer de propagar pra TODO lugar que espera "todos os cargos existem aqui" (a compilação já pega isso no TS, mas o `commission_rules.regra` no banco é JSON solto, não tem checagem nenhuma — já aconteceu de esquecer e só notar rodando `npm run build`).
+
+### 24. INCIDENTE 2 — "duplicate key" ao trocar modelos de um turno já iniciado
+
+Bug **antigo** (rodando desde 09/08, 9 ocorrências, nada a ver com o incidente da Kaylin) — só apareceu de novo porque a **Gabriela Storini** tentou adicionar a Kaylin (já com a correção do independente rodando) num turno que só tinha Issy Black, e bateu erro. A mensagem que ela viu foi só "An error occurred in the Server Components render" — **a mensagem real só aparece nos runtime logs do Vercel** (mesma lição da armadilha #19 antiga): `duplicate key value violates unique constraint "shift_log_models_shift_log_id_model_id_key"`.
+
+**Causa**: `trocarModelos()` (`app/(app)/turno/actions.ts`) e `simularPonto()` (`app/(app)/admin/turnos/actions.ts`) apagavam TODAS as `shift_log_models` do turno e reinseriam tudo de novo, em duas chamadas separadas (não atômico). Se a ação rodasse duas vezes quase juntas (duplo clique, ou o navegador reenviando uma requisição lenta — plausível numa conexão de celular ruim), as duas corriam em paralelo e uma inserção podia colidir com uma linha que a outra chamada tinha acabado de criar.
+
+**Fix**: upsert primeiro (`{ onConflict: 'shift_log_id,model_id', ignoreDuplicates: true }` — nunca falha mesmo se a linha já existir por causa de uma chamada concorrente), busca quem sobrou, delete só de quem **realmente saiu** da lista nova. Nunca mais existe um instante em que uma modelo que continua marcada fica sem linha nenhuma no meio da troca — era exatamente aí que a corrida acontecia. Estado da Gabriela no banco ficou limpo (só Issy Black, turno ainda aberto, nada corrompido) — não precisou de fix manual de dado, só a correção do código.
+
+**Lição geral**: qualquer "apaga tudo e reinsere tudo" em duas chamadas separadas (não numa transação/RPC única) é candidato a essa mesma classe de bug se a ação puder ser disparada mais de uma vez quase junto. Preferir upsert idempotente + delete só do que saiu.
+
+### 25. Ajustes visuais finais no Schedule
+
+Pedido numa mensagem só, três coisas:
+- **Aba Time**: colunas dos 7 dias viravam largura diferente dependendo do nome mais comprido daquela semana (`table-fixed` com largura calculada — `w-[calc((100%-7rem)/7)]` — resolve, todas as colunas sempre iguais).
+- **Aba Time**: destaque de "essa célula sou eu" trocou de contorno (`ring-2 ring-inset ring-accent`) pra fundo preenchido (`bg-accent-fraco`), igual o calendário já usa pra "tem turno".
+- **Calendário (Meus turnos)**: dias **já trabalhados** (não só "tem turno") ganham a cor da faixa de meta atingida (vermelho/amarelo/verde/azul-neon, igual Home e histórico de `/turno`), raio quando >110%, e o % no canto superior esquerdo da célula — em **versão pastel** (`bg-*-500/10`, não a cor viva de sempre) porque o usuário pediu explicitamente pra não ficar "muito baiano" com o mês inteiro em cor forte de uma vez. Dias com turno agendado mas ainda não trabalhado continuam no azul sólido de sempre (`bg-accent-fraco`). `AbaMeus` trocou a query leve (só `data`) por `buscarMetasDoRep()` (cliente admin, mesmo motivo de sempre) pra ter `trabalhado`/`percentual` por dia.
+
+---
+
 ## Armadilhas técnicas descobertas (pra não cair de novo)
 
 ### Da sessão de implementação inicial
@@ -231,9 +296,21 @@ Dashboard, entre o nome e o bloco de turno/cargo, só pros primaris: lista turno
 
 19. **Erro de banco propagado por `throw new Error(error.message)` numa Server Action pode virar só um "digest" sem explicação nenhuma pro usuário, em produção.** Bateu a constraint `shift_logs_saida_ordenada` (saída antes da entrada, ao simular ponto num T6T1 com os campos de data em branco) e o cliente só recebeu "An error occurred... digest: ...", sem a mensagem real. A mensagem verdadeira só apareceu nos **runtime logs do Vercel** (`get_runtime_errors`/`get_runtime_logs`), nunca no browser. **Sempre que um erro chegar redigido/genérico assim, puxe os logs do Vercel antes de adivinhar — não dá pra debugar só pelo que o usuário vê na tela.** Depois de achado, o fix ficou em duas camadas: pré-preencher os campos com a janela oficial do turno (evita o erro na maioria dos casos) e validar `saída >= entrada` no servidor ANTES de tentar gravar, com mensagem clara.
 
+### Da sessão de 06–12/08
+
+20. **Dois listeners de `click` na mesma fase (bubble): quem foi registrado primeiro roda primeiro — e código de framework (`next/link`) geralmente registra o dele antes do seu.** O overlay de loading global escutava clique em `document` na fase de bubble pra detectar navegação; o `next/link` já registra o próprio `onClick` (que chama `preventDefault()` pra navegar via SPA) na hidratação, bem antes do `useEffect` do componente conseguir montar o listener dele. Resultado: quando o listener do overlay rodava, `event.defaultPrevented` já estava `true`, e a checagem descartava o clique — o overlay nunca aparecia, silenciosamente. **Fix: fase de captura (`{ capture: true }`)**, que sempre roda de cima pra baixo antes de qualquer bubble, não importa a ordem de registro. Sempre que for interceptar um clique/evento que outra parte do código (framework ou não) também trata, capture é mais seguro que bubble por padrão.
+
+21. **`ALTER TYPE ... ADD VALUE` do Postgres não pode ser usado na mesma transação em que o valor é criado.** Adicionar `admin_5c` ao enum `cargo_t` e, na mesma migração, criar/alterar uma função SQL que já usa `cargo = 'admin_5c'` como literal, quebra — precisa de duas migrações separadas (a segunda só pode rodar depois que a primeira já commitou). Mesma coisa se aplicaria a `models.independente`/`models.externa` se fossem enum (não são, são `boolean`, então essas duas colunas puderam ir juntas numa migração só).
+
+22. **`Record<Cargo, number>` (e qualquer "todo cargo tem uma entrada aqui") não é o único lugar que precisa saber de um cargo novo.** Adicionar `admin_5c` ao enum do banco não bastou — `REGRA_PADRAO.percentual` (`lib/comissao.ts`) e a `commission_rules.regra` (jsonb no banco, sem checagem de tipo nenhuma) também precisaram da entrada (`0`, já que é cargo de acesso e nunca trabalha turno), senão o TypeScript acusa `Record<Cargo, number>` incompleto na constante — mas o JSON do banco não tem essa rede de segurança, só uma checagem manual evita esquecer.
+
+23. **Turno "em aberto" (clock-in sem clock-out) sempre tem prioridade sobre "próximo turno" em `/turno` — então um turno travado bloqueia TUDO, não só ele mesmo.** Era exatamente esse mecanismo (armadilha #16 antiga) que fazia o travamento da Kaylin virar "não consigo nem iniciar turno novo", não só "não consigo fechar esse". Qualquer bug que impeça fechar um turno normal vira, por tabela, um bloqueio total pro rep até alguém (admin, ou uma correção de código) destravar manualmente.
+
+24. **"Apaga tudo e reinsere tudo" em duas chamadas separadas (não atômico) é candidato a "duplicate key" se a ação puder disparar mais de uma vez quase junto.** `trocarModelos()` e `simularPonto()` faziam `delete` de todas as `shift_log_models` do turno seguido de `insert` de todas de novo — um duplo clique, ou o navegador reenviando uma requisição lenta (comum em conexão de celular ruim), fazia duas execuções correrem em paralelo, e uma inserção colidia com uma linha que a outra já tinha criado. Bug real em produção, achado só pelos runtime logs do Vercel (a mensagem no browser era só "An error occurred in the Server Components render", igual a armadilha #19). **Fix padrão pra esse tipo de "substituir uma lista inteira": upsert idempotente (`ignoreDuplicates: true`) primeiro, delete só de quem realmente saiu da lista nova depois — nunca existe um instante em que algo que devia continuar existindo fica momentaneamente ausente.**
+
 ---
 
-## Modelo de dados atual (depois de 14 migrações)
+## Modelo de dados atual (depois de 18 migrações)
 
 ```
 reps            id, auth_user_id, nome_curto, nome_oficial, turno, papel, cargo,
@@ -244,7 +321,18 @@ reps            id, auth_user_id, nome_curto, nome_oficial, turno, papel, cargo,
                 -- sintéticos de cover ("Cover Tertius/Secundus/Primaris",
                 -- ativo=false) e o Thomas (observador=true, ativo=false) —
                 -- ver "Reps que NÃO são os 9 do time" abaixo.
-models          id, nome, bloco (I|II), ativa, meta_mensal   -- roster por time + meta (migração 0010)
+                -- cargo (cargo_t) tem um 5º valor desde a 06-12/08: admin_5c
+                -- — cargo de ACESSO (leitura, igual observador), não de
+                -- comissão; comissão dele é sempre 0%. Não é uma pessoa
+                -- fixa, é selecionável no dropdown de cargo pra qualquer rep.
+models          id, nome, bloco (I|II), ativa, meta_mensal,
+                independente, externa   -- roster por time + meta (migração
+                -- 0010); independente e externa são da sessão 06-12/08
+                -- (migração 0018) — ver seção "SESSÃO DE 06–12/08" pro
+                -- porquê de cada um. independente: sem cadeia de desconto
+                -- confiável (ex.: Kaylin), pula buscarAnterior(). externa:
+                -- fora dos dois times (ex.: "Kylie"), só conta invoice
+                -- pessoal, nunca meta nem bônus dos primaris.
 shifts          id, data, turno, bloco, rep_id, funcao (regular|assist), origem
                 -- shifts.model_id ainda existe na tabela mas está morto/sem uso;
                 -- ignorar, não tentar popular de novo
@@ -255,17 +343,22 @@ shift_logs      id, shift_id, rep_id, clock_in_at, clock_out_at,
                 -- teve_assistente é só informativo — a comissão nunca lê essa
                 -- coluna, sempre deriva olhando se existe de fato um
                 -- shift_log no papel assist do mesmo slot (ver decisão #16).
-shift_log_models  shift_log_id, model_id            -- 1+ linhas (double, sem teto desde esta sessão)
+shift_log_models  shift_log_id, model_id            -- 1+ linhas (double, sem teto desde a sessão de hospedagem)
 statements      id, shift_log_id, model_id, imagem_path, ocr_raw,
                 net_total, net_{assinaturas,gorjetas,publicacoes,mensagens,indicacoes},
-                corrigido_manualmente, refund_confirmado
+                corrigido_manualmente, refund_confirmado, anterior_manual
                 -- unique(shift_log_id, model_id): um report por modelo
+                -- anterior_manual (jsonb, migração 0018, sessão 06-12/08):
+                -- as 5 linhas net do turno anterior digitadas/OCR na hora,
+                -- pro "turno independente" — resolverAnterior() usa isso
+                -- antes de cair no buscarAnterior() automático. Vale só
+                -- pra ESSE statement, nunca vira elo permanente da cadeia.
 commission_rules  id, vigente_desde, regra (jsonb: percentual por cargo + fatia_assistente)
 ```
 
 `escala_time` (view, security definer) expõe `data, turno, bloco, funcao, origem, rep_nome, modelos_nome` pra qualquer rep autenticado — é o que a aba "Time" do schedule lê. `modelos_nome` vem de `shift_log_models` (modelo REAL trabalhada), não de um planejamento.
 
-`is_admin()` (SQL, security definer) = `role='admin' OR cargo in (grand_primaris, knight_primaris)` — usada em TODA política de RLS, tanto SELECT quanto INSERT/UPDATE/DELETE. `pode_ver()` (desde a migração 0014) = `is_admin() OR observador` — usada só nas políticas de SELECT de reps/shifts/shift_logs/statements, nunca nas de escrita (ver armadilha #14).
+`is_admin()` (SQL, security definer) = `role='admin' OR cargo in (grand_primaris, knight_primaris)` — usada em TODA política de RLS, tanto SELECT quanto INSERT/UPDATE/DELETE, **nunca** ganhou o cargo `admin_5c` (ele é só leitura). `pode_ver()` (desde a migração 0014, atualizada na 0016) = `is_admin() OR observador OR cargo = 'admin_5c'` — usada só nas políticas de SELECT de reps/shifts/shift_logs/statements, nunca nas de escrita (ver armadilha #14). `lib/auth.ts:podeVerAdmin()` é o espelho no app dessa mesma regra de três — `ehAdmin() || observador || cargo === 'admin_5c'`.
 
 Lista das migrações, em ordem — todas já rodadas no Supabase de produção deste projeto:
 
@@ -285,6 +378,10 @@ Lista das migrações, em ordem — todas já rodadas no Supabase de produção 
 | 0012 | Reverte a 0011; cria os 3 reps sintéticos de cover (ativo=false) |
 | 0013 | `is_admin()` passa a incluir cargo primaris (GP/KP administram igual admin) |
 | 0014 | `reps.observador` + `pode_ver()` (RLS só-leitura) + insere o Thomas |
+| 0015 | `cargo_t` ganha o valor `admin_5c` (só o `alter type add value`, sozinha — ver armadilha #21) |
+| 0016 | `pode_ver()` passa a reconhecer `cargo = 'admin_5c'` |
+| 0017 | `models.independente` (bool) — Kaylin marcada `true`; `buscarAnterior()` pula a cadeia pra quem tem esse flag |
+| 0018 | `statements.anterior_manual` (jsonb) + `models.externa` (bool) — "turno independente" completo + página fora dos times |
 
 ### Reps que NÃO são os 9 do time
 
@@ -296,6 +393,10 @@ Além da tabela "Os 9 reps" mais abaixo, a tabela `reps` tem hoje mais 4 linhas 
 | Cover Secundus | secundus | não | Idem, taxa de secundus (4%) |
 | Cover Primaris | knight_primaris | não | Idem, taxa de Knight Primaris (5,5%) — não existe "cover grand_primaris" |
 | Thomas (OM) | tertius (irrelevante) | **sim** | Acompanha admin/schedule/primaris sem editar nada — não faz parte do time |
+
+**Não confundir com "Admin 5C"**: não é uma linha fixa nessa tabela — é um **cargo** (`cargo_t = 'admin_5c'`) que qualquer rep pode receber pelo dropdown de cargo em `/admin/reps`, dando o mesmo acesso de leitura do Thomas mas vinculado ao cargo em vez de uma flag `observador` por pessoa. Ver decisão #21 da sessão 06–12/08.
+
+**Também não confundir com "Kaylin"**: essa é uma **modelo** (`models`, não `reps`) — página de conteúdo do roster do Time 1, com `independente=true`. Não é gente do time, é uma das páginas que o time trabalha (ou não, dependendo do turno).
 
 ---
 
@@ -309,6 +410,7 @@ Além da tabela "Os 9 reps" mais abaixo, a tabela `reps` tem hoje mais 4 linhas 
 | Knight Primaris | 5,5% |
 | Secundus | 4% |
 | Tertius | 3,5% |
+| Admin 5C | 0% — cargo de acesso, não de time; nunca ocupa slot de escala |
 
 - Todo mundo ganha **$2/hora** (`reps.valor_hora`).
 - Assistente **não tem comissão própria**: leva 10% da comissão do rep que assistiu, **saindo dela** (90/10). Total pago pelo slot é igual com ou sem assistente — só muda a divisão. Por isso o assistente **não reporta modelo/statement próprio** ao fechar o turno — só confirma o fechamento (ver decisão #16).
@@ -331,6 +433,12 @@ O que decide de qual time é uma venda é o bloco da PÁGINA (`models.bloco`), n
 **Cover** (desde a sessão de 05/08): quando ninguém do time pode fazer o turno, o admin escala um dos 3 reps sintéticos ("Cover Tertius", "Cover Secundus", "Cover Primaris") no lugar de uma pessoa de verdade — aparecem no mesmo seletor de reps de sempre. Pagam comissão pela taxa do cargo escolhido, mas ninguém realmente recebe esse dinheiro (são `ativo=false`, sem login, sem dono) — o que importa de verdade é a venda contar certo pro bônus de Party/Team addition dos primaris. Ver decisão #13 e armadilha #17 (não deixe o `turno`/`papel` deles colidir com o de um rep real).
 
 **Observador** (desde a sessão de 05/08): acesso de acompanhamento (vê admin/schedule/primaris) sem poder editar nada — pra gente de fora do time, tipo o Thomas (OM). `reps.observador = true`. Ver decisão #14 e armadilha #14.
+
+**Admin 5C** (desde a sessão de 06–12/08): mesmo acesso de acompanhamento que `observador`, mas vinculado ao **cargo** (`reps.cargo = 'admin_5c'`) em vez de uma flag solta por pessoa — igual GP/KP já concedem acesso de escrita vinculado ao cargo deles, não a uma flag. Escolhido no mesmo dropdown de cargo de sempre em `/admin/reps`, não é um tipo de conta separado. Comissão sempre 0% (não faz turno, não vende). Nunca ganha acesso de escrita — `is_admin()`/`ehAdmin()` continuam definidos só por `role='admin'` ou cargo primaris (GP/KP), de propósito (ver decisão #21).
+
+**Turno independente** (desde a sessão de 06–12/08, `models.independente`): pra páginas cuja cadeia de desconto (statement anterior → statement atual) não é confiável — hoje só a Kaylin. `buscarAnterior()` pula direto pro caso "primeiro turno do dia" pra essas modelos, então **nunca puxa statement de outro turno pra descontar**. Em troca, o turno vira "independente": T2/T3 e T4/T5 exigem os **dois** prints (o de antes do turno E o de agora — o rep sobe/digita ambos, ver `report-modelo.tsx`/`linha-turno.tsx`); T6/T1 exige só o print de agora, porque **T6/T1 é sempre o primeiro turno do dia**, não tem turno antes. A meta da modelo independente continua contando normal — só muda como o statement fecha, não a métrica.
+
+**Página externa** (desde a sessão de 06–12/08, `models.externa`): página que não pertence a NENHUM dos dois times (Bloco I/II) — exemplo hipotético "Kylie". Conta só pro **invoice pessoal** do rep que fez o turno; nunca entra em meta, nunca entra no bônus de Party/Team addition dos primaris. Aparece no histórico de turnos normalmente, mas **ignorando a coluna de %** (não tem meta pra bater). `buscarVendasDaEmpresa()`/`buscarResumoPrimaris()` (primarisDb.ts) e `buscarMetasDoRep()` (metaDb.ts) filtram essas modelos fora dos cálculos de meta/bônus, mas `vendido`/`porPagina`/invoice continuam contando a venda.
 
 **Os 9 reps** (turno / papel / cargo — `/admin/reps` é a fonte da verdade agora, inclusive se tem login vinculado):
 
@@ -360,20 +468,29 @@ lib/
   escalaDb.ts + .test.ts         resolve papel->rep_id (só ativo=true — armadilha #17),
                                   materializa no banco
   statement.ts + .test.ts        cadeia de delta do statement, diaDoStatement(), checagens
-  statementDb.ts                 busca o statement anterior na cadeia, contra o banco (por modelo)
+  statementDb.ts                 buscarAnterior() (pula a cadeia se models.independente) +
+                                  resolverAnterior() (usa anterior_manual quando veio do
+                                  "turno independente", senão cai em buscarAnterior())
   comissao.ts + .test.ts         pagamentoDoSlot() — percentual + fatia do assist
   comissaoDb.ts                  busca a regra vigente
   invoice.ts + .test.ts          soma horas+comissão por slot, soma double por modelo, saiuAntes
-  invoiceDb.ts                   buscarSlotsDoRep() — usado por /invoice e pelo dashboard
+  invoiceDb.ts                   buscarSlotsDoRep() — usado por /invoice e pelo dashboard;
+                                  montarModelos() usa resolverAnterior()
   turno.ts + .test.ts            janela oficial, horasDoTurno() (regra saiuAntes), podeIniciar() (sem fim)
   meta.ts + .test.ts             metaDiariaDaPagina(), calcularMetas(), corDaMeta(), temRaio()
   metaDb.ts                      buscarMetasDoRep(), buscarRecordeDoRep() — sempre com cliente
-                                  admin, nunca com a sessão do próprio rep (armadilha #15)
-  primarisDb.ts                  buscarVendasDaEmpresa() (com turno, pra meta por venda),
-                                  buscarResumoPrimaris() (porRep já com meta/%), buscarBonusPrimaris()
+                                  admin, nunca com a sessão do próprio rep (armadilha #15);
+                                  filtra models.externa fora de meta/turnosParaMeta (mas não
+                                  de vendido/porPagina); LinhaMetaTurno.porPagina p/ o
+                                  breakdown por página no histórico de /turno
+  primarisDb.ts                  buscarVendasDaEmpresa() (com turno, pra meta por venda,
+                                  pula models.externa), buscarResumoPrimaris() (porRep já
+                                  com meta/%, ResumoPagina.projecao/percentualProjetado pro
+                                  MTD extrapolado), buscarBonusPrimaris()
   imagem.ts                      reduzirImagem() — resize+base64, compartilhado turno/admin
   tempo.ts                       conversão UTC <-> BRT + helpers de mês (mesAtual, limitesDoMes, etc.)
-  tipos.ts                       tipos do domínio (espelham os enums do Postgres)
+  tipos.ts                       tipos do domínio (espelham os enums do Postgres) — Cargo
+                                  ganhou 'admin_5c'; Model ganhou independente/externa
   ocrPrompt.ts                   prompt + schema do OCR, compartilhado por rota e eval
 
 app/api/ocr/route.ts             chama a Anthropic (modelo configurável via OCR_MODEL)
@@ -388,40 +505,78 @@ app/(auth)/
   aguardando/page.tsx             sessão sem rep vinculado cai aqui, não em /login (evita loop)
   campo-senha.tsx                 input de senha com botão mostrar/esconder, compartilhado
 
+app/loading-overlay.tsx          overlay global entre navegações — listener de click em
+                                  CAPTURE phase (bubble perde pro onClick do next/link, ver
+                                  armadilha #20) + detecção de troca de pathname; visivel=false
+                                  ajustado durante o render (não em useEffect — ver
+                                  set-state-in-effect nos Erros e fixes desta sessão)
+
 app/(app)/
-  layout.tsx                     header com logo+nome linkando pra "/", nav (admin= podeVerAdmin())
+  meta-visual.tsx                 CORES (Record<CorMeta,string>) + IconeRaio() — extraído de
+                                  page.tsx pra reuso em Home/histórico de turno/primaris
+  layout.tsx                     header com logo+nome linkando pra "/", nav (admin= podeVerAdmin(),
+                                  true também pra cargo admin_5c)
   page.tsx                       dashboard: cartão nome+turno+cargo, aviso de turno vazio pros
                                   primaris (buscarTurnosVazios), cards de meta/invoice/recorde
-                                  (com cliente admin — armadilha #15)
+                                  (com cliente admin — armadilha #15); nomes de modelo em azul
   cartao-invoice.tsx              client — invoice mascarado, botão de olho
-  schedule/page.tsx              "Meus turnos" + "Time" (destaque do rep logado na grade)
+  schedule/
+    page.tsx                     "Meus turnos" + "Time"; AbaMeus busca buscarMetasDoRep() do
+                                  mês do calendário e monta diasInfo (DiaDoCalendario) pra cada
+                                  dia; AbaTime é table-fixed com colunas de dia simétricas
+                                  (w-[calc((100%-7rem)/7)]), destaque do rep logado é fundo
+                                  preenchido (bg-accent-fraco), não anel
+    meus-turnos.tsx               client — lista semanal + calendário mensal (segunda-feira
+                                  primeiro); dias já trabalhados pintam a cor pastel da faixa
+                                  de meta atingida (CORES_PASTEL) com raio e % no canto
   turno/                         clock in/out + report double
     page.tsx                     resolve o turno atual — busca em paralelo "pra iniciar" (data
                                   bate com hoje) E "em aberto" (log sem clock_out_at, sem filtro
                                   de data — armadilha #16); calcula meta diária por modelo e se
-                                  o slot tem assistente de verdade trabalhando (temAssistente)
-    painel.tsx                   linha fixa de "Meta do turno" sempre visível; passa
-                                  assist/temAssistente pro ModalReport
+                                  o slot tem assistente de verdade trabalhando (temAssistente);
+                                  H1 "Turnos"; nova seção de histórico mensal com % por página
+                                  empilhado (ex.: Joyce / Issy) e destaque de recorde
+    painel.tsx                   linha fixa de "Meta do turno" sempre visível (total + linha
+                                  por modelo); "Bloco X" virou "Vortex X"; passa turno/modelos
+                                  completos pro ModalReport
     modal-report.tsx             modo assist: sem grade de report, sem checkbox "teve
-                                  assistente" — só resumo + saiu antes + confirmar
-    report-modelo.tsx, actions.ts
-  invoice/page.tsx                invoice mensal, seção de bônus pros primaris
-  primaris/page.tsx               aba Primaris (gate: cargo primaris OU observador); tabela
-                                  "Por rep" com Meta e % atingida
+                                  assistente" — só resumo + saiu antes + confirmar; passa
+                                  turno/independente pro ReportModelo
+    report-modelo.tsx             duas instâncias de CapturaPrint quando a modelo é
+                                  independente e o turno não é T6T1 ("print de antes" + "print
+                                  de agora"); senão, uma só, igual sempre foi
+    captura-print.tsx             componente extraído (upload/paste/drag + OCR + entrada
+                                  manual de 5 linhas) — compartilhado entre report-modelo.tsx
+                                  (rep) e admin/turnos/linha-turno.tsx (admin)
+    actions.ts                    trocarModelos() reescrito: upsert-then-delete-only-removed
+                                  (ver Erros e fixes / INCIDENTE 2); finalizarTurno() grava
+                                  anterior_manual junto do statement
+  invoice/page.tsx                invoice mensal, seção de bônus pros primaris; header mostra
+                                  o % de comissão do cargo (percentualComissao())
+  primaris/page.tsx               aba Primaris (gate: cargo primaris OU observador OU
+                                  admin_5c); tabela "Por rep" com Meta e % atingida; tabela
+                                  "Por página" ganhou coluna de Projeção (MTD extrapolado)
   admin/
     layout.tsx                   guarda: podeVerAdmin() (admin/primaris/observador VEEM;
                                   ehAdmin() sozinho continua travando toda escrita)
     admin-nav.tsx                sub-nav Turnos/Reps/Modelos
-    reps/                        editar cargo/turno/valor_hora/nomes + coluna "Login" (vincular)
-                                  — podeEditar (=ehAdmin()) esconde o botão "editar" e os
-                                  controles de vincular/desvincular login pro observador
+    reps/                        editar cargo (dropdown inclui admin_5c)/turno/valor_hora/nomes
+                                  + coluna "Login" (vincular) + coluna "Observador" — podeEditar
+                                  (=ehAdmin()) esconde o botão "editar" e os controles de
+                                  vincular/desvincular login pro observador
     reps/[id]/page.tsx            tela de meta por rep (mês, nav ←/→) — só leitura, sem gate extra
-    models/                      roster por time, meta_mensal editável — podeEditar esconde
+    models/                      roster por time, meta_mensal editável, badges/toggle de
+                                  "independente" e "externa" (linha-modelo.tsx) + checkboxes
+                                  no formulário de criar — podeEditar esconde
                                   renomear/desativar/apagar e o formulário de criar
     turnos/                      grade editável (grade-escala.tsx, key={inicio}, podeEditar
                                   vira texto simples sem select nem "Salvar alterações") +
                                   lista de ponto/statement/comissão pra teste manual
-                                  (linha-turno.tsx, podeEditar esconde editar/apagar/simular)
+                                  (linha-turno.tsx, podeEditar esconde editar/apagar/simular;
+                                  mostra bloco "print de antes" + "print de agora" quando a
+                                  modelo é independente e o turno não é T6T1, via
+                                  LinhasComOcr/CapturaPrint compartilhado); actions.ts com o
+                                  mesmo fix upsert-then-delete-only-removed do simularPonto()
 ```
 
 ---
@@ -434,6 +589,10 @@ app/(app)/
 - **`shift_logs.teve_assistente`** é só informativo (ver decisão #16 / armadilha na coluna) — nunca é lido pra calcular comissão ou bônus. Se um dia precisar que ele influencie algum cálculo, os 3 lugares que hoje derivam "teve assistente" olhando o shift_log de verdade (`invoiceDb.ts`, `admin/turnos/page.tsx`, `primarisDb.ts`) precisam ser revistos juntos, não só um.
 - **`/admin/reps`** ainda lista os 3 reps sintéticos de cover + o Thomas junto com os 9 de verdade (a query nunca filtrou `ativo`) — cosmético, sem função ali, mas se algum dia incomodar dá pra filtrar `ativo=true` nessa tela específica sem afetar nada mais (ela é só visual, não trava lógica).
 - **Fora de escopo** (decidido desde o início): banco de scripts, pedidos de folga/troca, dicas/material de apoio, export pro template `.xlsx` oficial.
+- **Cargo `admin_5c` ainda não está atribuído a ninguém** — foi criado como opção no dropdown de `/admin/reps`, mas nenhum rep real recebeu esse cargo ainda; falta o Pedro (ou outro GP/KP) escolher quem vai ter esse acesso.
+- **"Turno independente" (T2T3/T4T5 com dois prints) ainda não foi exercitado com dado real de produção** — só a Kaylin tem `independente=true` até agora, e o fluxo de dois prints (antes + agora) foi testado no deploy mas ainda não passou por um fechamento de turno de verdade do time. Vale acompanhar o primeiro uso real de perto.
+- **"Página externa" (`models.externa`) ainda não tem nenhuma página cadastrada** — é infraestrutura pronta pra quando surgir uma página fora dos dois times (o exemplo "Kylie" do pedido do usuário era hipotético); ninguém criou essa modelo ainda.
+- **Login do Thomas** segue pendente igual antes (ver linha acima) — Admin 5C não substitui isso, são dois mecanismos de acesso paralelos (observador = flag por pessoa; admin_5c = cargo).
 
 ---
 
