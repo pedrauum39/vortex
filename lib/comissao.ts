@@ -67,3 +67,14 @@ export function pagamentoDoSlot(
       : null,
   };
 }
+
+/**
+ * Comissão do Turno Extra (docs/superpowers/specs/2026-08-18-turno-extra-
+ * design.md) — sem hora/hora (não tem clock-in) e sem fatia de assistente
+ * (é sempre um rep só reportando). Grand Primaris recebe na taxa de Knight
+ * Primaris, não na própria — decisão de negócio confirmada pelo usuário.
+ */
+export function comissaoTurnoExtra(base: number, cargo: Cargo, regra: RegraComissao): number {
+  const cargoEfetivo = cargo === 'grand_primaris' ? 'knight_primaris' : cargo;
+  return centavos(base * regra.percentual[cargoEfetivo]);
+}

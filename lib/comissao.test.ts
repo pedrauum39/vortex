@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { REGRA_PADRAO, pagamentoDoSlot } from './comissao';
+import { REGRA_PADRAO, comissaoTurnoExtra, pagamentoDoSlot } from './comissao';
 
 describe('pagamentoDoSlot', () => {
   test('o exemplo do Pedro: GP com $100 de base e assistente', () => {
@@ -94,5 +94,25 @@ describe('pagamentoDoSlot', () => {
     // 6% de 1786,77 = 107,2062
     expect(regular.comissao).toBe(107.21);
     expect(regular.total).toBe(123.21);
+  });
+});
+
+describe('comissaoTurnoExtra', () => {
+  test('Grand Primaris recebe a taxa de Knight Primaris, não a própria', () => {
+    expect(comissaoTurnoExtra(1000, 'grand_primaris', REGRA_PADRAO)).toBe(55);
+  });
+
+  test('os outros cargos recebem a taxa deles mesmos', () => {
+    expect(comissaoTurnoExtra(1000, 'knight_primaris', REGRA_PADRAO)).toBe(55);
+    expect(comissaoTurnoExtra(1000, 'secundus', REGRA_PADRAO)).toBe(40);
+    expect(comissaoTurnoExtra(1000, 'tertius', REGRA_PADRAO)).toBe(35);
+  });
+
+  test('Admin 5C não recebe nada (cargo de acesso, não trabalha turno)', () => {
+    expect(comissaoTurnoExtra(1000, 'admin_5c', REGRA_PADRAO)).toBe(0);
+  });
+
+  test('arredonda em centavos', () => {
+    expect(comissaoTurnoExtra(1786.77, 'grand_primaris', REGRA_PADRAO)).toBe(98.27);
   });
 });
