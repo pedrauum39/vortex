@@ -7,6 +7,7 @@ import { buscarAnterior, type Anterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import type { Turno } from '@/lib/tipos';
 import { MINUTOS_DE_ANTECEDENCIA, podeIniciar } from '@/lib/turno';
+import { lancarTurnoExtra } from '@/lib/turnosExtraDb';
 
 // Nada de `export type` aqui: um arquivo 'use server' só pode exportar
 // funções async — reexportar um tipo quebra em runtime com "X is not
@@ -99,6 +100,29 @@ export async function trocarModelos(logId: string, modeloIds: string[]) {
   revalidar();
 }
 
+export async function lancarTurnoExtraAction(dados: {
+  id: string;
+  data: string;
+  turno: Turno;
+  modeloId: string | null;
+  nomeLivre: string | null;
+  atual: LinhasNet;
+  anterior: LinhasNet | null;
+  imagemAtualPath: string | null;
+  ocrAtualRaw: unknown;
+  imagemAnteriorPath: string | null;
+  ocrAnteriorRaw: unknown;
+}) {
+  const rep = await exigirRep();
+  const supabase = await criarClienteServidor();
+
+  await lancarTurnoExtra(supabase, { ...dados, repId: rep.id });
+
+  revalidatePath('/turno');
+  revalidatePath('/invoice');
+  revalidatePath('/primaris');
+}
+
 /**
  * As linhas net do statement da MESMA modelo no turno anterior da cadeia.
  * Atravessa o RLS de propósito: o turno anterior pode ser de OUTRO rep. O que
@@ -128,8 +152,6 @@ export type ReportModelo = {
   ocrRaw: unknown;
   corrigidoManualmente: boolean;
   refundConfirmado: boolean;
-  /** Print anterior digitado/lido na hora — só "turno independente" (T2T3/T4T5). */
-  anteriorManual: LinhasNet | null;
 };
 
 export type DadosReport = {
@@ -166,7 +188,6 @@ export async function finalizarTurno(logId: string, dados: DadosReport) {
       net_indicacoes: r.linhas.indicacoes,
       corrigido_manualmente: r.corrigidoManualmente,
       refund_confirmado: r.refundConfirmado,
-      anterior_manual: r.anteriorManual,
     })),
     { onConflict: 'shift_log_id,model_id' },
   );
