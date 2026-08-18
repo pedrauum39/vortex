@@ -6,8 +6,7 @@ import {
   apagarModelo,
   criarModelo,
   definirAtivaModelo,
-  definirExterna,
-  definirIndependente,
+  definirExtra,
   definirMetaMensal,
   renomearModelo,
 } from './actions';
@@ -47,14 +46,9 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
           <>
             {model.nome}
             {!model.ativa && <span className="ml-2 text-xs text-texto-fraco">(inativa)</span>}
-            {model.independente && (
+            {model.extra && (
               <span className="ml-2 rounded-md bg-accent-fraco px-1.5 py-0.5 text-xs text-accent">
-                independente
-              </span>
-            )}
-            {model.externa && (
-              <span className="ml-2 rounded-md border border-borda px-1.5 py-0.5 text-xs text-texto-fraco">
-                externa
+                extra
               </span>
             )}
           </>
@@ -119,18 +113,10 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
               <button
                 type="button"
                 disabled={pendente}
-                onClick={() => rodar(() => definirIndependente(model.id, !model.independente))}
+                onClick={() => rodar(() => definirExtra(model.id, !model.extra))}
                 className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
               >
-                {model.independente ? 'tirar independente' : 'marcar independente'}
-              </button>
-              <button
-                type="button"
-                disabled={pendente}
-                onClick={() => rodar(() => definirExterna(model.id, !model.externa))}
-                className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
-              >
-                {model.externa ? 'tirar externa' : 'marcar externa'}
+                {model.extra ? 'tirar extra' : 'marcar extra'}
               </button>
               <button
                 type="button"
@@ -154,8 +140,7 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
 
 export function FormularioModelo({ bloco }: { bloco: Bloco }) {
   const [nome, setNome] = useState('');
-  const [independente, setIndependente] = useState(false);
-  const [externa, setExterna] = useState(false);
+  const [extra, setExtra] = useState(false);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -164,10 +149,9 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
     executar(async () => {
       setErro(null);
       try {
-        await criarModelo(nome.trim(), bloco, independente, externa);
+        await criarModelo(nome.trim(), bloco, extra);
         setNome('');
-        setIndependente(false);
-        setExterna(false);
+        setExtra(false);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
       }
@@ -196,20 +180,11 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
         <label className="flex items-center gap-1.5">
           <input
             type="checkbox"
-            checked={independente}
-            onChange={(e) => setIndependente(e.target.checked)}
+            checked={extra}
+            onChange={(e) => setExtra(e.target.checked)}
             className="size-3.5 accent-[var(--color-accent)]"
           />
-          independente (ex.: Kaylin — sem cadeia de desconto confiável)
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={externa}
-            onChange={(e) => setExterna(e.target.checked)}
-            className="size-3.5 accent-[var(--color-accent)]"
-          />
-          externa (fora dos dois times — só invoice pessoal, sem meta/bônus)
+          extra (ex.: Kaylin — sem cadeia de desconto confiável, só via aba &quot;Turno Extra&quot;)
         </label>
       </div>
       {erro && <span className="text-xs text-red-400">{erro}</span>}
