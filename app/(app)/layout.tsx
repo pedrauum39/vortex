@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { exigirRep, podeVerAdmin } from '@/lib/auth';
 import { rotuloTurno } from '@/lib/tipos';
 import { Nav } from './nav';
+import { PopupBoasVindas } from './popup-boas-vindas';
 
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const rep = await exigirRep();
 
   return (
     <div className="relative flex min-h-dvh flex-col">
+      <PopupBoasVindas />
       <header className="border-b border-borda bg-superficie/60 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
           <Link
