@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { exigirRep } from '@/lib/auth';
 import { corDaMeta, temRaio } from '@/lib/meta';
-import { buscarResumoPrimaris, type ResumoPagina } from '@/lib/primarisDb';
+import { buscarHistoricoModelos, buscarResumoPrimaris, type EventoHistorico, type ResumoPagina } from '@/lib/primarisDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
-import { limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
+import { diaLegivel, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, type Bloco } from '@/lib/tipos';
 import { CORES, IconeRaio } from '../meta-visual';
 
@@ -31,7 +31,10 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
   const mes = mesParam ?? mesAtual();
   const { inicio, fim } = limitesDoMes(mes);
 
-  const resumo = await buscarResumoPrimaris(criarClienteAdmin(), inicio, fim);
+  const [resumo, historico] = await Promise.all([
+    buscarResumoPrimaris(criarClienteAdmin(), inicio, fim),
+    buscarHistoricoModelos(criarClienteAdmin(), inicio, fim),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -120,6 +123,29 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
           </table>
         </div>
       </section>
+
+      {historico.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-medium text-texto-fraco">Histórico</h2>
+          <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
+            <table className="w-full min-w-[40rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-borda text-left text-texto-fraco">
+                  <th className="px-4 py-3 font-medium">Modelo</th>
+                  <th className="px-3 py-3 font-medium">Mudança</th>
+                  <th className="px-3 py-3 font-medium">Data</th>
+                  <th className="px-4 py-3 text-right font-medium">Vendido no período</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.map((evento, i) => (
+                  <LinhaHistorico key={i} evento={evento} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -149,6 +175,20 @@ function LinhaPagina({ pagina }: { pagina: ResumoPagina }) {
           </div>
         )}
       </td>
+    </tr>
+  );
+}
+
+function LinhaHistorico({ evento }: { evento: EventoHistorico }) {
+  const destino = evento.blocoDestino === null ? 'desativada' : NOME_TIME[evento.blocoDestino];
+  return (
+    <tr className="border-b border-borda last:border-0">
+      <td className="px-4 py-3">{evento.modeloNome}</td>
+      <td className="px-3 py-3 text-texto-fraco">
+        {NOME_TIME[evento.blocoOrigem]} → {destino}
+      </td>
+      <td className="px-3 py-3 text-texto-fraco">{diaLegivel(evento.data)}</td>
+      <td className="px-4 py-3 text-right font-medium">{dinheiro(evento.vendido)}</td>
     </tr>
   );
 }
