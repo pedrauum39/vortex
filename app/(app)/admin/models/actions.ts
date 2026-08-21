@@ -116,7 +116,8 @@ export async function definirAtivaModelo(id: string, ativa: boolean) {
       .is('fim', null)
       .maybeSingle();
     if (!aberto) {
-      const { data: modelo } = await supabase.from('models').select('bloco').eq('id', id).single();
+      const { data: modelo, error: erroBusca } = await supabase.from('models').select('bloco').eq('id', id).single();
+      if (erroBusca) throw new Error(erroBusca.message);
       if (modelo) await abrirPeriodo(supabase, id, modelo.bloco, hoje);
     }
   } else {
