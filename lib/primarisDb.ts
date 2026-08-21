@@ -357,7 +357,7 @@ export async function buscarHistoricoModelos(
   for (const periodo of fechados) {
     if (!periodo.models) continue;
     const destino = todos.find((t) => t.model_id === periodo.model_id && t.inicio === periodo.fim);
-    const vendasDoPeriodo = await buscarVendasDaEmpresa(db, periodo.inicio, periodo.fim);
+    const vendasDoPeriodo = await buscarVendasDaEmpresa(db, periodo.inicio, somarDias(periodo.fim, -1));
     const vendido = arred(
       vendasDoPeriodo
         .filter((v) => v.modeloId === periodo.model_id)
