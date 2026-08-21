@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
+import { blocoNaData, metaProrateada, type Periodo } from './periodos';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { dataBRT, diasNoMes, somarDias } from './tempo';
@@ -66,6 +67,16 @@ type LinhaShift = {
   }[];
 };
 
+async function buscarPeriodos(db: SupabaseClient): Promise<Periodo[]> {
+  const { data } = await db.from('model_bloco_periodos').select('model_id, bloco, inicio, fim');
+  return ((data ?? []) as { model_id: string; bloco: Bloco; inicio: string; fim: string | null }[]).map((p) => ({
+    modeloId: p.model_id,
+    bloco: p.bloco,
+    inicio: p.inicio,
+    fim: p.fim,
+  }));
+}
+
 /** Todo mundo que trabalhou uma modelo, turno a turno, no período — o delta de cada um. */
 export async function buscarVendasDaEmpresa(
   db: SupabaseClient,
@@ -89,13 +100,14 @@ export async function buscarVendasDaEmpresa(
   const shifts = ((shiftsData ?? []) as unknown as LinhaShift[]).filter((s) =>
     dentroDoPeriodo(s.turno, s.data, inicio, fim),
   );
+  const periodos = await buscarPeriodos(db);
   const vendas: VendaDeModelo[] = [];
 
   for (const shift of shifts) {
     const log = shift.shift_logs[0];
     if (!log || !shift.rep_id || !shift.reps) continue;
 
-    for (const { model_id, models: modelo } of log.shift_log_models) {
+    for (const { model_id } of log.shift_log_models) {
       const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
       if (!statement) continue;
 
@@ -112,11 +124,15 @@ export async function buscarVendasDaEmpresa(
       const anteriorLinhas = anterior.tipo === 'ok' ? anterior.linhas : null;
       const delta = deltaTurno(linhasAtuais, anteriorLinhas);
 
+      const dia = diaDoStatement(shift.turno, shift.data);
+      const bloco = blocoNaData(periodos, model_id, dia);
+      if (bloco === null) continue; // defensivo: sem período cobrindo, não atribui a nenhum time
+
       vendas.push({
         repId: shift.rep_id,
         repCargo: shift.reps.cargo,
         modeloId: model_id,
-        modeloBloco: modelo.bloco,
+        modeloBloco: bloco,
         turno: shift.turno,
         vendidoTotal: totalDasLinhas(delta),
         vendidoComissionavel: baseComissao(delta),
@@ -164,11 +180,16 @@ export async function buscarVendasDaEmpresa(
       indicacoes: Number(e.net_indicacoes),
     };
     const delta = deltaTurno(atuais, e.anterior);
+
+    const dia = diaDoStatement(e.turno, e.data);
+    const bloco = blocoNaData(periodos, e.model_id, dia);
+    if (bloco === null) continue;
+
     vendas.push({
       repId: e.rep_id,
       repCargo: e.reps.cargo,
       modeloId: e.model_id,
-      modeloBloco: e.models.bloco,
+      modeloBloco: bloco,
       turno: e.turno,
       vendidoTotal: totalDasLinhas(delta),
       vendidoComissionavel: baseComissao(delta),
@@ -211,20 +232,17 @@ export async function buscarResumoPrimaris(
   inicio: string,
   fim: string,
 ): Promise<ResumoPrimaris> {
-  const [vendas, { data: repsData }, { data: modelsData }] = await Promise.all([
+  const [vendas, { data: repsData }, { data: modelsData }, periodos] = await Promise.all([
     buscarVendasDaEmpresa(db, inicio, fim),
     db.from('reps').select('id, nome_curto, cargo').eq('ativo', true).order('nome_curto'),
-    db
-      .from('models')
-      .select('id, nome, bloco, meta_mensal')
-      .eq('ativa', true)
-      .order('bloco')
-      .order('nome'),
+    db.from('models').select('id, nome, bloco, meta_mensal, ativa').order('bloco').order('nome'),
+    buscarPeriodos(db),
   ]);
 
   const reps = (repsData ?? []) as { id: string; nome_curto: string; cargo: Cargo }[];
-  const models = (modelsData ?? []) as { id: string; nome: string; bloco: Bloco; meta_mensal: number }[];
-  const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
+  const models = (modelsData ?? []) as { id: string; nome: string; bloco: Bloco; meta_mensal: number; ativa: boolean }[];
+  const modelsAtivos = models.filter((m) => m.ativa);
+  const metaPorModelo = new Map(modelsAtivos.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
   // direto dele sem precisar de mais um parâmetro.
   const mes = inicio.slice(0, 7);
@@ -259,7 +277,7 @@ export async function buscarResumoPrimaris(
     })
     .sort((a, b) => b.vendido - a.vendido);
 
-  const porPagina: ResumoPagina[] = models.map((m) => {
+  const porPagina: ResumoPagina[] = modelsAtivos.map((m) => {
     const vendido = arred(vendidoPorModelo.get(m.id) ?? 0);
     const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
     return {
@@ -276,9 +294,12 @@ export async function buscarResumoPrimaris(
 
   const porTime = {} as ResumoPrimaris['porTime'];
   for (const bloco of ['I', 'II'] as Bloco[]) {
-    const paginasDoTime = porPagina.filter((p) => p.bloco === bloco);
-    const vendido = arred(paginasDoTime.reduce((s, p) => s + p.vendido, 0));
-    const meta = arred(paginasDoTime.reduce((s, p) => s + p.meta, 0));
+    const vendido = arred(
+      vendas.filter((v) => v.modeloBloco === bloco).reduce((s, v) => s + v.vendidoTotal, 0),
+    );
+    const meta = arred(
+      models.reduce((s, m) => s + metaProrateada(periodos, m.id, m.meta_mensal, inicio, fim, diasDoMes)[bloco], 0),
+    );
     porTime[bloco] = { vendido, meta, percentual: percentualAtingido(vendido, meta) };
   }
 
@@ -291,6 +312,66 @@ export async function buscarResumoPrimaris(
     porTime,
     total: { vendido: vendidoTotal, meta: metaTotal, percentual: percentualAtingido(vendidoTotal, metaTotal) },
   };
+}
+
+export type EventoHistorico = {
+  modeloNome: string;
+  blocoOrigem: Bloco;
+  blocoDestino: Bloco | null; // null = desativada, sem período novo aberto
+  data: string; // data em que o período fechou
+  vendido: number;
+};
+
+/** Trocas de time / desativações que fecharam um período dentro de [inicio, fim]. */
+export async function buscarHistoricoModelos(
+  db: SupabaseClient,
+  inicio: string,
+  fim: string,
+): Promise<EventoHistorico[]> {
+  const { data: periodosData } = await db
+    .from('model_bloco_periodos')
+    .select('model_id, bloco, inicio, fim, models(nome)')
+    .not('fim', 'is', null)
+    .gte('fim', inicio)
+    .lte('fim', fim)
+    .order('fim');
+
+  type LinhaPeriodoFechado = {
+    model_id: string;
+    bloco: Bloco;
+    inicio: string;
+    fim: string;
+    models: { nome: string } | null;
+  };
+  const fechados = (periodosData ?? []) as unknown as LinhaPeriodoFechado[];
+  if (fechados.length === 0) return [];
+
+  const modeloIds = [...new Set(fechados.map((p) => p.model_id))];
+  const { data: todosData } = await db
+    .from('model_bloco_periodos')
+    .select('model_id, bloco, inicio, fim')
+    .in('model_id', modeloIds);
+  const todos = (todosData ?? []) as { model_id: string; bloco: Bloco; inicio: string; fim: string | null }[];
+
+  const eventos: EventoHistorico[] = [];
+  for (const periodo of fechados) {
+    if (!periodo.models) continue;
+    const destino = todos.find((t) => t.model_id === periodo.model_id && t.inicio === periodo.fim);
+    const vendasDoPeriodo = await buscarVendasDaEmpresa(db, periodo.inicio, periodo.fim);
+    const vendido = arred(
+      vendasDoPeriodo
+        .filter((v) => v.modeloId === periodo.model_id)
+        .reduce((s, v) => s + v.vendidoTotal, 0),
+    );
+    eventos.push({
+      modeloNome: periodo.models.nome,
+      blocoOrigem: periodo.bloco,
+      blocoDestino: destino ? destino.bloco : null,
+      data: periodo.fim,
+      vendido,
+    });
+  }
+  return eventos;
 }
 
 export type CargoPrimaris = 'grand_primaris' | 'knight_primaris';
