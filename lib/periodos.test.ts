@@ -48,6 +48,16 @@ describe('diasDeCruzamento', () => {
     const periodo = { inicio: '2026-06-01', fim: '2026-06-30' };
     expect(diasDeCruzamento(periodo, '2026-08-01', '2026-08-31')).toBe(0);
   });
+
+  test('período fecha exatamente no fim da consulta — fim é exclusivo', () => {
+    const periodo = { inicio: '2026-08-01', fim: '2026-08-31' };
+    expect(diasDeCruzamento(periodo, '2026-08-01', '2026-08-31')).toBe(30);
+  });
+
+  test('período abre exatamente no fim da consulta anterior — pega o dia que foi excluído', () => {
+    const periodo = { inicio: '2026-08-31', fim: null };
+    expect(diasDeCruzamento(periodo, '2026-08-01', '2026-08-31')).toBe(1);
+  });
 });
 
 describe('metaProrateada', () => {
