@@ -24,22 +24,30 @@ create policy model_bloco_periodos_select on model_bloco_periodos
 create policy model_bloco_periodos_write on model_bloco_periodos
   for all to authenticated using (is_admin()) with check (is_admin());
 
--- Backfill: cada modelo existente ganha um período aberto no bloco atual
--- dela, começando na venda mais antiga já registrada (shift_log_models via
--- shifts, ou turnos_extra) — sem venda nenhuma, começa hoje.
+-- Backfill: cada modelo existente ganha um período no bloco atual dela,
+-- começando na venda mais antiga já registrada (shift_log_models via shifts,
+-- ou turnos_extra) — sem venda nenhuma, começa hoje. Modelo já ativa=false
+-- antes dessa feature existir ganha período já fechado (fim = inicio, período
+-- de duração zero) — do contrário fica um período aberto pra sempre, inflando
+-- a meta prorateada dela indefinidamente (metaProrateada não filtra por ativa
+-- de propósito, pra dar crédito parcial em desativação no meio do mês).
+with datas as (
+  select
+    m.id,
+    m.bloco,
+    m.ativa,
+    coalesce(
+      least(
+        (select min(sh.data) from shift_log_models slm
+          join shift_logs sl on sl.id = slm.shift_log_id
+          join shifts sh on sh.id = sl.shift_id
+          where slm.model_id = m.id),
+        (select min(te.data) from turnos_extra te where te.model_id = m.id)
+      ),
+      current_date
+    ) as inicio
+  from models m
+)
 insert into model_bloco_periodos (model_id, bloco, inicio, fim)
-select
-  m.id,
-  m.bloco,
-  coalesce(
-    least(
-      (select min(sh.data) from shift_log_models slm
-        join shift_logs sl on sl.id = slm.shift_log_id
-        join shifts sh on sh.id = sl.shift_id
-        where slm.model_id = m.id),
-      (select min(te.data) from turnos_extra te where te.model_id = m.id)
-    ),
-    current_date
-  ),
-  null
-from models m;
+select id, bloco, inicio, case when ativa then null else inicio end
+from datas;

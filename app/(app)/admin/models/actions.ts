@@ -49,8 +49,10 @@ export async function criarModelo(nome: string, bloco: Bloco, extra: boolean) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  const { error } = await supabase.from('models').insert({ nome, bloco, extra });
+  const { data, error } = await supabase.from('models').insert({ nome, bloco, extra }).select('id').single();
   if (error) throw new Error(error.message);
+
+  await abrirPeriodo(supabase, data.id, bloco, dataBRT());
 
   revalidar();
 }
@@ -109,12 +111,13 @@ export async function definirAtivaModelo(id: string, ativa: boolean) {
   const hoje = dataBRT();
 
   if (ativa) {
-    const { data: aberto } = await supabase
+    const { data: aberto, error: erroAberto } = await supabase
       .from('model_bloco_periodos')
       .select('id')
       .eq('model_id', id)
       .is('fim', null)
       .maybeSingle();
+    if (erroAberto) throw new Error(erroAberto.message);
     if (!aberto) {
       const { data: modelo, error: erroBusca } = await supabase.from('models').select('bloco').eq('id', id).single();
       if (erroBusca) throw new Error(erroBusca.message);

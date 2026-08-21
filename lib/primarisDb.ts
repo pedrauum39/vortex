@@ -68,7 +68,8 @@ type LinhaShift = {
 };
 
 async function buscarPeriodos(db: SupabaseClient): Promise<Periodo[]> {
-  const { data } = await db.from('model_bloco_periodos').select('model_id, bloco, inicio, fim');
+  const { data, error } = await db.from('model_bloco_periodos').select('model_id, bloco, inicio, fim');
+  if (error) throw new Error(error.message);
   return ((data ?? []) as { model_id: string; bloco: Bloco; inicio: string; fim: string | null }[]).map((p) => ({
     modeloId: p.model_id,
     bloco: p.bloco,
@@ -357,7 +358,11 @@ export async function buscarHistoricoModelos(
   for (const periodo of fechados) {
     if (!periodo.models) continue;
     const destino = todos.find((t) => t.model_id === periodo.model_id && t.inicio === periodo.fim);
-    const vendasDoPeriodo = await buscarVendasDaEmpresa(db, periodo.inicio, somarDias(periodo.fim, -1));
+    const vendasDoPeriodo = await buscarVendasDaEmpresa(
+      db,
+      periodo.inicio > inicio ? periodo.inicio : inicio,
+      somarDias(periodo.fim, -1),
+    );
     const vendido = arred(
       vendasDoPeriodo
         .filter((v) => v.modeloId === periodo.model_id)

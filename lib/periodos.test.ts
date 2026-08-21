@@ -26,6 +26,14 @@ describe('blocoNaData', () => {
   test('modelo desconhecida devolve null', () => {
     expect(blocoNaData(periodosIssy, 'outra', '2026-08-10')).toBeNull();
   });
+
+  test('gap entre dois períodos (desativada e reativada depois) devolve null dentro do buraco', () => {
+    const periodosComGap: Periodo[] = [
+      { modeloId: 'kaylin', bloco: 'I', inicio: '2026-06-01', fim: '2026-06-15' },
+      { modeloId: 'kaylin', bloco: 'I', inicio: '2026-07-01', fim: null },
+    ];
+    expect(blocoNaData(periodosComGap, 'kaylin', '2026-06-20')).toBeNull();
+  });
 });
 
 describe('diasDeCruzamento', () => {
@@ -58,6 +66,11 @@ describe('diasDeCruzamento', () => {
     const periodo = { inicio: '2026-08-31', fim: null };
     expect(diasDeCruzamento(periodo, '2026-08-01', '2026-08-31')).toBe(1);
   });
+
+  test('período de duração zero (inicio === fim) não conta dia nenhum', () => {
+    const periodo = { inicio: '2026-08-10', fim: '2026-08-10' };
+    expect(diasDeCruzamento(periodo, '2026-08-01', '2026-08-31')).toBe(0);
+  });
 });
 
 describe('metaProrateada', () => {
@@ -82,5 +95,15 @@ describe('metaProrateada', () => {
   test('modelo sem período cruzando o mês dá meta zero nos dois blocos', () => {
     const periodos: Periodo[] = [{ modeloId: 'x', bloco: 'I', inicio: '2026-01-01', fim: '2026-03-01' }];
     expect(metaProrateada(periodos, 'x', 10000, '2026-08-01', '2026-08-31', 31)).toEqual({ I: 0, II: 0 });
+  });
+
+  test('modelo desativada no meio do mês sem reabertura para de contar meta no fechamento (regressão do bug de período nunca fechado)', () => {
+    // Ativa só nos primeiros 10 dias de agosto (dia 1 a 10, fecha dia 11) — sem período novo depois.
+    const periodos: Periodo[] = [{ modeloId: 'kaylin', bloco: 'I', inicio: '2026-01-01', fim: '2026-08-11' }];
+    const resultado = metaProrateada(periodos, 'kaylin', 31000, '2026-08-01', '2026-08-31', 31);
+    expect(resultado.I).toBeCloseTo((31000 * 10) / 31, 2);
+    expect(resultado.II).toBe(0);
+    // Não pode dar a meta cheia do mês (31000) — é o formato exato do bug do Finding 2.
+    expect(resultado.I).toBeLessThan(31000);
   });
 });
