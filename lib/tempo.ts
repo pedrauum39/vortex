@@ -96,6 +96,15 @@ export function somarDias(data: string, dias: number): string {
   return new Date(Date.UTC(ano, mes - 1, dia + dias)).toISOString().slice(0, 10);
 }
 
+/** Diferença em dias entre duas datas 'YYYY-MM-DD' (b - a). Aritmética em UTC puro, sem fuso. */
+export function diferencaDias(a: string, b: string): number {
+  const [anoA, mesA, diaA] = a.split('-').map(Number);
+  const [anoB, mesB, diaB] = b.split('-').map(Number);
+  const msA = Date.UTC(anoA, mesA - 1, diaA);
+  const msB = Date.UTC(anoB, mesB - 1, diaB);
+  return Math.round((msB - msA) / 86400000);
+}
+
 /** A segunda-feira da semana de uma data. As abas da planilha vão de seg a dom. */
 export function segundaDaSemana(data: string): string {
   const [ano, mes, dia] = data.split('-').map(Number);
