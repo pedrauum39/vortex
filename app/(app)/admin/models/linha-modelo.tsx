@@ -8,6 +8,7 @@ import {
   definirAtivaModelo,
   definirExtra,
   definirMetaMensal,
+  moverTime,
   renomearModelo,
 } from './actions';
 
@@ -109,6 +110,14 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
                 className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
               >
                 {model.ativa ? 'desativar' : 'reativar'}
+              </button>
+              <button
+                type="button"
+                disabled={pendente}
+                onClick={() => rodar(() => moverTime(model.id))}
+                className="text-xs text-texto-fraco hover:text-texto disabled:opacity-50"
+              >
+                trocar de time
               </button>
               <button
                 type="button"
