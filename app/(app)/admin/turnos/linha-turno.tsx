@@ -14,6 +14,7 @@ import {
   apagarPonto,
   apagarStatement,
   apagarTurno,
+  removerModeloDoPonto,
   simularPonto,
   simularStatement,
 } from './actions';
@@ -154,6 +155,20 @@ export function LinhaTurno({
                       </button>
                     ) : (
                       <span className="text-texto-fraco">—</span>
+                    )}
+                    {podeEditar && (
+                      <button
+                        type="button"
+                        disabled={pendente}
+                        onClick={() => {
+                          if (confirm(`Tirar ${m.nome} deste turno? A modelo some do ponto, não só o statement.`)) {
+                            rodar(() => removerModeloDoPonto(log.id, model_id));
+                          }
+                        }}
+                        className="text-xs text-red-400 hover:underline disabled:opacity-50"
+                      >
+                        remover
+                      </button>
                     )}
                   </div>
                 );

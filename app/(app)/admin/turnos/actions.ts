@@ -264,6 +264,32 @@ export async function apagarStatement(statementId: string) {
   revalidar();
 }
 
+/** Tira uma modelo do ponto por completo — não só o statement dela, a
+ * associação inteira em shift_log_models. Pra quando ela foi marcada por
+ * engano, ou (caso real: Kaylin em turnos de antes do "Turno Extra" existir)
+ * a cadeia de desconto dela nunca vai resolver e o turno fica "aberto" pra
+ * sempre com ela ligada — tirando ela, a comissão fecha só com o resto. */
+export async function removerModeloDoPonto(shiftLogId: string, modeloId: string) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error: erroStatement } = await supabase
+    .from('statements')
+    .delete()
+    .eq('shift_log_id', shiftLogId)
+    .eq('model_id', modeloId);
+  if (erroStatement) throw new Error(erroStatement.message);
+
+  const { error } = await supabase
+    .from('shift_log_models')
+    .delete()
+    .eq('shift_log_id', shiftLogId)
+    .eq('model_id', modeloId);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
 export async function apagarTurnoExtraAdmin(id: string) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
