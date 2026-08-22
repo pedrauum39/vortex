@@ -5,7 +5,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
-import { blocoNaData, metaProrateada, type Periodo } from './periodos';
+import { blocoNaData, metaProrateada } from './periodos';
+import { buscarPeriodos } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { dataBRT, diasNoMes, somarDias } from './tempo';
@@ -66,17 +67,6 @@ type LinhaShift = {
     }[];
   }[];
 };
-
-async function buscarPeriodos(db: SupabaseClient): Promise<Periodo[]> {
-  const { data, error } = await db.from('model_bloco_periodos').select('model_id, bloco, inicio, fim');
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as { model_id: string; bloco: Bloco; inicio: string; fim: string | null }[]).map((p) => ({
-    modeloId: p.model_id,
-    bloco: p.bloco,
-    inicio: p.inicio,
-    fim: p.fim,
-  }));
-}
 
 /** Todo mundo que trabalhou uma modelo, turno a turno, no período — o delta de cada um. */
 export async function buscarVendasDaEmpresa(

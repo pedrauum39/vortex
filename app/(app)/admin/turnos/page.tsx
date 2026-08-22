@@ -1,6 +1,7 @@
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
+import { buscarPeriodos } from '@/lib/periodosDb';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
@@ -34,7 +35,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
 
   const supabase = await criarClienteServidor();
 
-  const [{ data: shiftsData }, { data: repsData }, { data: modelsData }] = await Promise.all([
+  const [{ data: shiftsData }, { data: repsData }, { data: modelsData }, periodos] = await Promise.all([
     supabase
       .from('shifts')
       .select(
@@ -46,7 +47,13 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       .order('turno')
       .order('bloco'),
     supabase.from('reps').select('*').order('turno').order('papel'),
-    supabase.from('models').select('*').eq('ativa', true).eq('extra', false).order('bloco').order('nome'),
+    // Sem filtro de ativa: pra corrigir um turno antigo o admin precisa ver
+    // quem estava no roster NAQUELA data, mesmo que a modelo já tenha
+    // desativado depois (ex.: Issy Black desativou, mas ainda é a modelo
+    // certa pra um turno de antes disso). O roster de cada linha é
+    // resolvido por data em FormPonto, via blocoNaData(periodos, ...).
+    supabase.from('models').select('*').eq('extra', false).order('bloco').order('nome'),
+    buscarPeriodos(supabase),
   ]);
 
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
@@ -150,10 +157,12 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
         emAtencao={emAtencao}
         concluidos={concluidos}
         linhasPorShift={linhasPorShiftObj}
-        // Todas as modelos ativas, não só as do time do turno — o admin pode
+        // Todas as modelos, não só as ativas do time do turno — o admin pode
         // simular um ponto que trabalhou modelo de outro time também (mesmo
-        // caso do clock-in real).
+        // caso do clock-in real), ou corrigir um turno antigo cuja modelo já
+        // desativou desde então. O roster de cada linha é resolvido por data.
         models={models}
+        periodos={periodos}
         podeEditar={podeEditar}
       />
 

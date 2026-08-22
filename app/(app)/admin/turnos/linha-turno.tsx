@@ -3,6 +3,7 @@
 import { useCallback, useState, useTransition } from 'react';
 import { reduzirImagem } from '@/lib/imagem';
 import type { LinhaInvoice } from '@/lib/invoice';
+import { blocoNaData, type Periodo } from '@/lib/periodos';
 import { LINHAS, type LinhasNet } from '@/lib/statement';
 import { datetimeLocalBRT } from '@/lib/tempo';
 import type { Bloco, Model } from '@/lib/tipos';
@@ -35,11 +36,13 @@ export function LinhaTurno({
   shift,
   linha,
   models,
+  periodos,
   podeEditar,
 }: {
   shift: LinhaShift;
   linha: LinhaInvoice | null;
   models: Model[];
+  periodos: Periodo[];
   podeEditar: boolean;
 }) {
   const [pendente, executar] = useTransition();
@@ -223,10 +226,12 @@ export function LinhaTurno({
               repId={shift.rep_id!}
               shiftId={shift.id}
               bloco={shift.bloco}
+              data={shift.data}
               models={models}
+              periodos={periodos}
               modelosAtuais={
                 log?.shift_log_models.map((m) => m.model_id) ??
-                models.filter((m) => m.bloco === shift.bloco).map((m) => m.id)
+                models.filter((m) => blocoNaData(periodos, m.id, shift.data) === shift.bloco).map((m) => m.id)
               }
               // Sem ponto ainda, começa com a janela oficial do turno já
               // preenchida — o T6T1 vira a noite (21h de um dia até 5h do
@@ -278,7 +283,9 @@ export function LinhaTurno({
 
 function FormPonto({
   bloco,
+  data,
   models,
+  periodos,
   modelosAtuais,
   entradaAtual,
   saidaAtual,
@@ -289,7 +296,9 @@ function FormPonto({
   repId: string;
   shiftId: string;
   bloco: Bloco;
+  data: string;
   models: Model[];
+  periodos: Periodo[];
   modelosAtuais: string[];
   entradaAtual: string;
   saidaAtual: string;
@@ -307,8 +316,16 @@ function FormPonto({
     );
   }
 
-  const doTime = models.filter((m) => m.bloco === bloco);
-  const outras = models.filter((m) => m.bloco !== bloco);
+  // Roster de quando o turno aconteceu, não o time atual da modelo — uma
+  // modelo desativada depois ainda tem que aparecer aqui pra corrigir um
+  // turno antigo dela (ex.: Issy Black, desativada, mas dona de vários
+  // turnos de antes disso).
+  const blocoDaModelo = (m: Model) => blocoNaData(periodos, m.id, data);
+  const doTime = models.filter((m) => blocoDaModelo(m) === bloco);
+  const outras = models.filter((m) => {
+    const b = blocoDaModelo(m);
+    return b !== null && b !== bloco;
+  });
 
   const checkbox = (m: Model) => (
     <label

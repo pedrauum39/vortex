@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { LinhaInvoice } from '@/lib/invoice';
+import type { Periodo } from '@/lib/periodos';
 import type { Model } from '@/lib/tipos';
 import { LinhaTurno } from './linha-turno';
 import type { LinhaShift } from './tipos';
@@ -11,12 +12,14 @@ export function ListaTurnos({
   concluidos,
   linhasPorShift,
   models,
+  periodos,
   podeEditar,
 }: {
   emAtencao: LinhaShift[];
   concluidos: LinhaShift[];
   linhasPorShift: Record<string, LinhaInvoice>;
   models: Model[];
+  periodos: Periodo[];
   podeEditar: boolean;
 }) {
   const [mostrarConcluidos, setMostrarConcluidos] = useState(false);
@@ -36,7 +39,13 @@ export function ListaTurnos({
           <p className="mb-2 text-sm font-medium text-amber-300">
             Precisam de atenção ({emAtencao.length})
           </p>
-          <Tabela linhas={emAtencao} linhasPorShift={linhasPorShift} models={models} podeEditar={podeEditar} />
+          <Tabela
+            linhas={emAtencao}
+            linhasPorShift={linhasPorShift}
+            models={models}
+            periodos={periodos}
+            podeEditar={podeEditar}
+          />
         </div>
       )}
 
@@ -51,7 +60,13 @@ export function ListaTurnos({
             Turnos concluídos ({concluidos.length})
           </button>
           {mostrarConcluidos && (
-            <Tabela linhas={concluidos} linhasPorShift={linhasPorShift} models={models} podeEditar={podeEditar} />
+            <Tabela
+              linhas={concluidos}
+              linhasPorShift={linhasPorShift}
+              models={models}
+              periodos={periodos}
+              podeEditar={podeEditar}
+            />
           )}
         </div>
       )}
@@ -63,11 +78,13 @@ function Tabela({
   linhas,
   linhasPorShift,
   models,
+  periodos,
   podeEditar,
 }: {
   linhas: LinhaShift[];
   linhasPorShift: Record<string, LinhaInvoice>;
   models: Model[];
+  periodos: Periodo[];
   podeEditar: boolean;
 }) {
   return (
@@ -93,6 +110,7 @@ function Tabela({
               shift={s}
               linha={linhasPorShift[s.id] ?? null}
               models={models}
+              periodos={periodos}
               podeEditar={podeEditar}
             />
           ))}
