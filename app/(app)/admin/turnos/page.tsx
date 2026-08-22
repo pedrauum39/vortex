@@ -137,8 +137,9 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   }
 
   const hoje = dataBRT();
-  const emAtencao = shifts.filter((s) => precisaAtencao(s, hoje));
-  const concluidos = shifts.filter((s) => !precisaAtencao(s, hoje));
+  const precisa = (s: LinhaShift) => precisaAtencao(s, hoje, linhasPorShift.get(s.id)?.pendente ?? false);
+  const emAtencao = shifts.filter(precisa);
+  const concluidos = shifts.filter((s) => !precisa(s));
   const linhasPorShiftObj = Object.fromEntries(linhasPorShift);
 
   return (
