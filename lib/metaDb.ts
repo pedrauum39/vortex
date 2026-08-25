@@ -60,7 +60,10 @@ export type MetasDoPeriodo = {
   percentualParcial: number | null;
 };
 
-/** O que este rep vendeu num turno: a soma dos deltas de cada modelo trabalhada — nunca o acumulado bruto do print. */
+/** O que este rep vendeu num turno: a soma dos deltas de cada modelo trabalhada — nunca o acumulado bruto do print.
+ * A busca do anterior de cada modelo roda em paralelo (double é no máximo
+ * duas, mas isso também é chamado shift a shift em loop — ver os dois
+ * lugares que chamam esta função). */
 async function vendidoDoTurno(
   db: SupabaseClient,
   turno: Turno,
@@ -68,16 +71,20 @@ async function vendidoDoTurno(
   modelos: { id: string }[],
   statements: LinhaShift['shift_logs'][number]['statements'],
 ): Promise<{ vendido: number; pendente: boolean; porPagina: { id: string; vendido: number }[] }> {
+  const anteriores = await Promise.all(
+    modelos.map(({ id: modeloId }) => buscarAnterior(db, turno, data, modeloId)),
+  );
+
   let vendido = 0;
   let pendente = false;
   const porPagina: { id: string; vendido: number }[] = [];
 
-  for (const { id: modeloId } of modelos) {
+  modelos.forEach(({ id: modeloId }, i) => {
     const statement = statements.find((s) => s.model_id === modeloId) ?? null;
-    const anterior = await buscarAnterior(db, turno, data, modeloId);
+    const anterior = anteriores[i];
     if (!statement || anterior.tipo === 'pendente') {
       pendente = true;
-      continue;
+      return;
     }
     const linhasAtuais: LinhasNet = {
       assinaturas: Number(statement.net_assinaturas),
@@ -90,7 +97,7 @@ async function vendidoDoTurno(
     const vendidoPagina = totalDasLinhas(deltaTurno(linhasAtuais, anteriorLinhas));
     vendido += vendidoPagina;
     porPagina.push({ id: modeloId, vendido: vendidoPagina });
-  }
+  });
 
   return { vendido, pendente, porPagina };
 }
@@ -130,27 +137,38 @@ export async function buscarMetasDoRep(
   );
   const roster = (modelsData ?? []) as Model[];
 
+  // Páginas de cada turno resolvidas primeiro (síncrono), pra depois buscar
+  // o vendido de todos os turnos trabalhados em paralelo — sequencial aqui
+  // significava um round-trip atrás do outro pra cada turno do mês inteiro.
+  const paginasPorShift = shifts.map((shift) => {
+    const log = shift.shift_logs[0];
+    const trabalhado = !!log;
+    const paginas = trabalhado
+      ? log!.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome, meta: m.models.meta_mensal }))
+      : roster.filter((m) => m.bloco === shift.bloco).map((m) => ({ id: m.id, nome: m.nome, meta: m.meta_mensal }));
+    return { shift, log, trabalhado, paginas };
+  });
+
+  const vendidos = await Promise.all(
+    paginasPorShift.map(({ shift, log, trabalhado, paginas }) =>
+      trabalhado
+        ? vendidoDoTurno(db, shift.turno, shift.data, paginas, log!.statements)
+        : Promise.resolve({ vendido: 0, pendente: false, porPagina: [] as { id: string; vendido: number }[] }),
+    ),
+  );
+
   const turnosParaMeta: TurnoParaMeta[] = [];
   const linhas: LinhaMetaTurno[] = [];
   let totalVendido = 0;
 
-  for (const shift of shifts) {
-    const log = shift.shift_logs[0];
-    const trabalhado = !!log;
-
-    const paginas = trabalhado
-      ? log!.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome, meta: m.models.meta_mensal }))
-      : roster.filter((m) => m.bloco === shift.bloco).map((m) => ({ id: m.id, nome: m.nome, meta: m.meta_mensal }));
-
+  paginasPorShift.forEach(({ shift, trabalhado, paginas }, i) => {
     turnosParaMeta.push({
       turno: shift.turno,
       metasDasPaginas: paginas.map((p) => p.meta),
       trabalhado,
     });
 
-    const { vendido, pendente, porPagina } = trabalhado
-      ? await vendidoDoTurno(db, shift.turno, shift.data, paginas, log!.statements)
-      : { vendido: 0, pendente: false, porPagina: [] as { id: string; vendido: number }[] };
+    const { vendido, pendente, porPagina } = vendidos[i];
 
     totalVendido += vendido;
 
@@ -179,7 +197,7 @@ export async function buscarMetasDoRep(
       pendente,
       trabalhado,
     });
-  }
+  });
 
   const { metaTotal, metaParcial, turnosFeitos } = calcularMetas(turnosParaMeta, diasDoMes);
   const totalVendidoArred = Math.round(totalVendido * 100) / 100;
@@ -214,21 +232,27 @@ export async function buscarRecordeDoRep(db: SupabaseClient, repId: string): Pro
     .eq('funcao', 'regular')
     .order('data');
 
-  const shifts = (shiftsData ?? []) as unknown as Omit<LinhaShift, 'id' | 'bloco'>[];
+  const shifts = ((shiftsData ?? []) as unknown as Omit<LinhaShift, 'id' | 'bloco'>[]).filter(
+    (s) => s.shift_logs[0],
+  );
+
+  // Sem filtro de data (é o recorde de todos os tempos) — o histórico só
+  // cresce, então isso tem que rodar em paralelo, nunca turno a turno.
+  const vendidos = await Promise.all(
+    shifts.map((shift) => {
+      const log = shift.shift_logs[0];
+      const modelos = log.shift_log_models.map((m) => ({ id: m.model_id }));
+      return vendidoDoTurno(db, shift.turno, shift.data, modelos, log.statements);
+    }),
+  );
 
   let recorde: RecordeTurno = null;
-
-  for (const shift of shifts) {
-    const log = shift.shift_logs[0];
-    if (!log) continue;
-
-    const modelos = log.shift_log_models.map((m) => ({ id: m.model_id }));
-    const { vendido } = await vendidoDoTurno(db, shift.turno, shift.data, modelos, log.statements);
-
+  shifts.forEach((shift, i) => {
+    const { vendido } = vendidos[i];
     if (!recorde || vendido > recorde.valor) {
       recorde = { data: shift.data, turno: shift.turno, valor: Math.round(vendido * 100) / 100 };
     }
-  }
+  });
 
   return recorde;
 }

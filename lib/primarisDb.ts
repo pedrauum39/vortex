@@ -94,6 +94,16 @@ export async function buscarVendasDaEmpresa(
   const periodos = await buscarPeriodos(db);
   const vendas: VendaDeModelo[] = [];
 
+  // Um shift+modelo por linha, com o statement já resolvido — a busca do
+  // anterior de cada um (2 idas ao banco) roda em paralelo, não uma de cada
+  // vez: turno errado, mas sequencial, deixava a página inteira (/, /invoice,
+  // /primaris) esperando um round-trip atrás do outro, um por combinação
+  // shift×modelo (dezenas a centenas por mês).
+  const tarefas: {
+    shift: LinhaShift;
+    modeloId: string;
+    statement: LinhaShift['shift_logs'][number]['statements'][number];
+  }[] = [];
   for (const shift of shifts) {
     const log = shift.shift_logs[0];
     if (!log || !shift.rep_id || !shift.reps) continue;
@@ -101,35 +111,42 @@ export async function buscarVendasDaEmpresa(
     for (const { model_id } of log.shift_log_models) {
       const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
       if (!statement) continue;
-
-      const anterior = await buscarAnterior(db, shift.turno, shift.data, model_id);
-      if (anterior.tipo === 'pendente') continue;
-
-      const linhasAtuais: LinhasNet = {
-        assinaturas: Number(statement.net_assinaturas),
-        gorjetas: Number(statement.net_gorjetas),
-        publicacoes: Number(statement.net_publicacoes),
-        mensagens: Number(statement.net_mensagens),
-        indicacoes: Number(statement.net_indicacoes),
-      };
-      const anteriorLinhas = anterior.tipo === 'ok' ? anterior.linhas : null;
-      const delta = deltaTurno(linhasAtuais, anteriorLinhas);
-
-      const dia = diaDoStatement(shift.turno, shift.data);
-      const bloco = blocoNaData(periodos, model_id, dia);
-      if (bloco === null) continue; // defensivo: sem período cobrindo, não atribui a nenhum time
-
-      vendas.push({
-        repId: shift.rep_id,
-        repCargo: shift.reps.cargo,
-        modeloId: model_id,
-        modeloBloco: bloco,
-        turno: shift.turno,
-        vendidoTotal: totalDasLinhas(delta),
-        vendidoComissionavel: baseComissao(delta),
-      });
+      tarefas.push({ shift, modeloId: model_id, statement });
     }
   }
+
+  const anteriores = await Promise.all(
+    tarefas.map((t) => buscarAnterior(db, t.shift.turno, t.shift.data, t.modeloId)),
+  );
+
+  tarefas.forEach((t, i) => {
+    const anterior = anteriores[i];
+    if (anterior.tipo === 'pendente') return;
+
+    const linhasAtuais: LinhasNet = {
+      assinaturas: Number(t.statement.net_assinaturas),
+      gorjetas: Number(t.statement.net_gorjetas),
+      publicacoes: Number(t.statement.net_publicacoes),
+      mensagens: Number(t.statement.net_mensagens),
+      indicacoes: Number(t.statement.net_indicacoes),
+    };
+    const anteriorLinhas = anterior.tipo === 'ok' ? anterior.linhas : null;
+    const delta = deltaTurno(linhasAtuais, anteriorLinhas);
+
+    const dia = diaDoStatement(t.shift.turno, t.shift.data);
+    const bloco = blocoNaData(periodos, t.modeloId, dia);
+    if (bloco === null) return; // defensivo: sem período cobrindo, não atribui a nenhum time
+
+    vendas.push({
+      repId: t.shift.rep_id!,
+      repCargo: t.shift.reps!.cargo,
+      modeloId: t.modeloId,
+      modeloBloco: bloco,
+      turno: t.shift.turno,
+      vendidoTotal: totalDasLinhas(delta),
+      vendidoComissionavel: baseComissao(delta),
+    });
+  });
 
   // Turno Extra de modelo do roster (ex. Kaylin) conta pra venda da empresa
   // exatamente como um turno normal — mesma meta de página, mesmo bônus de

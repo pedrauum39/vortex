@@ -78,60 +78,74 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   const regra = await buscarRegraVigente(supabase, fim);
   const linhasPorShift = new Map<string, LinhaInvoice>();
 
-  for (const { regular, assist } of porSlot.values()) {
-    const log = regular?.shift_logs[0];
-    if (!regular || !log || !regular.reps) continue;
+  // Cada slot resolve os "anterior" das modelos dele em paralelo, e os slots
+  // entre si também rodam em paralelo — sequencial aqui (turno a turno,
+  // modelo a modelo) era a página mais lenta do site, com a semana inteira
+  // esperando um round-trip atrás do outro.
+  const slotsResolvidos = await Promise.all(
+    [...porSlot.values()].map(async ({ regular, assist }) => {
+      const log = regular?.shift_logs[0];
+      if (!regular || !log || !regular.reps) return null;
 
-    const modelos: ModeloTrabalhada[] = [];
-    for (const { model_id } of log.shift_log_models) {
-      const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
-      const anterior = await buscarAnterior(supabase, regular.turno, regular.data, model_id);
-      modelos.push({
-        modeloId: model_id,
-        statement: statement
-          ? {
-              assinaturas: Number(statement.net_assinaturas),
-              gorjetas: Number(statement.net_gorjetas),
-              publicacoes: Number(statement.net_publicacoes),
-              mensagens: Number(statement.net_mensagens),
-              indicacoes: Number(statement.net_indicacoes),
-            }
-          : null,
-        anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
-        anteriorPendente: anterior.tipo === 'pendente',
+      const anteriores = await Promise.all(
+        log.shift_log_models.map(({ model_id }) => buscarAnterior(supabase, regular.turno, regular.data, model_id)),
+      );
+      const modelos: ModeloTrabalhada[] = log.shift_log_models.map(({ model_id }, i) => {
+        const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
+        const anterior = anteriores[i];
+        return {
+          modeloId: model_id,
+          statement: statement
+            ? {
+                assinaturas: Number(statement.net_assinaturas),
+                gorjetas: Number(statement.net_gorjetas),
+                publicacoes: Number(statement.net_publicacoes),
+                mensagens: Number(statement.net_mensagens),
+                indicacoes: Number(statement.net_indicacoes),
+              }
+            : null,
+          anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
+          anteriorPendente: anterior.tipo === 'pendente',
+        };
       });
-    }
 
-    const assistLog = assist?.shift_logs[0];
+      const assistLog = assist?.shift_logs[0];
 
-    const slot: SlotResolvido = {
-      data: regular.data,
-      turno: regular.turno,
-      bloco: regular.bloco,
-      regular: {
-        repId: regular.rep_id!,
-        cargo: regular.reps.cargo,
-        valorHora: regular.reps.valor_hora,
-        clockIn: new Date(log.clock_in_at),
-        clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
-        saiuAntes: log.saiu_antes,
-        modelos,
-      },
-      assist:
-        assist?.rep_id && assist.reps && assistLog
-          ? {
-              repId: assist.rep_id,
-              cargo: assist.reps.cargo,
-              valorHora: assist.reps.valor_hora,
-              clockIn: new Date(assistLog.clock_in_at),
-              clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,
-              saiuAntes: assistLog.saiu_antes,
-            }
-          : null,
-    };
+      const slot: SlotResolvido = {
+        data: regular.data,
+        turno: regular.turno,
+        bloco: regular.bloco,
+        regular: {
+          repId: regular.rep_id!,
+          cargo: regular.reps.cargo,
+          valorHora: regular.reps.valor_hora,
+          clockIn: new Date(log.clock_in_at),
+          clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
+          saiuAntes: log.saiu_antes,
+          modelos,
+        },
+        assist:
+          assist?.rep_id && assist.reps && assistLog
+            ? {
+                repId: assist.rep_id,
+                cargo: assist.reps.cargo,
+                valorHora: assist.reps.valor_hora,
+                clockIn: new Date(assistLog.clock_in_at),
+                clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,
+                saiuAntes: assistLog.saiu_antes,
+              }
+            : null,
+      };
 
+      return { slot, regularId: regular.id, assistId: assist?.id };
+    }),
+  );
+
+  for (const resolvido of slotsResolvidos) {
+    if (!resolvido) continue;
+    const { slot, regularId, assistId } = resolvido;
     for (const linha of linhasDoSlot(slot, regra, new Date())) {
-      const shiftId = linha.funcao === 'regular' ? regular.id : assist?.id;
+      const shiftId = linha.funcao === 'regular' ? regularId : assistId;
       if (shiftId) linhasPorShift.set(shiftId, linha);
     }
   }
