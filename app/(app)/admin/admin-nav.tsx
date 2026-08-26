@@ -7,6 +7,7 @@ const ABAS = [
   { href: '/admin/turnos', rotulo: 'Turnos' },
   { href: '/admin/reps', rotulo: 'Reps' },
   { href: '/admin/models', rotulo: 'Modelos' },
+  { href: '/admin/notificacoes', rotulo: 'Notificações' },
 ];
 
 export function AdminNav() {
