@@ -1,9 +1,23 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import { buscarRegraVigente } from '@/lib/comissaoDb';
+import { linhasDoSlot, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { corDaMeta, metaDiariaDaPagina, percentualAtingido, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep } from '@/lib/metaDb';
+import { diaDoStatement } from '@/lib/statement';
+import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
-import { diaLegivel, diasNoMes, horaBRT, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
+import {
+  dataBRT,
+  diaLegivel,
+  diasNoMes,
+  horaBRT,
+  limitesDoMes,
+  mesAtual,
+  mesLegivel,
+  somarDias,
+  somarMeses,
+} from '@/lib/tempo';
 import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Cargo, type Funcao, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
@@ -12,6 +26,7 @@ import {
   janelaDoTurno,
   podeIniciar,
 } from '@/lib/turno';
+import { precisaAtencao } from '@/lib/turnoAberto';
 import { buscarTurnosExtraDoRep } from '@/lib/turnosExtraDb';
 import { CORES, IconeRaio } from '../meta-visual';
 import { Painel } from './painel';
@@ -46,6 +61,11 @@ export default async function TurnoPage({
 
   const CAMPOS_TURNO =
     'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
+  const CAMPOS_STATEMENTS =
+    'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes)';
+  const CAMPOS_TURNO_COM_STATEMENTS = `id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), ${CAMPOS_STATEMENTS})`;
+
+  const hoje = dataBRT();
 
   // Não assume que o turno do rep hoje é o turno cadastrado no perfil dele —
   // o admin pode ter escalado alguém num turno diferente do de costume, e
@@ -53,7 +73,11 @@ export default async function TurnoPage({
   // qual dia é "hoje" (o T6/T1 cruza a meia-noite), então checa os três.
   const candidatas = [...new Set(TURNOS.map((t) => dataDoTurnoAtual(t)))];
 
-  const [{ data: paraIniciar }, { data: emAberto }] = await Promise.all([
+  const mesAtualStr = mesAtual();
+  const { inicio: inicioMesAtual, fim: fimMesAtual } = limitesDoMes(mesAtualStr);
+
+  const [{ data: paraIniciar }, { data: emAberto }, { data: todosAntigos }, { data: doMesComoRegular }] =
+    await Promise.all([
     supabase
       .from('shifts')
       .select(CAMPOS_TURNO)
@@ -75,6 +99,24 @@ export default async function TurnoPage({
       )
       .eq('rep_id', rep.id)
       .is('shift_logs.clock_out_at', null),
+    // Turno que nunca foi aberto e a data já passou — pra achar quais, sem um
+    // filtro de "não tem log nenhum" confiável no PostgREST (armadilha #18),
+    // busca todo o histórico do rep (leve, uma query só) e filtra por
+    // shift_logs vazio abaixo. Escopo do próprio rep, então mesmo sem limite
+    // de data isso nunca vira uma lista grande de verdade.
+    supabase.from('shifts').select(CAMPOS_TURNO).eq('rep_id', rep.id).lt('data', hoje),
+    // Turno já fechado, mas com comissão pendente (statement faltando) — só
+    // o mês atual, igual todo o resto do sistema que lida com comissão (ver
+    // decisão "TODOS os invoices viraram mensais"). Ir além disso reabriria
+    // o mesmo tipo de lentidão corrigido na sessão de 25/08: resolver
+    // buscarAnterior() por modelo é caro, e esta é a página mais acessada.
+    supabase
+      .from('shifts')
+      .select(CAMPOS_TURNO_COM_STATEMENTS)
+      .eq('rep_id', rep.id)
+      .eq('funcao', 'regular')
+      .gte('data', somarDias(inicioMesAtual, -1))
+      .lte('data', fimMesAtual),
   ]);
 
   // Pode haver mais de um turno "atual" ao mesmo tempo (ex.: admin escalou um
@@ -88,15 +130,112 @@ export default async function TurnoPage({
   for (const t of (emAberto ?? []) as unknown as TurnoDoDia[]) {
     porId.set(t.id, t);
   }
-  const candidatos = [...porId.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  // Prioritários: só o de hoje (por turno) + o que estiver em aberto. É o
+  // conjunto usado pra decidir automaticamente qual turno mostrar — não deve
+  // mudar por causa dos extras abaixo, senão um turno velho pendente passaria
+  // à frente do turno de hoje sem o rep escolher isso explicitamente.
+  const candidatosPrioritarios = [...porId.values()].sort((a, b) =>
+    a.data < b.data ? -1 : a.data > b.data ? 1 : 0,
+  );
+  // O turno de HOJE nunca pode ficar escondido atrás de um turno velho aberto
+  // — iniciar e finalizar são independentes um do outro, cada um só depende
+  // da própria janela de horário (podeIniciar/finalizarTurno não olham pra
+  // nenhum outro turno). Um turno de ontem esquecido aberto some da tela
+  // enquanto ninguém troca de aba pra ele — e ninguém troca de aba pra algo
+  // que nem sabe que existe.
+  const hojeCandidatos = ((paraIniciar ?? []) as unknown as TurnoDoDia[]).filter(
+    (t) => t.data === dataDoTurnoAtual(t.turno),
+  );
+
+  // Extras pras abas: mesmo critério de "precisa de atenção" do admin/turnos
+  // (lib/turnoAberto.ts) — turno nunca aberto com a data já passada, ou
+  // turno fechado com comissão pendente (só o mês atual, ver comentário
+  // acima da query).
+  const regraVigente = await buscarRegraVigente(supabase, fimMesAtual);
+  const clienteAdmin = criarClienteAdmin();
+
+  const doMesFiltrado = (
+    (doMesComoRegular ?? []) as unknown as (TurnoDoDia & {
+      shift_logs: (TurnoDoDia['shift_logs'][number] & {
+        statements: { model_id: string; net_assinaturas: number; net_gorjetas: number; net_publicacoes: number; net_mensagens: number; net_indicacoes: number }[];
+      })[];
+    })[]
+  ).filter((s) => diaDoStatement(s.turno, s.data) >= inicioMesAtual && diaDoStatement(s.turno, s.data) <= fimMesAtual);
+
+  const pendentesDoMes = (
+    await Promise.all(
+      doMesFiltrado
+        .filter((s) => s.shift_logs[0])
+        .map(async (s) => {
+          const log = s.shift_logs[0];
+          const anteriores = await Promise.all(
+            log.shift_log_models.map(({ model_id }) => buscarAnterior(clienteAdmin, s.turno, s.data, model_id)),
+          );
+          const modelos: ModeloTrabalhada[] = log.shift_log_models.map(({ model_id }, i) => {
+            const statement = log.statements.find((st) => st.model_id === model_id) ?? null;
+            const anterior = anteriores[i];
+            return {
+              modeloId: model_id,
+              statement: statement
+                ? {
+                    assinaturas: Number(statement.net_assinaturas),
+                    gorjetas: Number(statement.net_gorjetas),
+                    publicacoes: Number(statement.net_publicacoes),
+                    mensagens: Number(statement.net_mensagens),
+                    indicacoes: Number(statement.net_indicacoes),
+                  }
+                : null,
+              anterior: anterior.tipo === 'ok' ? anterior.linhas : null,
+              anteriorPendente: anterior.tipo === 'pendente',
+            };
+          });
+
+          const slot: SlotResolvido = {
+            data: s.data,
+            turno: s.turno,
+            bloco: s.bloco,
+            regular: {
+              repId: rep.id,
+              cargo: rep.cargo,
+              valorHora: rep.valor_hora,
+              clockIn: new Date(log.clock_in_at),
+              clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
+              saiuAntes: log.saiu_antes,
+              modelos,
+            },
+            assist: null,
+          };
+
+          const linha = linhasDoSlot(slot, regraVigente, new Date())[0];
+          return precisaAtencao(s, hoje, linha?.pendente ?? false) ? s : null;
+        }),
+    )
+  ).filter((s): s is NonNullable<typeof s> => s !== null);
+
+  for (const t of (todosAntigos ?? []) as unknown as TurnoDoDia[]) {
+    if (t.shift_logs.length === 0 && precisaAtencao(t, hoje) && !porId.has(t.id)) porId.set(t.id, t);
+  }
+  for (const s of pendentesDoMes) {
+    if (!porId.has(s.id)) porId.set(s.id, s as unknown as TurnoDoDia);
+  }
+  const candidatosParaAbas = [...porId.values()].sort((a, b) =>
+    a.data < b.data ? -1 : a.data > b.data ? 1 : 0,
+  );
 
   const turno =
-    candidatos.find((t) => t.turno === turnoEscolhido) ??
-    // Sem escolha explícita, prioriza o que já está em andamento (precisa
-    // fechar) sobre o próximo (ainda nem começado).
-    candidatos.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
-    candidatos.find((t) => t.shift_logs[0]) ??
-    candidatos[0];
+    // Escolha explícita (clique numa aba) pode mirar num dos extras também,
+    // não só nos prioritários.
+    candidatosParaAbas.find((t) => t.turno === turnoEscolhido) ??
+    // Sem escolha explícita, o turno de HOJE sempre vem primeiro — em
+    // andamento (precisa fechar) antes do que ainda nem começou, mas
+    // qualquer um dos dois na frente de um turno velho aberto de outro dia.
+    hojeCandidatos.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
+    hojeCandidatos[0] ??
+    // Só sobra pra um turno velho aberto quando não há NADA de hoje — aí sim
+    // ele é o próximo passo de verdade, não uma trava escondendo o de hoje.
+    candidatosPrioritarios.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
+    candidatosPrioritarios.find((t) => t.shift_logs[0]) ??
+    candidatosPrioritarios[0];
   const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
   const turnoDoSlot = turno?.turno ?? rep.turno;
 
@@ -180,9 +319,9 @@ export default async function TurnoPage({
         </>
       ) : (
         <>
-          {candidatos.length > 1 && (
-            <div className="flex gap-2">
-              {candidatos.map((c) => (
+          {candidatosParaAbas.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {candidatosParaAbas.map((c) => (
                 <Link
                   key={c.id}
                   href={`/turno?turno=${c.turno}`}
@@ -192,7 +331,7 @@ export default async function TurnoPage({
                       : 'border-borda text-texto-fraco hover:text-texto'
                   }`}
                 >
-                  {rotuloTurno(c.turno)}
+                  {diaLegivel(c.data)} · {rotuloTurno(c.turno)}
                   {c.funcao === 'assist' && ' · Assistant'}
                 </Link>
               ))}
@@ -205,7 +344,13 @@ export default async function TurnoPage({
             </div>
           ) : (
             <Painel
-              turno={{ id: turno.id, bloco: turno.bloco, tipo: turnoDoSlot, assist: turno.funcao === 'assist' }}
+              turno={{
+                id: turno.id,
+                bloco: turno.bloco,
+                tipo: turnoDoSlot,
+                assist: turno.funcao === 'assist',
+                data: diaLegivel(data),
+              }}
               log={
                 log
                   ? {

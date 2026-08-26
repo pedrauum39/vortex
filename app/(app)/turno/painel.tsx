@@ -6,7 +6,7 @@ import { iniciarTurno, trocarModelos } from './actions';
 import { ModalReport } from './modal-report';
 
 type Props = {
-  turno: { id: string; bloco: Bloco; tipo: TurnoTipo; assist: boolean };
+  turno: { id: string; bloco: Bloco; tipo: TurnoTipo; assist: boolean; data: string };
   log: {
     id: string;
     entrada: string;
@@ -96,7 +96,7 @@ export function Painel({
         )}
         {log && (
           <span className="ml-auto text-sm text-texto-fraco">
-            entrada {log.entrada}
+            {turno.data} · entrada {log.entrada}
             {log.saida && ` · saída ${log.saida}`} · {log.horas.toFixed(2)}h
           </span>
         )}
