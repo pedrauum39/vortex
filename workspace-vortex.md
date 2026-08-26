@@ -1,7 +1,7 @@
 # Workspace do time Vortex — estado e handoff
 
 > Documento de continuidade. Escrito para ser lido do zero em outra conversa.
-> Última atualização: 18/08/2026. Sessão curta em cima da sessão anterior (12/08): o usuário achou o sistema de "turno independente"/"página externa" (o trabalho maior da sessão de 06–12/08) confuso de usar e pediu pra refazer do zero — virou **"Turno Extra"**, uma aba isolada em `/turno` com formulário fixo, fora do fluxo normal de clock-in/out. Kaylin some do clock-in normal (só aparece na aba nova) e continua contando meta + bônus de liderança normalmente; modelo "de fora" (nome livre, sem cadastro) só conta comissão pessoal. `models.independente`/`externa` e `statements.anterior_manual` foram apagados; tabela nova `turnos_extra`. Também nesta sessão: `/admin/turnos` separou os turnos "em aberto" (sempre visível) dos concluídos (colapsável), e um popup de boas-vindas (uma vez por navegador). Ver "SESSÃO DE 18/08" mais abaixo — e a seção 23 (INCIDENTE 1, sessão de 06–12/08) tem uma nota grande de "SUPERSEDIDO" apontando pra cá, porque o mecanismo antigo que ela descreve foi todo apagado do código.
+> Última atualização: 25/08/2026. Sessão longa, puxada por um pedido real do usuário ("Issy Black desativou e o card do Time 1 zerou na /primaris") que virou uma feature inteira: **troca de time de modelo** com histórico por período (`model_bloco_periodos`), pra parar de reescrever a atribuição histórica de vendas quando uma modelo muda de time ou desativa. Implementado via subagent-driven-development (plano + 7 tasks + revisão final de branch inteiro) — o processo pegou 3 bugs reais antes de chegar em produção (ver "SESSÃO DE 25/08" abaixo). Depois disso, três correções em cascata pedidas pelo usuário testando ao vivo: o roster do "simular ponto" em `/admin/turnos` não respeitava a data do turno (modelo desativada sumia do checkbox mesmo pra turnos de quando ela ainda tava ativa), "Precisam de atenção" não pegava comissão pendente (só ponto aberto), e o site inteiro estava **muito lento** — causa raiz achada e corrigida: `buscarAnterior()` era chamado em loop sequencial (~195 combinações turno×modelo só neste mês, ~400 round-trips um atrás do outro) em `/`, `/invoice`, `/primaris` e `/admin/turnos`. Ver "SESSÃO DE 25/08" mais abaixo pra tudo.
 
 ---
 
@@ -11,7 +11,7 @@ Não é mais só local. O site está no ar, os reps já estão se cadastrando e 
 
 ```bash
 npm run dev        # servidor local, localhost:3000
-npm test            # 88 testes, todos verdes
+npm test            # 111 testes, todos verdes
 npm run typecheck
 npm run build       # roda antes de qualquer commit — pega erro que o dev não pega
 npm run eval:ocr    # compara modelos de OCR contra prints reais salvos em evals/statements/
@@ -213,26 +213,6 @@ Pedido inicial foi mal entendido (criei uma pessoa fixa chamada "Admin 5C" — o
 
 Tabela "Por página" ganhou uma coluna "Projeção (ritmo atual)": `vendido / dias já passados do mês × dias do mês inteiro`, cor por faixa de meta + raio se >110%. `null` (mostra "—") se o mês ainda não começou; mês já fechado a projeção bate exatamente com o vendido real (sem viés). `lib/primarisDb.ts`: `diasPassadosDoMes()` e `projecaoDoMes()`, novos campos `projecao`/`percentualProjetado` em `ResumoPagina`.
 
-### 23. INCIDENTE 1 — Kaylin travando início/fechamento de turno → "turno independente" completo
-
-> **SUPERSEDIDO na sessão de 18/08** — o usuário achou o fluxo de "turno independente" (dual-print embutido dentro do fechamento normal) confuso e mandou refazer do zero. Todo o mecanismo descrito abaixo (`models.independente`, `models.externa`, `statements.anterior_manual`, `resolverAnterior()`) foi **apagado do código**. Ficou aqui só como histórico do raciocínio original — a versão atual é "Turno Extra", seção "SESSÃO DE 18/08" mais abaixo.
-
-**O que aconteceu**: usuário pediu pra "remover a Kaylin do site" porque ela "cagou tudo" e ninguém conseguia iniciar nem fechar turno. Investigação (dados reais, não achismo): **Ignacio Canelo** ficou preso desde o dia anterior (turno T4/T5 de 10/08, Bloco I) com `clock_out_at` nulo, porque marcou Kaylin no relatório e a cadeia de desconto dela (`buscarAnterior()`) sempre volta `pendente` — ninguém do time trabalha ela toda vez (às vezes um "buffer" de fora do sistema cobre a página), então o turno *imediatamente anterior* quase nunca tem o statement dela. Como `/turno` sempre prioriza mostrar o turno em aberto antes de deixar abrir um novo, isso travava ele geral (não conseguia nem iniciar o próximo).
-
-Meio da conversa, o pedido evoluiu (o usuário foi corrigindo em tempo real, várias mensagens seguidas) de "remove ela" pra "ela tem que ser um turno individual, sem depender do turno anterior" — e depois pra "como uma aba onde o rep sobe o print do turno anterior E o dele, destacando o que ele tem que fazer" — até fechar no desenho final:
-
-- **`models.independente`** (migração 0017, `true` só pra Kaylin por enquanto): `buscarAnterior()` (`lib/statementDb.ts`) checa esse flag primeiro e, se `true`, **pula a cadeia inteira e sempre volta `'primeiro'`** — sem tentar achar o turno anterior no banco. A meta dela continua contando normal (`'primeiro'` já credita o print inteiro como vendido, igual qualquer modelo no primeiro turno de verdade da cadeia).
-  - **Desbloqueio imediato do Ignacio**: antes mesmo da correção de código, removi a linha da Kaylin do `shift_log_models` do turno preso dele (só sobrou Issy Black) — ele conseguiu fechar na hora.
-- Isso sozinho já resolvia o incidente, mas o usuário pediu a versão completa com UI de verdade: **"turno independente"**.
-  - **`statements.anterior_manual`** (jsonb, migração 0018): as 5 linhas net do turno anterior, digitadas ou lidas por OCR na hora — vale **só pra esse statement**, nunca vira elo permanente da cadeia. `resolverAnterior()` (novo, `lib/statementDb.ts`) prioriza esse valor manual antes de cair no `buscarAnterior()` automático (que, por sua vez, já lida com `independente`).
-  - Regra de quando pedir o quê: **T2/T3 e T4/T5** de uma modelo independente pedem os dois prints (antes do turno **e** de agora) — sem cadeia confiável pra puxar sozinho. **T6/T1** só pede o de agora, porque "é sempre o primeiro turno do dia" (regra do usuário, não questionada — ele conhece a operação real do time, eu só implementei).
-  - `app/(app)/turno/captura-print.tsx` — componente novo, extraído de `ReportModelo`: upload/colar/arrastar + OCR, ou digitar na mão, as 5 linhas + total. Reutilizado 2x dentro de `ReportModelo` (rep, `/turno`) quando é preciso o anterior manual.
-  - Mesma UI (duplicada, não componentizada — layout diferente, horizontal vs vertical) em `FormStatement` dentro de `app/(app)/admin/turnos/linha-turno.tsx`, pro admin lançar manualmente.
-- **`models.externa`** (migração 0018, mesma leva): pensado originalmente pra Kaylin, mas o usuário deixou claro que ela **continua contando meta normal** (ela é do time, só muda como o turno abre/fecha) — `externa` é pra um caso DIFERENTE, uma página que não pertence a NENHUM dos dois times (exemplo dado: "Kylie", nome aleatório/hipotético, não existe de verdade ainda). Página `externa=true`: conta só o **invoice pessoal** de quem trabalhou (comissão normal pela cargo do rep), **nunca** meta nem bônus de Party/Team addition dos primaris — `lib/metaDb.ts` e `lib/primarisDb.ts` passam a filtrar por esse campo. Aparece no histórico de `/turno` com o valor vendido, mas sem % (não tem meta pra comparar contra).
-  - `/admin/models`: checkboxes "independente" e "externa" ao criar uma modelo nova, mais botão de ligar/desligar em qualquer modelo já existente.
-
-**Lição geral, documentada no código**: `Record<Cargo, number>` (regra de comissão) e enums do Postgres em geral precisam de disciplina extra quando se adiciona um valor novo — não esquecer de propagar pra TODO lugar que espera "todos os cargos existem aqui" (a compilação já pega isso no TS, mas o `commission_rules.regra` no banco é JSON solto, não tem checagem nenhuma — já aconteceu de esquecer e só notar rodando `npm run build`).
-
 ### 24. INCIDENTE 2 — "duplicate key" ao trocar modelos de um turno já iniciado
 
 Bug **antigo** (rodando desde 09/08, 9 ocorrências, nada a ver com o incidente da Kaylin) — só apareceu de novo porque a **Gabriela Storini** tentou adicionar a Kaylin (já com a correção do independente rodando) num turno que só tinha Issy Black, e bateu erro. A mensagem que ela viu foi só "An error occurred in the Server Components render" — **a mensagem real só aparece nos runtime logs do Vercel** (mesma lição da armadilha #19 antiga): `duplicate key value violates unique constraint "shift_log_models_shift_log_id_model_id_key"`.
@@ -284,6 +264,45 @@ Pedido bem menor, mesma leva: a tela listava todos os turnos da semana de uma ve
 ### 28. Popup de boas-vindas
 
 Mensagem do Pedro pro time ("Oi, o Pedro ama vc tá? Obrigado pela dedicação e vamos por mais juntos"), aparece uma vez só por navegador. `app/(app)/popup-boas-vindas.tsx`: `localStorage` guarda se já viu. Primeira versão usava `useState` + `useEffect` lendo o `localStorage` — o lint (`react-hooks/set-state-in-effect`) pegou na hora, **mesmo anti-padrão que já tinha mordido o loading-overlay** (armadilha antiga #20). Corrigido com `useSyncExternalStore` (o jeito suportado de ler um "external store" de verdade tipo `localStorage`, sem cair no setState-síncrono-em-efeito e sem descasar servidor/cliente na hidratação) — `subscribe` é um no-op (nada externo muda o valor durante a sessão), e o clique em "Fechar" usa um `useState` local só pra sumir na hora, sem esperar um novo ciclo de leitura.
+
+---
+
+## Decisões e features da SESSÃO DE 25/08 (troca de time de modelo, performance, correções de produção)
+
+Sessão longa, dividida em duas partes: uma feature nova planejada (spec + plano + execução via subagentes) e uma série de correções puxadas por uso real em produção.
+
+### 29. Troca de time de modelo — `model_bloco_periodos`
+
+**O problema real**: a Issy Black desativou (`models.ativa=false`) e o card "Time 1 · Vortex I" na `/primaris` passou a mostrar `US$ 0,00 / US$ 0,00`, mesmo o Pedro (dono do Time 1) tendo vendido de verdade naquele mês. Causa: `models.bloco` é lido AO VIVO em tudo (`buscarResumoPrimaris`, `buscarBonusPrimaris`) e `porPagina`/`porTime` só somam modelo `ativa=true` — desativar uma modelo apaga a história dela do card do time inteiro, não só o futuro. Bug irmão, pior: se uma modelo trocasse de time de verdade (não só desativasse), TODO o histórico dela — meses já fechados — passaria a contar pro time novo, incluindo o bônus de Party/Team addition dos primaris.
+
+**Spec + plano escritos e aprovados** (`docs/superpowers/specs/2026-08-14-troca-time-modelo-design.md`, `docs/superpowers/plans/2026-08-14-troca-time-modelo.md`), executados via **subagent-driven-development** (7 tasks, implementador + revisor independente por task, revisão final de branch inteiro no fim). O processo pegou **3 bugs reais** antes de produção — ver "Armadilhas" abaixo, são a parte mais importante de entender antes de mexer nisso de novo.
+
+**Desenho final**:
+- Tabela nova `model_bloco_periodos(model_id, bloco, inicio, fim)` — histórico de qual bloco cada modelo ocupou, por data. **`fim` é um limite EXCLUSIVO** (intervalo meio-aberto `[inicio, fim)` — o dia do `fim` já pertence ao PRÓXIMO período, não ao que está fechando). Índice único parcial garante no máximo um período aberto (`fim is null`) por modelo.
+- `lib/periodos.ts` (puro, testado): `blocoNaData(periodos, modeloId, data)` resolve o bloco de uma modelo numa data específica; `metaProrateada()` reparte a `meta_mensal` entre blocos proporcional aos dias de cada período dentro do mês consultado.
+- `lib/periodosDb.ts`: `buscarPeriodos(db)` — busca compartilhada, usada por `primarisDb.ts` e por `admin/turnos/page.tsx`.
+- `app/(app)/admin/models/actions.ts`: botão novo **"trocar de time"** (`moverTime`) — fecha o período atual e abre um novo no bloco oposto, ambos na mesma data (`hoje`), o que é exatamente o que faz o `fim` exclusivo funcionar certo (hoje já pertence ao time novo). `definirAtivaModelo` passou a fechar o período ao desativar e reabrir ao reativar. `criarModelo` também abre um período (ver armadilha).
+- `lib/primarisDb.ts`: `buscarVendasDaEmpresa()` resolve `modeloBloco` de cada venda por `blocoNaData()` (data da venda), não mais pelo `models.bloco` atual — conserta os dois problemas de uma vez (card da `/primaris` E o bônus de liderança), porque os dois consomem o mesmo `VendaDeModelo.modeloBloco`. Nova `buscarHistoricoModelos()` lista trocas/desativações fechadas dentro do mês consultado, com o vendido de cada período.
+- `/primaris` ganhou seção **"Histórico"** (só aparece se houve troca/desativação no mês selecionado) — nome da modelo, "Time X → Time Y" (ou "→ desativada"), data, vendido no período.
+- Migração de reparo em produção (0022): a Issy Black e a Kaylin já estavam `ativa=false` **antes** dessa feature existir, e o backfill da 0021 deu período **aberto** (`fim=null`) pra todo mundo, inclusive elas — inflando a meta prorateada do Time 1 pra sempre. 0022 fechou o período das duas na data em que a migração rodou; 0021 também foi ajustada (não reaplicada, só o arquivo) pra um ambiente novo não reproduzir o mesmo bug com modelos que já nascem inativas.
+
+### 30. `admin/turnos`: roster do "simular ponto" respeita a data do turno
+
+Achado direto pelo usuário corrigindo turnos retroativos de 11-13/08: o checkbox de modelo do "simular ponto" só mostrava quem está `ativa=true` **hoje**, sem olhar a data do turno sendo corrigido — a Issy Black (desativada por causa da feature acima) sumiu do checkbox mesmo pra turnos de quando ela ainda era a modelo certa do Time 1. Fix: `app/(app)/admin/turnos/page.tsx` para de filtrar `models` por `ativa` (mantém só `extra=false`) e passa `periodos` (via `buscarPeriodos`) até o `FormPonto`, que resolve o roster de cada linha com `blocoNaData(periodos, modeloId, data)` em vez de `model.bloco` fixo.
+
+### 31. "Precisam de atenção" também pega comissão pendente
+
+Pedido direto: a lista só considerava ponto aberto/nunca aberto (`precisaAtencao()`, sessão 18/08). Um turno com ponto fechado mas com statement faltando (comissão fica "aberto" — `LinhaInvoice.pendente`) não aparecia. `precisaAtencao(shift, hoje, comissaoPendente)` ganhou um terceiro parâmetro; `admin/turnos/page.tsx` passa `linhasPorShift.get(s.id)?.pendente`.
+
+### 32. Botão "remover modelo do ponto" por completo
+
+Caso real descoberto ao usar a feature acima: a **Kaylin** tem um `shift_log_models`/`statements` de 11/08 (de ANTES do "Turno Extra" existir, sessão 18/08) cuja cadeia de desconto nunca vai resolver — é a primeira (e única) vez que ela aparece no sistema por esse fluxo antigo, não existe statement anterior dela pra comparar, `buscarAnterior()` sempre volta `pendente`. O turno ficava "aberto" pra sempre mesmo com o print certo digitado, e apagar só o statement (`apagarStatement`) não resolvia — a modelo continuava em `shift_log_models`, travando o cálculo. `removerModeloDoPonto(shiftLogId, modeloId)` (novo, `admin/turnos/actions.ts`) apaga statement E a linha de `shift_log_models` juntos; botão "remover" ao lado de cada modelo na coluna Statements de `admin/turnos/linha-turno.tsx`.
+
+### 33. Performance: site muito lento — `buscarAnterior()` em loop sequencial
+
+Usuário reportou o site "MUITO lento" (carregar, trocar de aba, às vezes o clique nem navegava). Investigação (dados reais, não achismo): **195 combinações turno×modelo só no mês atual**, e `buscarVendasDaEmpresa()` fazia um `await buscarAnterior()` (2 idas ao banco cada) **sequencial**, um atrás do outro, dentro de um `for`. Isso rodava inteiro em `/`, `/invoice` e `/primaris`. Pior ainda: `buscarRecordeDoRep()` (chamado no dashboard, pra todo mundo) não tem filtro de data nenhum (é o recorde de todos os tempos) — o histórico só cresce, então esse era o caso que mais piorava com o tempo.
+
+Fix: trocado `for` sequencial por `Promise.all` nos 4 lugares com esse padrão — `buscarVendasDaEmpresa` (`primarisDb.ts`), `vendidoDoTurno`/`buscarMetasDoRep`/`buscarRecordeDoRep` (`metaDb.ts`), e a montagem de `linhasPorShift` em `admin/turnos/page.tsx`. Mesma lógica, mesmo resultado — só a ORDEM de execução das chamadas ao banco mudou (todas de uma vez em vez de uma de cada vez). Zero mudança de comportamento visível, só velocidade.
 
 ---
 
@@ -353,9 +372,19 @@ Mensagem do Pedro pro time ("Oi, o Pedro ama vc tá? Obrigado pela dedicação e
 
 27. **Passar um `Map` como prop de Server Component pra Client Component não serializa no boundary do RSC.** Ao separar `/admin/turnos` em duas listas (em aberto/concluídos), o `linhasPorShift` já existia como `Map<string, LinhaInvoice>` — bastou `Object.fromEntries(map)` antes de passar pro `<ListaTurnos>` (client) pra virar um objeto plano serializável. **Sempre que um valor calculado no Server Component for `Map`/`Set` e precisar atravessar pra um Client Component, converte pra array/objeto plano antes.**
 
+### Da sessão de 25/08
+
+28. **Um intervalo de datas "fecha aqui, abre ali" na mesma data só funciona sem ambiguidade se um lado for exclusivo.** O plano original da feature de troca de time assumia `fim` inclusivo dos dois lados (o período velho E o novo cobririam o dia da troca) — e o próprio teste que o plano escreveu para provar isso ("na virada, pertence ao novo período") **falhava contra a fórmula do plano**, porque com os dois lados inclusivos, `.find()` podia devolver o período errado dependendo da ordem do array, e somar dias de dois períodos vizinhos pra prorateio de meta dava 32 num mês de 31 dias (dia da virada contado duas vezes). Corrigido pra intervalo meio-aberto `[inicio, fim)` — só um revisor de task, com instrução explícita pra traçar os limites à mão em vez de confiar nos testes do implementador, achou isso. **Lição: ao desenhar qualquer histórico por período (bloco por data, preço por data, etc.), decida explicitamente se `fim` é inclusivo ou exclusivo ANTES de escrever o primeiro teste — "a mesma data fecha um e abre outro" só é seguro se um dos dois lados for exclusivo.**
+
+29. **Toda entidade com "estado que muda com o tempo" (aqui, período por bloco) precisa que TODA via de criação inicialize esse estado — não só o caminho óbvio.** A ação `moverTime` e a reativação de `definirAtivaModelo` abriam um período novo direito, mas `criarModelo` (o insert mais básico, usado toda vez que uma modelo nova entra no roster) **não abria período nenhum** — só apareceu na revisão final de branch inteiro, porque nenhuma task individual tocava em `criarModelo`. Consequência: toda modelo criada dali em diante ficaria com `blocoNaData()` retornando `null` pra sempre, e suas vendas sumiriam silenciosamente de toda soma por time e do bônus de liderança. **Lição: quando uma feature nova depende de um registro auxiliar (aqui, `model_bloco_periodos`) que tem que existir "desde sempre" pra uma entidade funcionar direito, audite TODOS os pontos de criação daquela entidade, não só os que a task list menciona — `grep` por `.insert(` na tabela principal costuma achar os esquecidos.**
+
+30. **Um backfill de migração que só testa o caso "comum" pode piorar silenciosamente o caso raro que já estava quebrado.** O backfill de `model_bloco_periodos` deu período **aberto** (`fim=null`) pra toda modelo, inclusive duas (Issy Black, Kaylin) que já estavam `ativa=false` **antes** da feature existir — e como a proração de meta por time propositalmente NÃO filtra por `ativa` (pra uma desativação no meio do mês ainda dar crédito parcial), essas duas passaram a contar meta cheia PRA SEMPRE, todo mês, depois da migração. A meta do Time 1 pulou de ~122k pra ~235k **em produção**, sem nenhum erro, só um número errado que só ficou óbvio quando o time todo tinha zero modelo ativa. Confirmado só porque a revisão final rodou uma query ao vivo comparando `ativa` × `fim` — não bastava ler o SQL da migração. **Lição: todo backfill que assume "o estado atual reflete o histórico" precisa de um caso de teste explícito pra "já estava no estado raro antes da migração existir" — o caso comum quase sempre já está coberto pelos testes normais, é o raro que escapa.**
+
+31. **Loop sequencial de `await` dentro de um `for` é o tipo de bug que só aparece devagar, conforme o dado cresce — e é fácil de nunca notar em dev.** `buscarVendasDaEmpresa`/`buscarMetasDoRep`/`buscarRecordeDoRep` chamavam `buscarAnterior()` (2 idas ao banco) um de cada vez, dentro de loops, desde muito antes desta sessão — provavelmente sempre rodou assim, só que com poucos turnos no banco isso levava frações de segundo. Com ~195 combinações turno×modelo só no mês atual (e `buscarRecordeDoRep` sem filtro de data NENHUM, crescendo pra sempre), virou lentidão perceptível no site inteiro — carregar, trocar de aba, timeout ocasional. **Fix mecânico, sem mudar lógica nenhuma**: trocar o `for` sequencial por montar a lista de tarefas primeiro (síncrono) e rodar `Promise.all` sobre elas, processando os resultados depois num segundo passo síncrono. **Lição: qualquer `for`/`for...of` com `await` no corpo, iterando sobre uma lista que cresce com o uso real (turnos, vendas, linhas), é candidato a esse mesmo bug — performance no ambiente de dev com dado de teste não é evidência de nada aqui.**
+
 ---
 
-## Modelo de dados atual (depois de 20 migrações)
+## Modelo de dados atual (depois de 22 migrações)
 
 ```
 reps            id, auth_user_id, nome_curto, nome_oficial, turno, papel, cargo,
@@ -411,6 +440,16 @@ turnos_extra    id, rep_id, data, turno, model_id, nome_livre,
                 -- turno=T6T1 (primeiro turno do dia). Ver lib/turnosExtraDb.ts
                 -- e a seção "SESSÃO DE 18/08" pro porquê.
 commission_rules  id, vigente_desde, regra (jsonb: percentual por cargo + fatia_assistente)
+model_bloco_periodos  id, model_id, bloco, inicio (date), fim (date, null = aberto)
+                -- Migração 0021, sessão 25/08. Histórico de qual bloco cada
+                -- modelo ocupou, por data — fim é EXCLUSIVO (armadilha #28:
+                -- [inicio, fim), o dia do fim já é do próximo período).
+                -- Índice único parcial: no máximo um período aberto por
+                -- modelo. moverTime()/definirAtivaModelo() (admin/models/
+                -- actions.ts) fecham/abrem; criarModelo() também abre desde
+                -- a correção da armadilha #29. Ver lib/periodos.ts
+                -- (blocoNaData, metaProrateada, puro/testado) e
+                -- lib/periodosDb.ts (buscarPeriodos, compartilhado).
 ```
 
 `escala_time` (view, security definer) expõe `data, turno, bloco, funcao, origem, rep_nome, modelos_nome` pra qualquer rep autenticado — é o que a aba "Time" do schedule lê. `modelos_nome` vem de `shift_log_models` (modelo REAL trabalhada), não de um planejamento.
@@ -441,6 +480,8 @@ Lista das migrações, em ordem — todas já rodadas no Supabase de produção 
 | 0018 | `statements.anterior_manual` (jsonb) + `models.externa` (bool) — **ambas APAGADAS na 0019** |
 | 0019 | Sessão 18/08: `models.independente` → `models.extra` (rename); apaga `models.externa` e `statements.anterior_manual` — desmonta o "turno independente" antigo |
 | 0020 | Sessão 18/08: cria `turnos_extra` (+ RLS) — base do novo "Turno Extra" |
+| 0021 | Sessão 25/08: cria `model_bloco_periodos` (+ RLS) + backfill — base da troca de time de modelo |
+| 0022 | Sessão 25/08: reparo de dado — fecha o período aberto das modelos já `ativa=false` antes da 0021 existir (Issy Black, Kaylin), que senão contariam meta prorateada pra sempre (armadilha #30) |
 
 ### Reps que NÃO são os 9 do time
 
@@ -528,8 +569,15 @@ lib/
   statementDb.ts                 buscarAnterior() — voltou a ser simples na sessão de 18/08
                                   (perdeu o desvio de models.independente); resolverAnterior()
                                   foi apagado, não existe mais
-  turnoAberto.ts + .test.ts      precisaAtencao(shift, hoje) — turno sem clock_out OU nunca
-                                  aberto com data passada; usado em /admin/turnos (sessão 18/08)
+  turnoAberto.ts + .test.ts      precisaAtencao(shift, hoje, comissaoPendente=false) — turno sem
+                                  clock_out OU nunca aberto com data passada OU (sessão 25/08)
+                                  comissão pendente (statement faltando); usado em /admin/turnos
+  periodos.ts + .test.ts         NOVO (sessão 25/08, puro): blocoNaData(periodos, modeloId, data),
+                                  diasDeCruzamento(), metaProrateada() — fim de Periodo é
+                                  EXCLUSIVO (armadilha #28: [inicio, fim))
+  periodosDb.ts                  NOVO (sessão 25/08): buscarPeriodos(db) contra
+                                  model_bloco_periodos — compartilhado entre primarisDb.ts e
+                                  admin/turnos/page.tsx
   turnosExtraDb.ts               lib da tabela turnos_extra (sessão 18/08): buscarTurnosExtraDoRep(),
                                   buscarTurnosExtraAdmin(), lancarTurnoExtra(), apagarTurnoExtra() —
                                   comissão sempre recalculada na leitura (buscarRegraVigente),
@@ -547,13 +595,23 @@ lib/
                                   roster fallback filtra extra=false; LinhaMetaTurno.porPagina
                                   p/ o breakdown por página no histórico de /turno. NÃO mescla
                                   turnos_extra (decisão consciente — é sobre desempenho do
-                                  turno ESCALADO, Turno Extra é ad-hoc e mostra em seção própria)
+                                  turno ESCALADO, Turno Extra é ad-hoc e mostra em seção própria).
+                                  Sessão 25/08: vendidoDoTurno() e os loops de buscarMetasDoRep/
+                                  buscarRecordeDoRep trocaram await sequencial por Promise.all
+                                  (armadilha #31) — mesma lógica, só a ordem de I/O mudou
   primarisDb.ts                  buscarVendasDaEmpresa() (com turno, pra meta por venda —
                                   sessão 18/08: mescla turnos_extra com model_id preenchido,
                                   pra bônus de liderança/meta de página contar igual venda
-                                  normal), buscarResumoPrimaris() (porRep já com meta/%,
-                                  ResumoPagina.projecao/percentualProjetado pro MTD
-                                  extrapolado), buscarBonusPrimaris()
+                                  normal; sessão 25/08: modeloBloco resolvido por blocoNaData()
+                                  na data da venda, não mais models.bloco atual — corrige
+                                  /primaris E buscarBonusPrimaris ao mesmo tempo, os dois
+                                  consomem o mesmo campo; loop de buscarAnterior() virou
+                                  Promise.all, armadilha #31), buscarResumoPrimaris() (porRep
+                                  já com meta/%, porTime/total prorateados por período — não
+                                  mais só ativa=true —, ResumoPagina.projecao/percentualProjetado
+                                  pro MTD extrapolado), buscarBonusPrimaris(),
+                                  buscarHistoricoModelos() (NOVO, sessão 25/08 — trocas/
+                                  desativações fechadas dentro do mês consultado)
   imagem.ts                      reduzirImagem() — resize+base64, compartilhado turno/admin
   tempo.ts                       conversão UTC <-> BRT + helpers de mês (mesAtual, limitesDoMes, etc.)
   tipos.ts                       tipos do domínio (espelham os enums do Postgres) — Cargo
@@ -634,7 +692,9 @@ app/(app)/
                                   o % de comissão do cargo (percentualComissao())
   primaris/page.tsx               aba Primaris (gate: cargo primaris OU observador OU
                                   admin_5c); tabela "Por rep" com Meta e % atingida; tabela
-                                  "Por página" ganhou coluna de Projeção (MTD extrapolado)
+                                  "Por página" ganhou coluna de Projeção (MTD extrapolado);
+                                  sessão 25/08: seção "Histórico" (buscarHistoricoModelos(),
+                                  só aparece se houve troca/desativação no mês selecionado)
   admin/
     layout.tsx                   guarda: podeVerAdmin() (admin/primaris/observador VEEM;
                                   ehAdmin() sozinho continua travando toda escrita)
@@ -648,21 +708,32 @@ app/(app)/
                                   "extra" (linha-modelo.tsx, renomeado de "independente" na
                                   sessão 18/08 — "externa" foi removida) + checkbox no
                                   formulário de criar — podeEditar esconde
-                                  renomear/desativar/apagar e o formulário de criar
+                                  renomear/desativar/apagar e o formulário de criar; sessão
+                                  25/08: botão "trocar de time" (moverTime, decisão #29) ao
+                                  lado dos outros; actions.ts ganhou fecharPeriodo()/
+                                  abrirPeriodo() usados por moverTime/definirAtivaModelo/
+                                  criarModelo
     turnos/                      grade editável (grade-escala.tsx, key={inicio}, podeEditar
                                   vira texto simples sem select nem "Salvar alterações") +
                                   ListaTurnos (sessão 18/08, lista-turnos.tsx, client) separa
                                   os turnos em "Precisam de atenção" (sempre visível,
-                                  precisaAtencao() de lib/turnoAberto.ts) vs "Turnos
+                                  precisaAtencao() de lib/turnoAberto.ts — sessão 25/08 também
+                                  pega comissão pendente, decisão #31) vs "Turnos
                                   concluídos" (atrás de seta, começa fechado) + lista de
                                   ponto/statement/comissão pra teste manual (linha-turno.tsx,
                                   podeEditar esconde editar/apagar/simular; voltou ao
                                   formulário de statement simples, sem o dual-print — sessão
-                                  18/08) + seção "Turnos extra" (TurnosExtraAdmin em page.tsx +
-                                  linha-turno-extra.tsx, sessão 18/08 — lista com apagar, pra
-                                  corrigir lançamento errado); actions.ts com o mesmo fix
-                                  upsert-then-delete-only-removed do simularPonto() +
-                                  apagarTurnoExtraAdmin()
+                                  18/08; sessão 25/08: roster do "simular ponto"/FormPonto
+                                  resolvido por blocoNaData(periodos, modeloId, data) — não
+                                  mais model.bloco fixo, decisão #30 — e botão "remover" tira
+                                  uma modelo do ponto por completo, statement + shift_log_models,
+                                  decisão #32) + seção "Turnos extra" (TurnosExtraAdmin em
+                                  page.tsx + linha-turno-extra.tsx, sessão 18/08 — lista com
+                                  apagar, pra corrigir lançamento errado); actions.ts com o
+                                  mesmo fix upsert-then-delete-only-removed do simularPonto() +
+                                  apagarTurnoExtraAdmin() + removerModeloDoPonto() (sessão
+                                  25/08); page.tsx: montagem de linhasPorShift virou
+                                  Promise.all por slot (armadilha #31)
 ```
 
 ---
@@ -671,14 +742,12 @@ app/(app)/
 
 - **`shifts.model_id`** ainda existe na tabela mas está morto — considerar dropar numa migração futura se ninguém for usar (baixo risco, é nullable).
 - **Verificação de identidade no cadastro**: decisão consciente do usuário de não ter (ver decisão #6 da sessão inicial) — não é bug, mas fica registrado caso o time cresça e vire um risco de verdade.
-- **Login do Thomas (observador)**: a linha em `reps` já existe (`observador=true`), mas ninguém vinculou o login ainda — falta o Thomas se auto-cadastrar em `/cadastro` (já aparece na lista) ou o admin vincular manualmente em `/admin/reps`. Não faço isso por conta própria — política de sempre, não criar conta nem mexer em senha.
 - **`shift_logs.teve_assistente`** é só informativo (ver decisão #16 / armadilha na coluna) — nunca é lido pra calcular comissão ou bônus. Se um dia precisar que ele influencie algum cálculo, os 3 lugares que hoje derivam "teve assistente" olhando o shift_log de verdade (`invoiceDb.ts`, `admin/turnos/page.tsx`, `primarisDb.ts`) precisam ser revistos juntos, não só um.
 - **`/admin/reps`** ainda lista os 3 reps sintéticos de cover + o Thomas junto com os 9 de verdade (a query nunca filtrou `ativo`) — cosmético, sem função ali, mas se algum dia incomodar dá pra filtrar `ativo=true` nessa tela específica sem afetar nada mais (ela é só visual, não trava lógica).
 - **Fora de escopo** (decidido desde o início): banco de scripts, pedidos de folga/troca, dicas/material de apoio, export pro template `.xlsx` oficial.
-- **Cargo `admin_5c` ainda não está atribuído a ninguém** — foi criado como opção no dropdown de `/admin/reps`, mas nenhum rep real recebeu esse cargo ainda; falta o Pedro (ou outro GP/KP) escolher quem vai ter esse acesso.
-- **Login do Thomas** segue pendente igual antes (ver linha acima) — Admin 5C não substitui isso, são dois mecanismos de acesso paralelos (observador = flag por pessoa; admin_5c = cargo).
-- **Turno Extra (sessão 18/08) ainda não foi exercitado com dado real de produção** — a aba, a tabela `turnos_extra` e o fluxo de 1/2 prints passaram por typecheck/lint/teste/build limpos e verificação de smoke no browser (site carrega, sem erro de console), mas ninguém logado como rep de verdade ainda lançou um Turno Extra de ponta a ponta (não dá pra testar isso sem credencial de um rep real — mesma limitação de sempre). Vale acompanhar o primeiro uso real de perto, principalmente a conta do bônus de liderança da Kaylin em `/primaris`.
-- **Nenhuma "modelo de fora" (nome livre) foi lançada ainda** — o caso de uso real até agora é só a Kaylin (roster). O campo de nome livre existe e foi testado só no código, não em produção.
+- **Nenhuma "modelo de fora" (nome livre) foi lançada ainda** — o Turno Extra do roster (Kaylin) já foi usado de verdade (1 lançamento real confirmado no banco), mas o campo de nome livre (modelo fora dos dois times) segue só testado em código.
+- **Mudança de time/desativação no MEIO do dia perde as vendas já registradas naquele dia** (achado na revisão final da feature #29, decisão consciente de não bloquear o lançamento por causa disso): como `fim` é exclusivo, `fecharPeriodo(id, hoje)` faz o período parar ANTES de hoje — uma modelo desativada às 15h com uma venda das 10h da manhã perde essa venda de qualquer atribuição (nem o time antigo nem o novo contam). Pra `moverTime` isso é correto (hoje já é do time novo); pra "desativar" puro é uma perda real, só que rara (ação manual, admin único). Se incomodar, a correção é `fecharPeriodo` usar `somarDias(hoje, 1)` como `fim` **só** no caminho de desativação (não no de troca).
+- **Kaylin tem histórico de statements de ANTES do "Turno Extra" existir (18/08) presos em "aberto" pra sempre** — a cadeia de desconto dela nunca vai resolver nesses registros antigos (não existe statement anterior real pra comparar). Usar o botão "remover" (decisão #32) em cada um quando aparecer em "Precisam de atenção" — não é bug, é dado legado que só se resolve manualmente, um de cada vez, conforme aparece.
 
 ---
 
