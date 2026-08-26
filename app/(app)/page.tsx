@@ -5,6 +5,8 @@ import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
 import { corDaMeta, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
+import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
+import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
 import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
@@ -20,6 +22,7 @@ import {
 } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
 import { CORES, IconeRaio } from './meta-visual';
+import { NotificacaoCard } from './notificacao-card';
 
 type MeuTurno = {
   id: string;
@@ -88,28 +91,30 @@ export default async function Dashboard() {
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
-  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus, turnosVazios] = await Promise.all([
-    supabase
-      .from('shifts')
-      .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
-      .eq('rep_id', rep.id)
-      .gte('data', hoje)
-      .order('data')
-      .limit(10),
-    supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
-    // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
-    // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
-    // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
-    // bloqueia isso pra sessão comum, e o delta caía sempre como "pendente"
-    // (contando zero) por não conseguir enxergar o statement de quem veio
-    // antes, mesmo quando o print do próprio rep estava certinho.
-    buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMes),
-    buscarRecordeDoRep(criarClienteAdmin(), rep.id),
-    buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
-    buscarRegraVigente(criarClienteAdmin(), fimMes),
-    cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
-    cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
-  ]);
+  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus, turnosVazios, notificacoes] =
+    await Promise.all([
+      supabase
+        .from('shifts')
+        .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
+        .eq('rep_id', rep.id)
+        .gte('data', hoje)
+        .order('data')
+        .limit(10),
+      supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
+      // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
+      // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
+      // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
+      // bloqueia isso pra sessão comum, e o delta caía sempre como "pendente"
+      // (contando zero) por não conseguir enxergar o statement de quem veio
+      // antes, mesmo quando o print do próprio rep estava certinho.
+      buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMes),
+      buscarRecordeDoRep(criarClienteAdmin(), rep.id),
+      buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
+      buscarRegraVigente(criarClienteAdmin(), fimMes),
+      cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
+      cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
+      buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje),
+    ]);
 
   const linhasInvoice = slots
     .flatMap((slot) => linhasDoSlot(slot, regra, new Date()))
@@ -151,6 +156,17 @@ export default async function Dashboard() {
                 Turno do dia {diaLegivel(v.data)}, {rotuloTurno(v.turno)} (Time {v.bloco === 'I' ? '1' : '2'}) está
                 vazio, procure cover.
               </p>
+            ))}
+          </div>
+        )}
+
+        {(notificacoes.avisos.length > 0 || notificacoes.todos.length > 0) && (
+          <div className="mt-3 space-y-1.5">
+            {notificacoes.avisos.map((n) => (
+              <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.aviso} />
+            ))}
+            {notificacoes.todos.map((n) => (
+              <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.todo} />
             ))}
           </div>
         )}
