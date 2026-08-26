@@ -1,16 +1,21 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { exigirRep, podeVerAdmin } from '@/lib/auth';
+import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
+import { criarClienteServidor } from '@/lib/supabase/server';
+import { dataBRT } from '@/lib/tempo';
 import { rotuloTurno } from '@/lib/tipos';
 import { Nav } from './nav';
 import { PopupBoasVindas } from './popup-boas-vindas';
 
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const rep = await exigirRep();
+  const supabase = await criarClienteServidor();
+  const { popups } = await buscarNotificacoesPendentesDoRep(supabase, rep.id, dataBRT());
 
   return (
     <div className="relative flex min-h-dvh flex-col">
-      <PopupBoasVindas />
+      <PopupBoasVindas popups={popups} />
       <header className="border-b border-borda bg-superficie/60 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
           <Link
