@@ -121,6 +121,12 @@ export function diaLegivel(data: string): string {
   return `${semana} ${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}`;
 }
 
+/** 'YYYY-MM-DD' → '19/08/26'. */
+export function dataCurta(data: string): string {
+  const [ano, mes, dia] = data.split('-');
+  return `${dia}/${mes}/${ano.slice(2)}`;
+}
+
 /** Meia-noite BRT de uma data 'YYYY-MM-DD', como instante UTC. */
 export function inicioDoDiaBRT(data: string): Date {
   const [ano, mes, dia] = data.split('-').map(Number);
