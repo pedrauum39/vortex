@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
 import { confirmarNotificacaoAction } from './notificacoes-actions';
 
 type Popup = { id: string; mensagem: string };
@@ -17,6 +18,7 @@ export function PopupBoasVindas({ popups }: { popups: Popup[] }) {
   const [filaOriginal] = useState(popups);
   const [fechados, setFechados] = useState<Set<string>>(new Set());
   const [pendente, executar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
 
   const popup = filaOriginal.find((p) => !fechados.has(p.id));
   if (!popup) return null;
@@ -24,15 +26,20 @@ export function PopupBoasVindas({ popups }: { popups: Popup[] }) {
   function fechar() {
     if (!popup) return;
     const popupId = popup.id;
+    setErro(null);
     executar(async () => {
-      await confirmarNotificacaoAction(popupId);
-      setFechados((atual) => new Set(atual).add(popupId));
+      try {
+        await confirmarNotificacaoAction(popupId);
+        setFechados((atual) => new Set(atual).add(popupId));
+      } catch {
+        setErro('Não deu para confirmar. Tenta de novo.');
+      }
     });
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-borda bg-superficie p-6 text-center shadow-2xl">
+      <div className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-2xl border border-borda bg-superficie p-6 text-center shadow-2xl">
         <p className="whitespace-pre-wrap text-sm">{popup.mensagem}</p>
         <button
           type="button"
@@ -40,8 +47,9 @@ export function PopupBoasVindas({ popups }: { popups: Popup[] }) {
           onClick={fechar}
           className="mt-5 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-fundo transition hover:bg-accent-forte disabled:opacity-50"
         >
-          Fechar
+          {ROTULO_CONFIRMAR.popup}
         </button>
+        {erro && <p className="mt-2 text-xs text-red-400">{erro}</p>}
       </div>
     </div>
   );

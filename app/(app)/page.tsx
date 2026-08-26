@@ -113,7 +113,7 @@ export default async function Dashboard() {
       buscarRegraVigente(criarClienteAdmin(), fimMes),
       cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
       cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
-      buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje),
+      buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje).catch(() => ({ popups: [], avisos: [], todos: [] })),
     ]);
 
   const linhasInvoice = slots

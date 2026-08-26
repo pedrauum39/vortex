@@ -11,7 +11,9 @@ import { PopupBoasVindas } from './popup-boas-vindas';
 export default async function LayoutApp({ children }: { children: React.ReactNode }) {
   const rep = await exigirRep();
   const supabase = await criarClienteServidor();
-  const { popups } = await buscarNotificacoesPendentesDoRep(supabase, rep.id, dataBRT());
+  const { popups } = await buscarNotificacoesPendentesDoRep(supabase, rep.id, dataBRT()).catch(
+    () => ({ popups: [], avisos: [], todos: [] }),
+  );
 
   return (
     <div className="relative flex min-h-dvh flex-col">

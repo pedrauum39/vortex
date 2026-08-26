@@ -62,6 +62,7 @@ function LinhaNotificacao({
 }) {
   const [aberta, setAberta] = useState(false);
   const [pendente, executar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
 
   const confirmados = notificacao.destinatarios.filter((d) => d.lidaEm !== null).length;
 
@@ -87,13 +88,24 @@ function LinhaNotificacao({
           <button
             type="button"
             disabled={pendente}
-            onClick={() => executar(() => desativarNotificacaoAction(notificacao.id))}
+            onClick={() =>
+              executar(async () => {
+                setErro(null);
+                try {
+                  await desativarNotificacaoAction(notificacao.id);
+                } catch {
+                  setErro('Não deu para desativar.');
+                }
+              })
+            }
             className="text-xs text-red-400 hover:underline disabled:opacity-50"
           >
             desativar
           </button>
         )}
       </div>
+
+      {erro && <p className="mt-2 text-xs text-red-400">{erro}</p>}
 
       {aberta && (
         <ul className="mt-3 grid grid-cols-2 gap-1.5 border-t border-borda pt-3 sm:grid-cols-3">
