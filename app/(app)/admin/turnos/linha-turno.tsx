@@ -68,9 +68,9 @@ export function LinhaTurno({
   return (
     <>
       <tr className="border-b border-borda last:border-0">
-        <td className="px-4 py-2.5">{shift.data}</td>
+        <td className="px-4 py-2.5 text-base font-bold">{shift.data}</td>
         <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(shift.turno)}</td>
-        <td className="px-3 py-2.5">{shift.bloco}</td>
+        <td className="px-3 py-2.5 text-base font-bold">{shift.bloco === 'I' ? '1' : '2'}</td>
         <td className="px-3 py-2.5">
           {shift.funcao === 'assist' ? (
             <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-xs text-accent">Assistant</span>
