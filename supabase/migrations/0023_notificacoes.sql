@@ -17,7 +17,8 @@ create table notificacoes (
 
   -- data_inicio/data_fim só existem (e são obrigatórios) pra tipo=aviso.
   constraint notificacoes_periodo_so_aviso check (
-    (tipo = 'aviso') = (data_inicio is not null and data_fim is not null)
+    (tipo = 'aviso' and data_inicio is not null and data_fim is not null)
+    or (tipo <> 'aviso' and data_inicio is null and data_fim is null)
   )
 );
 
@@ -65,3 +66,10 @@ create policy notificacao_destinatarios_update on notificacao_destinatarios
   for update to authenticated
   using (is_admin() or rep_id = current_rep_id())
   with check (is_admin() or rep_id = current_rep_id());
+
+-- RLS puro não trava "essa coluna não pode mudar" — só o UPDATE em si. Sem
+-- isto, um rep comum poderia fazer UPDATE trocando o próprio notificacao_id
+-- pra "virar" alvo de uma notificação que não era dele, contornando a
+-- policy de insert (que exige admin).
+revoke update on notificacao_destinatarios from authenticated;
+grant update (lida_em) on notificacao_destinatarios to authenticated;
