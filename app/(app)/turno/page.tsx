@@ -53,10 +53,10 @@ type TurnoDoDia = {
 export default async function TurnoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ turno?: string; mes?: string; aba?: string }>;
+  searchParams: Promise<{ turno?: string; data?: string; mes?: string; aba?: string }>;
 }) {
   const rep = await exigirRep();
-  const { turno: turnoEscolhido, mes: mesParam, aba = 'meus' } = await searchParams;
+  const { turno: turnoEscolhido, data: dataEscolhida, mes: mesParam, aba = 'meus' } = await searchParams;
   const supabase = await criarClienteServidor();
 
   const CAMPOS_TURNO =
@@ -224,8 +224,13 @@ export default async function TurnoPage({
 
   const turno =
     // Escolha explícita (clique numa aba) pode mirar num dos extras também,
-    // não só nos prioritários.
-    candidatosParaAbas.find((t) => t.turno === turnoEscolhido) ??
+    // não só nos prioritários. Casa por turno E data — pode haver mais de
+    // uma aba do mesmo tipo (ex.: 3 T6/T1 em dias diferentes), e casar só
+    // pelo turno sempre resolvia pra primeira da lista, travando o clique
+    // nas outras abas do mesmo tipo.
+    candidatosParaAbas.find((t) =>
+      dataEscolhida ? t.turno === turnoEscolhido && t.data === dataEscolhida : t.turno === turnoEscolhido,
+    ) ??
     // Sem escolha explícita, o turno de HOJE sempre vem primeiro — em
     // andamento (precisa fechar) antes do que ainda nem começou, mas
     // qualquer um dos dois na frente de um turno velho aberto de outro dia.
@@ -324,7 +329,7 @@ export default async function TurnoPage({
               {candidatosParaAbas.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/turno?turno=${c.turno}`}
+                  href={`/turno?turno=${c.turno}&data=${c.data}`}
                   className={`rounded-lg border px-3 py-1.5 text-sm ${
                     turno?.id === c.id
                       ? 'border-accent bg-accent-fraco text-accent'
