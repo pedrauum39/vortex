@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
-import { corDaMeta, metaDiariaDaPagina, percentualAtingido, temRaio } from '@/lib/meta';
-import { buscarMetasDoRep, buscarRecordeDoRep } from '@/lib/metaDb';
+import { metaDiariaDaPagina } from '@/lib/meta';
+import { buscarMetasDoRep, buscarRecordeDoRep, buscarResumosDoRep } from '@/lib/metaDb';
 import { diaDoStatement } from '@/lib/statement';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
@@ -28,7 +28,7 @@ import {
 } from '@/lib/turno';
 import { precisaAtencao } from '@/lib/turnoAberto';
 import { buscarTurnosExtraDoRep } from '@/lib/turnosExtraDb';
-import { CORES, IconeRaio } from '../meta-visual';
+import { HistoricoTurnos, type LinhaHistorico } from './historico-turnos';
 import { Painel } from './painel';
 import { TurnoExtra } from './turno-extra';
 
@@ -281,12 +281,18 @@ export default async function TurnoPage({
   const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mes);
   const diasDoMesHistorico = diasNoMes(mes);
 
-  const [metas, recorde] = await Promise.all([
+  const [metas, recorde, resumos] = await Promise.all([
     buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMesHistorico),
     buscarRecordeDoRep(criarClienteAdmin(), rep.id),
+    buscarResumosDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes),
   ]);
 
-  const historico = metas.linhas.filter((l) => l.trabalhado);
+  const historico: LinhaHistorico[] = metas.linhas
+    .filter((l) => l.trabalhado)
+    .map((l) => {
+      const resumo = resumos.get(`${l.data}|${l.turno}`);
+      return { ...l, resumo: resumo?.resumo ?? null, assistNome: resumo?.assistNome ?? null };
+    });
 
   return (
     <div className="space-y-6">
@@ -415,79 +421,7 @@ export default async function TurnoPage({
             {historico.length === 0 ? (
               <p className="mt-4 text-sm text-texto-fraco">Nenhum turno trabalhado neste mês.</p>
             ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[40rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-borda text-left text-texto-fraco">
-                      <th className="px-3 py-2.5 font-medium">Data</th>
-                      <th className="px-3 py-2.5 font-medium">Turno</th>
-                      <th className="px-3 py-2.5 font-medium">Modelo(s)</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Meta do turno</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Total feito</th>
-                      <th className="px-3 py-2.5 text-right font-medium">%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historico.map((l) => {
-                      const percentual = percentualAtingido(l.vendido, l.metaDoTurno);
-                      const ehRecorde = recorde?.data === l.data && recorde?.turno === l.turno;
-                      return (
-                        <tr
-                          key={`${l.data}-${l.turno}`}
-                          className={`border-b border-borda last:border-0 ${
-                            ehRecorde ? 'ring-2 ring-inset ring-accent' : ''
-                          }`}
-                        >
-                          <td className="px-3 py-3">{diaLegivel(l.data)}</td>
-                          <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
-                          <td className="px-3 py-3 text-accent">{l.paginas.join(' + ')}</td>
-                          <td className="px-3 py-3 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
-                          <td className="px-3 py-3 text-right">
-                            {dinheiro(l.vendido)}
-                            {l.pendente && (
-                              <span className="ml-2 rounded-md border border-amber-500/40 px-2 py-0.5 text-xs text-amber-300">
-                                em aberto
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className="inline-flex items-center gap-1">
-                                {percentual === null ? (
-                                  <span className="text-texto-fraco">—</span>
-                                ) : (
-                                  <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(percentual)]}`}>
-                                    {percentual.toFixed(1)}%
-                                    {temRaio(percentual) && <IconeRaio className="size-4" />}
-                                  </span>
-                                )}
-                                {ehRecorde && (
-                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
-                                    Recorde
-                                    {percentual !== null && temRaio(percentual) && <IconeRaio className="size-4" />}
-                                  </span>
-                                )}
-                              </span>
-                              {l.porPagina.length > 1 && (
-                                <div className="text-xs text-texto-fraco">
-                                  {l.porPagina.map((p) => {
-                                    const pctPagina = percentualAtingido(p.vendido, p.meta);
-                                    return (
-                                      <div key={p.nome}>
-                                        {p.nome} {pctPagina === null ? '—' : `${pctPagina.toFixed(0)}%`}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <HistoricoTurnos historico={historico} recorde={recorde} />
             )}
           </section>
         </>

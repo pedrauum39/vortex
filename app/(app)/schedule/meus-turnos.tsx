@@ -172,7 +172,7 @@ export function MeusTurnos({
                 key={data}
                 onMouseEnter={() => temTurno && setDiaHover(data)}
                 onMouseLeave={() => setDiaHover(null)}
-                className={`relative flex aspect-square items-center justify-center rounded-lg text-sm transition ${
+                className={`relative flex aspect-square items-center justify-center rounded-lg text-lg font-medium transition ${
                   cor
                     ? `cursor-default ${CORES_PASTEL[cor]}`
                     : temTurno
@@ -181,9 +181,9 @@ export function MeusTurnos({
                 } ${ehHoje ? 'ring-2 ring-accent' : ''}`}
               >
                 {jaFeito && (
-                  <span className="absolute left-1 top-1 flex items-center gap-0.5 text-[8px] leading-none opacity-90">
+                  <span className="absolute left-1 top-1 flex items-center gap-0.5 text-xs font-normal leading-none opacity-90">
                     {info!.percentual!.toFixed(0)}%
-                    {raio && <IconeRaio className="size-2" />}
+                    {raio && <IconeRaio className="size-3" />}
                   </span>
                 )}
                 {dia}

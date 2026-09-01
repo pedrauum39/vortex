@@ -192,6 +192,7 @@ async function AbaTime({
   fim: string;
   meuNome: string;
 }) {
+  const hoje = dataBRT();
   const supabase = await criarClienteServidor();
   const { data, error } = await supabase
     .from('escala_time')
@@ -213,14 +214,16 @@ async function AbaTime({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
-      <table className="w-full min-w-[56rem] table-fixed border-collapse text-base">
+      <table className="w-full min-w-[56rem] table-fixed border-collapse text-center text-base">
         <thead>
           <tr className="border-b border-borda">
             <th className="w-28 px-4 py-3.5 text-left font-medium text-texto-fraco">Turno</th>
             {dias.map((dia) => (
               <th
                 key={dia}
-                className="w-[calc((100%-7rem)/7)] px-4 py-3.5 text-left font-medium text-texto-fraco"
+                className={`w-[calc((100%-7rem)/7)] px-4 py-3.5 font-medium ${
+                  dia === hoje ? 'text-accent' : 'text-texto-fraco'
+                }`}
               >
                 {diaLegivel(dia)}
               </th>
@@ -229,7 +232,7 @@ async function AbaTime({
         </thead>
         <tbody>
           {(['I', 'II'] as Bloco[]).map((bloco) => (
-            <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} meuNome={meuNome} />
+            <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} meuNome={meuNome} hoje={hoje} />
           ))}
         </tbody>
       </table>
@@ -242,30 +245,33 @@ function BlocoDeLinhas({
   semana,
   busca,
   meuNome,
+  hoje,
 }: {
   bloco: Bloco;
   semana: string[];
   busca: Map<string, LinhaTime>;
   meuNome: string;
+  hoje: string;
 }) {
   return (
     <>
       <tr className="border-b border-borda bg-superficie-alta">
-        <td colSpan={8} className="px-4 py-2.5 text-sm font-medium tracking-wide text-accent">
+        <td colSpan={8} className="px-4 py-2.5 text-left text-sm font-medium tracking-wide text-accent">
           {bloco === 'I' ? 'TIME 1 · Vortex I' : 'TIME 2 · Vortex II'}
         </td>
       </tr>
       {TURNOS.map((turno) => (
         <tr key={turno} className="border-b border-borda last:border-0">
-          <td className="px-4 py-4 text-texto-fraco">{rotuloTurno(turno)}</td>
+          <td className="px-4 py-4 text-left text-texto-fraco">{rotuloTurno(turno)}</td>
           {semana.map((dia) => {
             const regular = busca.get(`${dia}|${turno}|${bloco}|regular`);
             const assist = busca.get(`${dia}|${turno}|${bloco}|assist`);
             const souEu = regular?.rep_nome === meuNome || assist?.rep_nome === meuNome;
+            const ehHoje = dia === hoje;
             return (
               <td
                 key={dia}
-                className={`px-4 py-4 align-top ${souEu ? 'rounded-lg bg-accent-fraco' : ''}`}
+                className={`px-4 py-4 align-top ${souEu ? 'rounded-lg bg-accent-fraco' : ehHoje ? 'bg-superficie-alta' : ''}`}
               >
                 <div>{regular?.rep_nome ?? <span className="text-texto-fraco">—</span>}</div>
                 {regular?.modelos_nome && (

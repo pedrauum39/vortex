@@ -256,3 +256,65 @@ export async function buscarRecordeDoRep(db: SupabaseClient, repId: string): Pro
 
   return recorde;
 }
+
+export type ResumoDoTurno = { resumo: string | null; assistNome: string | null };
+
+type LinhaRegularResumo = {
+  data: string;
+  turno: Turno;
+  bloco: Bloco;
+  shift_logs: { resumo: string | null }[];
+};
+
+type LinhaAssistResumo = {
+  data: string;
+  turno: Turno;
+  bloco: Bloco;
+  reps: { nome_curto: string } | null;
+};
+
+/**
+ * Resumo escrito no fechamento + nome de quem assistiu, por turno do rep —
+ * pro "detalhes" do histórico de /turno. Cliente admin de propósito: o
+ * assistente é outro rep, e a RLS comum não deixa o regular ler o shift de
+ * outra pessoa (mesmo motivo do `temAssistente` calculado ao vivo).
+ */
+export async function buscarResumosDoRep(
+  db: SupabaseClient,
+  repId: string,
+  inicio: string,
+  fim: string,
+): Promise<Map<string, ResumoDoTurno>> {
+  const inicioBusca = somarDias(inicio, -1);
+
+  const [{ data: regularData }, { data: assistData }] = await Promise.all([
+    db
+      .from('shifts')
+      .select('data, turno, bloco, shift_logs(resumo)')
+      .eq('rep_id', repId)
+      .eq('funcao', 'regular')
+      .gte('data', inicioBusca)
+      .lte('data', fim),
+    db
+      .from('shifts')
+      .select('data, turno, bloco, reps(nome_curto)')
+      .eq('funcao', 'assist')
+      .gte('data', inicioBusca)
+      .lte('data', fim),
+  ]);
+
+  const assistPorSlot = new Map<string, string>();
+  for (const a of (assistData ?? []) as unknown as LinhaAssistResumo[]) {
+    if (a.reps?.nome_curto) assistPorSlot.set(`${a.data}|${a.turno}|${a.bloco}`, a.reps.nome_curto);
+  }
+
+  const mapa = new Map<string, ResumoDoTurno>();
+  for (const r of (regularData ?? []) as unknown as LinhaRegularResumo[]) {
+    mapa.set(`${r.data}|${r.turno}`, {
+      resumo: r.shift_logs[0]?.resumo ?? null,
+      assistNome: assistPorSlot.get(`${r.data}|${r.turno}|${r.bloco}`) ?? null,
+    });
+  }
+
+  return mapa;
+}
