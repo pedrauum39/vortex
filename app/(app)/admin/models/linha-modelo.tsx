@@ -71,7 +71,7 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
       <td className="px-4 py-2.5 text-right">
         {erro && <span className="mr-2 text-xs text-red-400">{erro}</span>}
         {editando ? (
-          <div className="inline-flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={() => {
@@ -99,7 +99,7 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
           </div>
         ) : (
           podeEditar && (
-            <div className="inline-flex gap-3">
+            <div className="flex flex-wrap justify-end gap-3">
               <button type="button" onClick={() => setEditando(true)} className="text-xs text-accent hover:underline">
                 renomear
               </button>
