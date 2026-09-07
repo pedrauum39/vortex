@@ -1,16 +1,18 @@
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
+import { type EntradaLog } from '@/lib/logEscala';
 import { buscarPeriodos } from '@/lib/periodosDb';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
-import type { Model, Rep } from '@/lib/tipos';
+import type { Bloco, Funcao, Model, Rep, Turno } from '@/lib/tipos';
 import { precisaAtencao } from '@/lib/turnoAberto';
 import { buscarTurnosExtraAdmin } from '@/lib/turnosExtraDb';
 import { FormularioTurno } from './formulario-turno';
 import { GradeEscala } from './grade-escala';
 import { ListaTurnos } from './lista-turnos';
+import { LogAlteracoes } from './log-alteracoes';
 import { LinhaTurnoExtraAdmin } from './linha-turno-extra';
 import { NavPeriodo } from './nav-periodo';
 import type { LinhaShift } from './tipos';
@@ -35,7 +37,13 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
 
   const supabase = await criarClienteServidor();
 
-  const [{ data: shiftsData }, { data: repsData }, { data: modelsData }, periodos] = await Promise.all([
+  const [
+    { data: shiftsData },
+    { data: repsData },
+    { data: modelsData },
+    periodos,
+    { data: alteracoesData },
+  ] = await Promise.all([
     supabase
       .from('shifts')
       .select(
@@ -54,11 +62,47 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     // resolvido por data em FormPonto, via blocoNaData(periodos, ...).
     supabase.from('models').select('*').eq('extra', false).order('bloco').order('nome'),
     buscarPeriodos(supabase),
+    supabase
+      .from('escala_alteracoes')
+      .select('id, data, turno, bloco, funcao, criado_em, rep_saiu, rep_entrou, alterado_por')
+      .gte('data', inicio)
+      .lte('data', fim)
+      .order('criado_em', { ascending: false }),
   ]);
 
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
   const reps = (repsData ?? []) as Rep[];
   const models = (modelsData ?? []) as Model[];
+
+  type AlteracaoRow = {
+    id: string;
+    data: string;
+    turno: Turno;
+    bloco: Bloco;
+    funcao: Funcao;
+    criado_em: string;
+    rep_saiu: string | null;
+    rep_entrou: string | null;
+    alterado_por: string | null;
+  };
+  const repPorId = new Map(reps.map((r) => [r.id, r]));
+  const entradasLog: EntradaLog[] = ((alteracoesData ?? []) as AlteracaoRow[]).map((a) => {
+    const saiu = a.rep_saiu ? repPorId.get(a.rep_saiu) : null;
+    const entrou = a.rep_entrou ? repPorId.get(a.rep_entrou) : null;
+    return {
+      id: a.id,
+      criadoEm: a.criado_em,
+      data: a.data,
+      turno: a.turno,
+      bloco: a.bloco,
+      funcao: a.funcao,
+      repSaiu: saiu?.nome_curto ?? null,
+      cargoSaiu: saiu?.cargo ?? null,
+      repEntrou: entrou?.nome_curto ?? null,
+      cargoEntrou: entrou?.cargo ?? null,
+      modelosDoBloco: models.filter((m) => m.bloco === a.bloco && m.ativa).map((m) => m.nome),
+    };
+  });
 
   const valoresDaGrade: Record<string, string | null> = {};
   for (const s of shifts) {
@@ -165,6 +209,8 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
           interno com os valores novos — a grade fica presa nos valores da
           primeira semana que carregou, pra sempre, não importa a URL. */}
       <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} podeEditar={podeEditar} />
+
+      <LogAlteracoes entradas={entradasLog} />
 
       {podeEditar && <FormularioTurno reps={reps} inicio={inicio} />}
 
