@@ -83,7 +83,7 @@ revoke all on escala_alteracoes from anon;
 
 `rep_saiu` nulo = slot estava vazio e alguém entrou. `rep_entrou` nulo = slot foi
 limpo pra "—". FKs `on delete set null` pra o log sobreviver a um rep apagado
-(mostra "—" nesse caso).
+(a linha "Sai"/"Entra" correspondente some quando o rep não existe mais).
 
 ## Gravação
 
@@ -112,8 +112,10 @@ resto de `salvarGrade`, que não é transacional.)
 
 ## Exibição
 
-Novo componente `app/(app)/admin/turnos/log-alteracoes.tsx` (server component
-puro, sem estado).
+Novo componente `app/(app)/admin/turnos/log-alteracoes.tsx` (client component —
+precisa de estado só pro botão "Copiar"). Recebe `entradas: EntradaLog[]` já
+montadas pela página; toda a lógica de agrupamento/formatação fica em
+`lib/logEscala.ts` (puro, testável).
 
 Em `page.tsx`, dentro do `Promise.all` que já existe, buscar:
 
@@ -129,14 +131,15 @@ Filtro por `data` (dia do turno) dentro da semana aberta na grade — o log
 acompanha a semana que está na tela. Ordenação/agrupamento por `criado_em`.
 
 Os nomes/cargos dos reps vêm do array `reps` que a página já carrega (lookup por
-id em memória — evita joins aninhados). "Joyce + Riley" = modelos atuais do
-bloco, derivados de `periodos` (já carregado via `buscarPeriodos`): `model_id`
-com `fim` nulo, cruzado com `modelsData` pra pegar `nome`, filtrado por `bloco`.
+id em memória — evita joins aninhados). "Joyce + Riley" = modelos ativas do
+bloco: `modelsData.filter(m => m.bloco === bloco && m.ativa).map(m => m.nome)`
+(`modelsData` já carregado pela página; `Model` tem o campo `bloco`).
 
 Helper puro em `lib/logEscala.ts` + teste (`lib/logEscala.test.ts`):
 
 ```ts
 type EntradaLog = {
+  id: string;
   criadoEm: string;          // ISO — quando a mudança foi feita
   data: string;              // dia do turno afetado
   turno: Turno; bloco: Bloco; funcao: Funcao;
@@ -150,19 +153,34 @@ type EntradaLog = {
 // agrupa pela DATA de criadoEm (dia BRT em que a mudança foi feita), grupos
 // mais recentes primeiro; dentro do grupo mantém a ordem recebida
 // (criado_em desc). Chave do grupo: dataBRT(new Date(criadoEm)) de lib/tempo.
-export function agruparPorDiaDaMudanca(
-  entradas: EntradaLog[],
-): { diaMudanca: string; itens: EntradaLog[] }[]
+export function agruparPorDiaDaMudanca(entradas: EntradaLog[]): GrupoLog[]
+
+// 'YYYY-MM-DD' → 'DD/MM'.
+export function diaMes(data: string): string
+
+// versão texto puro do bloco inteiro, pro botão "Copiar". Mesmo conteúdo do
+// render, sem marcação:
+//
+//   Mudanças feitas 07/09
+//
+//   T2/T3 · 10/09 · Joyce + Riley
+//   Sai: Carolinne P. (Tertius)
+//   Entra: Léo Grimaldi (Secundus)
+//
+export function textoDoLog(grupos: GrupoLog[]): string
 ```
 
 O componente renderiza:
-- Título "Mudanças feitas na semana".
-- Por grupo: cabeçalho `Mudanças feitas ${dataCurta(diaMudanca)}` (ex.
+- Cabeçalho com o título "Mudanças feitas na semana" à esquerda e um botão
+  **"Copiar"** à direita (mesmo lugar/estilo do botão "Salvar alterações" da
+  grade). Clicar chama `navigator.clipboard.writeText(textoDoLog(grupos))` e o
+  rótulo vira "Copiado!" por ~2s. Sem libs — Clipboard API nativa.
+- Por grupo: cabeçalho `Mudanças feitas ${diaMes(diaMudanca)}` (ex.
   "Mudanças feitas 07/09").
-- Por item: linha `${rotuloTurno(turno)} · ${dataCurta(data)} · ${modelos.join(' + ')}`
+- Por item: linha `${rotuloTurno(turno)} · ${diaMes(data)} · ${modelos.join(' + ')}`
   e abaixo `Sai: <nome> (<ROTULO_CARGO[cargo]>)` / `Entra: <nome> (<cargo>)`.
   Omite a linha "Sai" quando `repSaiu` é nulo, e "Entra" quando `repEntrou` é
-  nulo.
+  nulo. Omite ` · ${modelos...}` quando o bloco não tem modelo ativa.
 - `funcao === 'assist'` → sufixo "(Assistant)" no rótulo do turno.
 - **Some inteiro quando não há nenhuma alteração** (retorna `null`, igual ao
   bloco "Turnos extra").
@@ -172,9 +190,13 @@ Visível pra todo mundo que chega na página (a RLS já restringe a leitura).
 
 ## Testes
 
-- `lib/logEscala.test.ts`: `agruparPorDiaDaMudanca` — ordem dos grupos
-  (mais recente primeiro), duas mudanças no mesmo dia caem no mesmo grupo,
-  fuso BRT na virada de dia, lista vazia.
+- `lib/logEscala.test.ts`:
+  - `agruparPorDiaDaMudanca` — ordem dos grupos (mais recente primeiro), duas
+    mudanças no mesmo dia caem no mesmo grupo, fuso BRT na virada de dia, lista
+    vazia.
+  - `diaMes` — formata `'2026-09-10'` → `'10/09'`.
+  - `textoDoLog` — bloco com "Sai" e "Entra", item só com "Entra" (slot estava
+    vazio), item sem modelo do bloco.
 - Migration + wiring da action: verificação manual no preview do navegador
   (trocar um rep, salvar, conferir a linha no log; trocar de semana e conferir
   que o log acompanha).
@@ -182,4 +204,5 @@ Visível pra todo mundo que chega na página (a RLS já restringe a leitura).
 ## Fora de escopo (YAGNI)
 
 Desfazer troca, log de criar/apagar turno e turno extra, log de ponto/statement,
-paginação, edição do log, filtro por rep.
+paginação, edição do log, filtro por rep, exportar arquivo (o botão "Copiar" já
+cobre "levar o texto pra fora").
