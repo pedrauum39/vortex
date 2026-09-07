@@ -15,19 +15,25 @@ no slot agora — não guarda quem estava antes, nem quem fez a troca, nem quand
 Se alguém pergunta "por que o Léo entrou no lugar da Carol quarta?", não tem
 como responder.
 
-Pedido: mostrar, abaixo da grade, uma lista das trocas feitas na semana aberta:
+Pedido: mostrar, abaixo da grade, uma lista das trocas feitas na semana aberta,
+**agrupada pela data em que a mudança foi feita** (`criado_em`); cada item mostra
+a data do turno afetado.
 
 ```
-Alterações feitas na semana
+Mudanças feitas 07/09
 
-qua, 24/09
-  T2/T3 · Joyce + Riley
+  T2/T3 · 10/09 · Joyce + Riley
     Sai:   Carolinne P. (Tertius)
     Entra: Léo Grimaldi (Secundus)
 
-seg, 22/09
-  T6/T1 · Bella + Nih
+  T6/T1 · 11/09 · Bella + Nih
     Entra: Pedro Ribeiro (Grand Primaris)
+
+Mudanças feitas 05/09
+
+  T4/T5 · 09/09 · Joyce + Riley
+    Sai:   Gabriela Storini (Secundus)
+    Entra: Carlos de Lucca (Tertius)
 ```
 
 ## Escopo
@@ -119,6 +125,9 @@ supabase
   .order('criado_em', { ascending: false })
 ```
 
+Filtro por `data` (dia do turno) dentro da semana aberta na grade — o log
+acompanha a semana que está na tela. Ordenação/agrupamento por `criado_em`.
+
 Os nomes/cargos dos reps vêm do array `reps` que a página já carrega (lookup por
 id em memória — evita joins aninhados). "Joyce + Riley" = modelos atuais do
 bloco, derivados de `periodos` (já carregado via `buscarPeriodos`): `model_id`
@@ -128,7 +137,9 @@ Helper puro em `lib/logEscala.ts` + teste (`lib/logEscala.test.ts`):
 
 ```ts
 type EntradaLog = {
-  data: string; turno: Turno; bloco: Bloco;
+  criadoEm: string;          // ISO — quando a mudança foi feita
+  data: string;              // dia do turno afetado
+  turno: Turno; bloco: Bloco; funcao: Funcao;
   repSaiu: string | null;    // já resolvido pra nome
   cargoSaiu: Cargo | null;
   repEntrou: string | null;
@@ -136,17 +147,22 @@ type EntradaLog = {
   modelosDoBloco: string[];  // ['Joyce', 'Riley']
 };
 
-// agrupa por `data` (dia do turno), dias mais recentes primeiro,
-// dentro do dia mantém a ordem recebida (criado_em desc).
-export function agruparPorDia(entradas: EntradaLog[]): { data: string; itens: EntradaLog[] }[]
+// agrupa pela DATA de criadoEm (dia BRT em que a mudança foi feita), grupos
+// mais recentes primeiro; dentro do grupo mantém a ordem recebida
+// (criado_em desc). Chave do grupo: dataBRT(new Date(criadoEm)) de lib/tempo.
+export function agruparPorDiaDaMudanca(
+  entradas: EntradaLog[],
+): { diaMudanca: string; itens: EntradaLog[] }[]
 ```
 
 O componente renderiza:
-- Título "Alterações feitas na semana".
-- Por dia: cabeçalho `diaLegivel(data)` (ex. "qua, 24/09").
-- Por item: linha `${rotuloTurno(turno)} · ${modelos.join(' + ')}` e abaixo
-  `Sai: <nome> (<ROTULO_CARGO[cargo]>)` / `Entra: <nome> (<cargo>)`. Omite a
-  linha "Sai" quando `repSaiu` é nulo, e "Entra" quando `repEntrou` é nulo.
+- Título "Mudanças feitas na semana".
+- Por grupo: cabeçalho `Mudanças feitas ${dataCurta(diaMudanca)}` (ex.
+  "Mudanças feitas 07/09").
+- Por item: linha `${rotuloTurno(turno)} · ${dataCurta(data)} · ${modelos.join(' + ')}`
+  e abaixo `Sai: <nome> (<ROTULO_CARGO[cargo]>)` / `Entra: <nome> (<cargo>)`.
+  Omite a linha "Sai" quando `repSaiu` é nulo, e "Entra" quando `repEntrou` é
+  nulo.
 - `funcao === 'assist'` → sufixo "(Assistant)" no rótulo do turno.
 - **Some inteiro quando não há nenhuma alteração** (retorna `null`, igual ao
   bloco "Turnos extra").
@@ -156,8 +172,9 @@ Visível pra todo mundo que chega na página (a RLS já restringe a leitura).
 
 ## Testes
 
-- `lib/logEscala.test.ts`: `agruparPorDia` — ordem dos dias, agrupamento,
-  dia único, lista vazia.
+- `lib/logEscala.test.ts`: `agruparPorDiaDaMudanca` — ordem dos grupos
+  (mais recente primeiro), duas mudanças no mesmo dia caem no mesmo grupo,
+  fuso BRT na virada de dia, lista vazia.
 - Migration + wiring da action: verificação manual no preview do navegador
   (trocar um rep, salvar, conferir a linha no log; trocar de semana e conferir
   que o log acompanha).
