@@ -10,6 +10,7 @@ import { apagarTurnoExtra } from '@/lib/turnosExtraDb';
 async function exigirAdmin() {
   const rep = await exigirRep();
   if (!ehAdmin(rep)) throw new Error('Só admin.');
+  return rep;
 }
 
 function revalidar() {
@@ -68,8 +69,15 @@ type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: s
  * atualizar o rep_id: um upsert por cima deixaria o ponto/statement do rep
  * anterior pendurado no mesmo shift_id, já que a troca de dono não é o mesmo
  * turno continuando — é outra pessoa nele.
+ *
+ * Toda troca de dono (inclusive slot que estava vazio, ou slot esvaziado pra
+ * "—") grava uma linha em escala_alteracoes — é o log da aba /admin/turnos.
  */
-async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServidor>>, slot: Slot) {
+async function aplicarSlot(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  slot: Slot,
+  alteradoPor: string,
+) {
   const { data: existente } = await supabase
     .from('shifts')
     .select('id, rep_id')
@@ -79,12 +87,15 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
     .eq('funcao', slot.funcao)
     .maybeSingle();
 
-  if (existente && existente.rep_id !== slot.repId) {
+  const repAntes = existente?.rep_id ?? null;
+  if (repAntes === slot.repId) return;
+
+  if (existente) {
     const { error } = await supabase.from('shifts').delete().eq('id', existente.id);
     if (error) throw new Error(error.message);
   }
 
-  if (slot.repId && (!existente || existente.rep_id !== slot.repId)) {
+  if (slot.repId) {
     const { error } = await supabase.from('shifts').insert({
       data: slot.data,
       turno: slot.turno,
@@ -95,6 +106,17 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
     });
     if (error) throw new Error(error.message);
   }
+
+  const { error: erroLog } = await supabase.from('escala_alteracoes').insert({
+    data: slot.data,
+    turno: slot.turno,
+    bloco: slot.bloco,
+    funcao: slot.funcao,
+    rep_saiu: repAntes,
+    rep_entrou: slot.repId,
+    alterado_por: alteradoPor,
+  });
+  if (erroLog) throw new Error(erroLog.message);
 }
 
 /**
@@ -103,10 +125,10 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
  * cada troca de select gravar sozinha na hora.
  */
 export async function salvarGrade(alteracoes: Slot[]) {
-  await exigirAdmin();
+  const rep = await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  for (const slot of alteracoes) await aplicarSlot(supabase, slot);
+  for (const slot of alteracoes) await aplicarSlot(supabase, slot, rep.id);
 
   revalidar();
 }
