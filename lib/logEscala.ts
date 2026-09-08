@@ -3,7 +3,7 @@
 // bloco antes de chamar aqui.
 
 import { dataBRT } from './tempo';
-import { ROTULO_CARGO, rotuloTurno, type Bloco, type Cargo, type Funcao, type Turno } from './tipos';
+import { ROTULO_CARGO, rotuloTurno, TURNOS, type Bloco, type Cargo, type Funcao, type Turno } from './tipos';
 
 export type EntradaLog = {
   id: string;
@@ -20,43 +20,77 @@ export type EntradaLog = {
   modelosDoBloco: string[];
 };
 
-export type GrupoLog = { diaMudanca: string; alteradoPor: string | null; itens: EntradaLog[] };
+/** Uma linha "Sai:" ou "Entra:" já pronta pra exibir. */
+export type LadoLog = { rotulo: 'Sai' | 'Entra'; nome: string; qualificador: string | null };
+
+/** As trocas de um time (bloco) dentro de um turno+dia — regular e assistant
+ *  juntos. `titulo` são as modelos daquele bloco na data. */
+export type TimeLog = { titulo: string; lados: LadoLog[] };
+
+/** Um turno num dia específico, com um bloco por time que teve troca. */
+export type TurnoDiaLog = { turno: Turno; data: string; times: TimeLog[] };
+
+/** Tudo que uma pessoa mudou num mesmo dia. */
+export type GrupoLog = { diaMudanca: string; alteradoPor: string | null; turnos: TurnoDiaLog[] };
+
+const tituloDoTime = (e: EntradaLog): string =>
+  e.modelosDoBloco.length > 0 ? e.modelosDoBloco.join(' + ') : e.bloco === 'I' ? 'Time 1' : 'Time 2';
+
+/** Assistant mostra "(Assistant)" no lugar do cargo; regular mostra o cargo. */
+const qualificador = (e: EntradaLog, cargo: Cargo | null): string | null =>
+  e.funcao === 'assist' ? 'Assistant' : cargo ? ROTULO_CARGO[cargo] : null;
+
+/** Junta as entradas por chave, mantendo a ordem de primeira aparição. */
+function agrupar<T>(entradas: EntradaLog[], chave: (e: EntradaLog) => string, cria: (e: EntradaLog) => T) {
+  const mapa = new Map<string, { valor: T; itens: EntradaLog[] }>();
+  for (const e of entradas) {
+    const k = chave(e);
+    const grupo = mapa.get(k) ?? { valor: cria(e), itens: [] };
+    grupo.itens.push(e);
+    mapa.set(k, grupo);
+  }
+  return [...mapa.values()];
+}
+
+const ladosDaEntrada = (e: EntradaLog): LadoLog[] => {
+  const lados: LadoLog[] = [];
+  if (e.repSaiu) lados.push({ rotulo: 'Sai', nome: e.repSaiu, qualificador: qualificador(e, e.cargoSaiu) });
+  if (e.repEntrou) lados.push({ rotulo: 'Entra', nome: e.repEntrou, qualificador: qualificador(e, e.cargoEntrou) });
+  return lados;
+};
 
 /**
- * Agrupa pelo par (dia BRT da mudança, quem fez). Grupos do mais recente pro
- * mais antigo pelo dia; o sort é estável, então vários autores no mesmo dia
- * mantêm a ordem de primeira aparição (a página entrega já ordenado por
- * criado_em desc).
+ * Estrutura o log em: pessoa + dia-da-mudança → turno + dia-do-turno → time →
+ * linhas Sai/Entra. Os grupos de pessoa vêm do mais recente pro mais antigo;
+ * dentro deles os turnos ficam em ordem crescente de dia (depois de turno). O
+ * resto mantém a ordem recebida (a página entrega por criado_em desc).
  */
-export function agruparPorDiaDaMudanca(entradas: EntradaLog[]): GrupoLog[] {
-  const grupos = new Map<string, GrupoLog>();
-  for (const entrada of entradas) {
-    const dia = dataBRT(new Date(entrada.criadoEm));
-    const chave = `${dia}\0${entrada.alteradoPor ?? ''}`;
-    const grupo = grupos.get(chave) ?? { diaMudanca: dia, alteradoPor: entrada.alteradoPor, itens: [] };
-    grupo.itens.push(entrada);
-    grupos.set(chave, grupo);
-  }
-  return [...grupos.values()].sort((a, b) => b.diaMudanca.localeCompare(a.diaMudanca));
+export function agruparLog(entradas: EntradaLog[]): GrupoLog[] {
+  return agrupar(
+    entradas,
+    (e) => `${dataBRT(new Date(e.criadoEm))}\0${e.alteradoPor ?? ''}`,
+    (e) => ({ diaMudanca: dataBRT(new Date(e.criadoEm)), alteradoPor: e.alteradoPor }),
+  )
+    .map(({ valor, itens }) => {
+      const turnos = agrupar(itens, (e) => `${e.turno}\0${e.data}`, (e) => ({ turno: e.turno, data: e.data }))
+        .map(({ valor: td, itens: doTurno }) => ({
+          ...td,
+          times: agrupar(doTurno, (e) => e.bloco, tituloDoTime).map(({ valor: titulo, itens: doTime }) => ({
+            titulo,
+            lados: doTime.flatMap(ladosDaEntrada),
+          })),
+        }))
+        .sort((a, b) => a.data.localeCompare(b.data) || TURNOS.indexOf(a.turno) - TURNOS.indexOf(b.turno));
+
+      return { ...valor, turnos } satisfies GrupoLog;
+    })
+    .sort((a, b) => b.diaMudanca.localeCompare(a.diaMudanca));
 }
 
 /** 'YYYY-MM-DD' → 'DD/MM'. */
 export function diaMes(data: string): string {
   const [, mes, dia] = data.split('-');
   return `${dia}/${mes}`;
-}
-
-/** Cabeçalho de um item: 'T2/T3 · 10/09 · Joyce + Riley'. */
-function tituloDoItem(item: EntradaLog): string {
-  const turno = rotuloTurno(item.turno) + (item.funcao === 'assist' ? ' (Assistant)' : '');
-  const partes = [turno, diaMes(item.data)];
-  if (item.modelosDoBloco.length > 0) partes.push(item.modelosDoBloco.join(' + '));
-  return partes.join(' · ');
-}
-
-function linhaLado(rotulo: string, nome: string | null, cargo: Cargo | null): string | null {
-  if (!nome) return null;
-  return cargo ? `${rotulo}: ${nome} (${ROTULO_CARGO[cargo]})` : `${rotulo}: ${nome}`;
 }
 
 /** 'Mudanças por Pedro · 07/09' — ou 'Mudanças feitas 07/09' se não se sabe quem. */
@@ -66,19 +100,25 @@ export function cabecalhoDoGrupo(grupo: GrupoLog): string {
     : `Mudanças feitas ${diaMes(grupo.diaMudanca)}`;
 }
 
-/** Versão texto puro do bloco inteiro, pro botão "Copiar". */
+const linhaLado = (l: LadoLog): string =>
+  l.qualificador ? `${l.rotulo}: ${l.nome} (${l.qualificador})` : `${l.rotulo}: ${l.nome}`;
+
+/**
+ * Versão texto pro botão "Copiar" — pensada pra colar no Telegram, que
+ * entende `**negrito**`. Destaca pessoa + dia, turno + dia e o nome do time.
+ */
 export function textoDoLog(grupos: GrupoLog[]): string {
   return grupos
     .map((grupo) => {
-      const linhas = [cabecalhoDoGrupo(grupo), ''];
-      for (const item of grupo.itens) {
-        linhas.push(tituloDoItem(item));
-        const sai = linhaLado('Sai', item.repSaiu, item.cargoSaiu);
-        const entra = linhaLado('Entra', item.repEntrou, item.cargoEntrou);
-        if (sai) linhas.push(sai);
-        if (entra) linhas.push(entra);
+      const partes = [`**${cabecalhoDoGrupo(grupo)}**`];
+      for (const td of grupo.turnos) {
+        const bloco = [`➤ **${rotuloTurno(td.turno)} · ${diaMes(td.data)}**`];
+        for (const time of td.times) {
+          bloco.push('', `**${time.titulo}**`, ...time.lados.map(linhaLado));
+        }
+        partes.push(bloco.join('\n'));
       }
-      return linhas.join('\n');
+      return partes.join('\n\n');
     })
     .join('\n\n');
 }
