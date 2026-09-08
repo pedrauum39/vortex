@@ -10,6 +10,7 @@ import { apagarTurnoExtra } from '@/lib/turnosExtraDb';
 async function exigirAdmin() {
   const rep = await exigirRep();
   if (!ehAdmin(rep)) throw new Error('Só admin.');
+  return rep;
 }
 
 function revalidar() {
@@ -40,8 +41,18 @@ export async function criarTurno(dados: {
   funcao: Funcao;
   repId: string;
 }) {
-  await exigirAdmin();
+  const admin = await exigirAdmin();
   const supabase = await criarClienteServidor();
+
+  const { data: existente, error: erroBusca } = await supabase
+    .from('shifts')
+    .select('rep_id')
+    .eq('data', dados.data)
+    .eq('turno', dados.turno)
+    .eq('bloco', dados.bloco)
+    .eq('funcao', dados.funcao)
+    .maybeSingle();
+  if (erroBusca) throw new Error(erroBusca.message);
 
   const { error } = await supabase.from('shifts').upsert(
     {
@@ -56,10 +67,51 @@ export async function criarTurno(dados: {
   );
   if (error) throw new Error(error.message);
 
+  const repAntes = existente?.rep_id ?? null;
+  if (repAntes !== dados.repId) {
+    await registrarAlteracao(supabase, {
+      data: dados.data,
+      turno: dados.turno,
+      bloco: dados.bloco,
+      funcao: dados.funcao,
+      repSaiu: repAntes,
+      repEntrou: dados.repId,
+      alteradoPor: admin.id,
+    });
+  }
+
   revalidar();
 }
 
 type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: string | null };
+
+type Alteracao = {
+  data: string;
+  turno: Turno;
+  bloco: Bloco;
+  funcao: Funcao;
+  repSaiu: string | null;
+  repEntrou: string | null;
+  alteradoPor: string;
+};
+
+/** Grava uma linha no log da aba /admin/turnos. Todo controle que muda quem
+ *  ocupa um slot da grade passa por aqui. */
+async function registrarAlteracao(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  a: Alteracao,
+) {
+  const { error } = await supabase.from('escala_alteracoes').insert({
+    data: a.data,
+    turno: a.turno,
+    bloco: a.bloco,
+    funcao: a.funcao,
+    rep_saiu: a.repSaiu,
+    rep_entrou: a.repEntrou,
+    alterado_por: a.alteradoPor,
+  });
+  if (error) throw new Error(error.message);
+}
 
 /**
  * Define quem ocupa um slot da grade.
@@ -68,9 +120,16 @@ type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: s
  * atualizar o rep_id: um upsert por cima deixaria o ponto/statement do rep
  * anterior pendurado no mesmo shift_id, já que a troca de dono não é o mesmo
  * turno continuando — é outra pessoa nele.
+ *
+ * Toda troca de dono (inclusive slot que estava vazio, ou slot esvaziado pra
+ * "—") grava uma linha em escala_alteracoes — é o log da aba /admin/turnos.
  */
-async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServidor>>, slot: Slot) {
-  const { data: existente } = await supabase
+async function aplicarSlot(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  slot: Slot,
+  alteradoPor: string,
+) {
+  const { data: existente, error: erroBusca } = await supabase
     .from('shifts')
     .select('id, rep_id')
     .eq('data', slot.data)
@@ -78,13 +137,17 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
     .eq('bloco', slot.bloco)
     .eq('funcao', slot.funcao)
     .maybeSingle();
+  if (erroBusca) throw new Error(erroBusca.message);
 
-  if (existente && existente.rep_id !== slot.repId) {
+  const repAntes = existente?.rep_id ?? null;
+  if (repAntes === slot.repId) return;
+
+  if (existente) {
     const { error } = await supabase.from('shifts').delete().eq('id', existente.id);
     if (error) throw new Error(error.message);
   }
 
-  if (slot.repId && (!existente || existente.rep_id !== slot.repId)) {
+  if (slot.repId) {
     const { error } = await supabase.from('shifts').insert({
       data: slot.data,
       turno: slot.turno,
@@ -95,6 +158,16 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
     });
     if (error) throw new Error(error.message);
   }
+
+  await registrarAlteracao(supabase, {
+    data: slot.data,
+    turno: slot.turno,
+    bloco: slot.bloco,
+    funcao: slot.funcao,
+    repSaiu: repAntes,
+    repEntrou: slot.repId,
+    alteradoPor: alteradoPor,
+  });
 }
 
 /**
@@ -103,21 +176,42 @@ async function aplicarSlot(supabase: Awaited<ReturnType<typeof criarClienteServi
  * cada troca de select gravar sozinha na hora.
  */
 export async function salvarGrade(alteracoes: Slot[]) {
-  await exigirAdmin();
+  const rep = await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  for (const slot of alteracoes) await aplicarSlot(supabase, slot);
-
-  revalidar();
+  try {
+    for (const slot of alteracoes) await aplicarSlot(supabase, slot, rep.id);
+  } finally {
+    revalidar();
+  }
 }
 
 /** Apaga o turno. Em cascata some o ponto e os statements que estivessem nele. */
 export async function apagarTurno(shiftId: string) {
-  await exigirAdmin();
+  const admin = await exigirAdmin();
   const supabase = await criarClienteServidor();
+
+  const { data: alvo, error: erroBusca } = await supabase
+    .from('shifts')
+    .select('data, turno, bloco, funcao, rep_id')
+    .eq('id', shiftId)
+    .maybeSingle();
+  if (erroBusca) throw new Error(erroBusca.message);
 
   const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
   if (error) throw new Error(error.message);
+
+  if (alvo?.rep_id) {
+    await registrarAlteracao(supabase, {
+      data: alvo.data,
+      turno: alvo.turno as Turno,
+      bloco: alvo.bloco as Bloco,
+      funcao: alvo.funcao as Funcao,
+      repSaiu: alvo.rep_id,
+      repEntrou: null,
+      alteradoPor: admin.id,
+    });
+  }
 
   revalidar();
 }
