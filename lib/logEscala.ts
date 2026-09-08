@@ -16,27 +16,28 @@ export type EntradaLog = {
   cargoSaiu: Cargo | null;
   repEntrou: string | null;
   cargoEntrou: Cargo | null;
+  alteradoPor: string | null; // nome curto de quem fez a mudança; null se desconhecido
   modelosDoBloco: string[];
 };
 
-export type GrupoLog = { diaMudanca: string; itens: EntradaLog[] };
+export type GrupoLog = { diaMudanca: string; alteradoPor: string | null; itens: EntradaLog[] };
 
 /**
- * Agrupa pela data (em BRT) em que a mudança foi feita. Grupos do mais
- * recente pro mais antigo; dentro do grupo mantém a ordem recebida (a página
- * entrega já ordenado por criado_em desc).
+ * Agrupa pelo par (dia BRT da mudança, quem fez). Grupos do mais recente pro
+ * mais antigo pelo dia; o sort é estável, então vários autores no mesmo dia
+ * mantêm a ordem de primeira aparição (a página entrega já ordenado por
+ * criado_em desc).
  */
 export function agruparPorDiaDaMudanca(entradas: EntradaLog[]): GrupoLog[] {
-  const grupos = new Map<string, EntradaLog[]>();
+  const grupos = new Map<string, GrupoLog>();
   for (const entrada of entradas) {
     const dia = dataBRT(new Date(entrada.criadoEm));
-    const lista = grupos.get(dia) ?? [];
-    lista.push(entrada);
-    grupos.set(dia, lista);
+    const chave = `${dia}\0${entrada.alteradoPor ?? ''}`;
+    const grupo = grupos.get(chave) ?? { diaMudanca: dia, alteradoPor: entrada.alteradoPor, itens: [] };
+    grupo.itens.push(entrada);
+    grupos.set(chave, grupo);
   }
-  return [...grupos.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([diaMudanca, itens]) => ({ diaMudanca, itens }));
+  return [...grupos.values()].sort((a, b) => b.diaMudanca.localeCompare(a.diaMudanca));
 }
 
 /** 'YYYY-MM-DD' → 'DD/MM'. */
@@ -58,11 +59,18 @@ function linhaLado(rotulo: string, nome: string | null, cargo: Cargo | null): st
   return cargo ? `${rotulo}: ${nome} (${ROTULO_CARGO[cargo]})` : `${rotulo}: ${nome}`;
 }
 
+/** 'Mudanças por Pedro · 07/09' — ou 'Mudanças feitas 07/09' se não se sabe quem. */
+export function cabecalhoDoGrupo(grupo: GrupoLog): string {
+  return grupo.alteradoPor
+    ? `Mudanças por ${grupo.alteradoPor} · ${diaMes(grupo.diaMudanca)}`
+    : `Mudanças feitas ${diaMes(grupo.diaMudanca)}`;
+}
+
 /** Versão texto puro do bloco inteiro, pro botão "Copiar". */
 export function textoDoLog(grupos: GrupoLog[]): string {
   return grupos
     .map((grupo) => {
-      const linhas = [`Mudanças feitas ${diaMes(grupo.diaMudanca)}`, ''];
+      const linhas = [cabecalhoDoGrupo(grupo), ''];
       for (const item of grupo.itens) {
         linhas.push(tituloDoItem(item));
         const sai = linhaLado('Sai', item.repSaiu, item.cargoSaiu);

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import {
   agruparPorDiaDaMudanca,
+  cabecalhoDoGrupo,
   diaMes,
   textoDoLog,
   type EntradaLog,
@@ -44,9 +45,12 @@ export function LogAlteracoes({ entradas }: { entradas: EntradaLog[] }) {
       </div>
       <div className="divide-y divide-borda">
         {grupos.map((grupo) => (
-          <div key={grupo.diaMudanca} className="px-4 py-3">
+          <div
+            key={`${grupo.diaMudanca}|${grupo.alteradoPor ?? ''}`}
+            className="px-4 py-3"
+          >
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-accent">
-              Mudanças feitas {diaMes(grupo.diaMudanca)}
+              {cabecalhoDoGrupo(grupo)}
             </p>
             <ul className="space-y-3">
               {grupo.itens.map((item) => (

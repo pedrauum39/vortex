@@ -2,6 +2,7 @@ import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { type EntradaLog } from '@/lib/logEscala';
+import { blocoNaData } from '@/lib/periodos';
 import { buscarPeriodos } from '@/lib/periodosDb';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
@@ -89,6 +90,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
   const entradasLog: EntradaLog[] = ((alteracoesData ?? []) as AlteracaoRow[]).map((a) => {
     const saiu = a.rep_saiu ? repPorId.get(a.rep_saiu) : null;
     const entrou = a.rep_entrou ? repPorId.get(a.rep_entrou) : null;
+    const por = a.alterado_por ? repPorId.get(a.alterado_por) : null;
     return {
       id: a.id,
       criadoEm: a.criado_em,
@@ -100,7 +102,10 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       cargoSaiu: saiu?.cargo ?? null,
       repEntrou: entrou?.nome_curto ?? null,
       cargoEntrou: entrou?.cargo ?? null,
-      modelosDoBloco: models.filter((m) => m.bloco === a.bloco && m.ativa).map((m) => m.nome),
+      alteradoPor: por?.nome_curto ?? null,
+      modelosDoBloco: models
+        .filter((m) => blocoNaData(periodos, m.id, a.data) === a.bloco)
+        .map((m) => m.nome),
     };
   });
 
