@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useTransition, type ChangeEvent } from 'react';
 import { fotoDoRep } from '@/lib/repFoto';
 import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Rep, type Turno } from '@/lib/tipos';
+import { FotoAmpliavel } from '../../foto-ampliavel';
 import {
   atualizarRep,
   desvincularLogin,
@@ -214,10 +215,7 @@ function CelulaFoto({ rep, podeEditar }: { rep: Rep; podeEditar: boolean }) {
   return (
     <div className="flex shrink-0 flex-col items-center gap-1">
       <div className="aspect-[3/4] w-10 overflow-hidden rounded-md border border-borda bg-fundo">
-        {url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" className="size-full object-cover" />
-        )}
+        {url && <FotoAmpliavel url={url} className="size-full object-cover" />}
       </div>
       {podeEditar && (
         <div className="flex flex-col items-center gap-0.5 text-[10px] leading-tight">
