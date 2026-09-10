@@ -110,7 +110,7 @@ export async function enviarFotoRep(repId: string, form: FormData) {
   const file = form.get('foto');
   if (!(file instanceof File) || file.size === 0) throw new Error('Escolha uma imagem.');
   if (!file.type.startsWith('image/')) throw new Error('O arquivo precisa ser uma imagem.');
-  if (file.size > 5_000_000) throw new Error('Imagem muito grande (máx. 5 MB).');
+  if (file.size > 8_000_000) throw new Error('Imagem muito grande (máx. 8 MB).');
 
   const admin = criarClienteAdmin();
 
