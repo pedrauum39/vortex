@@ -13,6 +13,7 @@ import {
   type CargoPrimaris,
   type ResumoPrimaris,
 } from '@/lib/primarisDb';
+import { fotoDoRep } from '@/lib/repFoto';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual, somarMeses } from '@/lib/tempo';
 import {
@@ -192,7 +193,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <div className="rounded-2xl border border-borda bg-superficie p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:justify-between">
           <div className="flex gap-4">
-            <FotoRep />
+            <FotoRep url={fotoDoRep(rep.foto_path)} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
@@ -271,10 +272,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   );
 }
 
-function FotoRep() {
+function FotoRep({ url }: { url: string | null }) {
   return (
-    <div className="flex aspect-[3/4] w-24 shrink-0 items-center justify-center rounded-xl border border-dashed border-borda text-center text-[11px] text-texto-fraco">
-      em breve
+    <div
+      className={`flex aspect-[3/4] w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border text-center text-[11px] text-texto-fraco ${
+        url ? 'border-borda' : 'border-dashed border-borda'
+      }`}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="size-full object-cover" />
+      ) : (
+        'em breve'
+      )}
     </div>
   );
 }

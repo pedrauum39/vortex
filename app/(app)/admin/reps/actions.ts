@@ -99,3 +99,48 @@ export async function desvincularLogin(repId: string) {
 
   revalidatePath('/admin/reps');
 }
+
+const BUCKET_FOTOS = 'rep-fotos';
+
+/** Sobe a foto de perfil do rep pro bucket e grava o caminho. Caminho novo a
+ *  cada envio (uuid), a foto antiga é apagada — evita cache preso. */
+export async function enviarFotoRep(repId: string, form: FormData) {
+  await exigirAdmin();
+
+  const file = form.get('foto');
+  if (!(file instanceof File) || file.size === 0) throw new Error('Escolha uma imagem.');
+  if (!file.type.startsWith('image/')) throw new Error('O arquivo precisa ser uma imagem.');
+  if (file.size > 5_000_000) throw new Error('Imagem muito grande (máx. 5 MB).');
+
+  const admin = criarClienteAdmin();
+
+  const { data: atual } = await admin.from('reps').select('foto_path').eq('id', repId).single();
+  if (atual?.foto_path) await admin.storage.from(BUCKET_FOTOS).remove([atual.foto_path]);
+
+  const ext = (file.name.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${repId}/${crypto.randomUUID()}.${ext}`;
+  const { error: erroUpload } = await admin.storage
+    .from(BUCKET_FOTOS)
+    .upload(path, file, { contentType: file.type });
+  if (erroUpload) throw new Error(erroUpload.message);
+
+  const { error } = await admin.from('reps').update({ foto_path: path }).eq('id', repId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/admin/reps');
+  revalidatePath('/');
+}
+
+export async function removerFotoRep(repId: string) {
+  await exigirAdmin();
+
+  const admin = criarClienteAdmin();
+  const { data: atual } = await admin.from('reps').select('foto_path').eq('id', repId).single();
+  if (atual?.foto_path) await admin.storage.from(BUCKET_FOTOS).remove([atual.foto_path]);
+
+  const { error } = await admin.from('reps').update({ foto_path: null }).eq('id', repId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/admin/reps');
+  revalidatePath('/');
+}

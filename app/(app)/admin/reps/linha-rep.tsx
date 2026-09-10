@@ -1,9 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type ChangeEvent } from 'react';
+import { fotoDoRep } from '@/lib/repFoto';
 import { ROTULO_CARGO, TURNOS, rotuloTurno, type Cargo, type Rep, type Turno } from '@/lib/tipos';
-import { atualizarRep, desvincularLogin, vincularLogin } from './actions';
+import {
+  atualizarRep,
+  desvincularLogin,
+  enviarFotoRep,
+  removerFotoRep,
+  vincularLogin,
+} from './actions';
 
 const CARGOS: Cargo[] = ['grand_primaris', 'knight_primaris', 'secundus', 'tertius', 'admin_5c'];
 
@@ -43,9 +50,12 @@ export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean })
     return (
       <tr className="border-b border-borda last:border-0">
         <td className="px-4 py-2.5">
-          <Link href={`/admin/reps/${rep.id}`} className="text-accent hover:underline">
-            {rep.nome_curto}
-          </Link>
+          <div className="flex items-center gap-3">
+            <CelulaFoto rep={rep} podeEditar={podeEditar} />
+            <Link href={`/admin/reps/${rep.id}`} className="text-accent hover:underline">
+              {rep.nome_curto}
+            </Link>
+          </div>
         </td>
         <td className="px-3 py-2.5 text-texto-fraco">{rep.nome_oficial}</td>
         <td className="px-3 py-2.5">{rotuloTurno(rep.turno)}</td>
@@ -165,6 +175,69 @@ export function LinhaRep({ rep, podeEditar }: { rep: Rep; podeEditar: boolean })
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Miniatura da foto do rep + enviar/trocar/remover (só admin). */
+function CelulaFoto({ rep, podeEditar }: { rep: Rep; podeEditar: boolean }) {
+  const [pendente, executar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+  const url = fotoDoRep(rep.foto_path);
+
+  function aoEscolher(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const form = new FormData();
+    form.set('foto', file);
+    executar(async () => {
+      setErro(null);
+      try {
+        await enviarFotoRep(rep.id, form);
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : 'Não deu.');
+      }
+    });
+  }
+
+  function remover() {
+    executar(async () => {
+      setErro(null);
+      try {
+        await removerFotoRep(rep.id);
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : 'Não deu.');
+      }
+    });
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <div className="aspect-[3/4] w-10 overflow-hidden rounded-md border border-borda bg-fundo">
+        {url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt="" className="size-full object-cover" />
+        )}
+      </div>
+      {podeEditar && (
+        <div className="flex flex-col items-center gap-0.5 text-[10px] leading-tight">
+          <label
+            className={`cursor-pointer text-accent hover:underline ${
+              pendente ? 'pointer-events-none opacity-50' : ''
+            }`}
+          >
+            {pendente ? '…' : url ? 'trocar' : 'enviar'}
+            <input type="file" accept="image/*" className="hidden" onChange={aoEscolher} disabled={pendente} />
+          </label>
+          {url && !pendente && (
+            <button type="button" onClick={remover} className="text-red-400 hover:underline">
+              remover
+            </button>
+          )}
+          {erro && <span className="text-red-400">{erro}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 
