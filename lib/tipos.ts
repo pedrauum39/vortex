@@ -49,6 +49,8 @@ export type Rep = {
   ativo: boolean;
   /** Acompanha admin/schedule/primaris sem poder editar nada — não é do time (ex.: Thomas, OM). */
   observador: boolean;
+  /** Caminho da foto de perfil no bucket 'rep-fotos', ou null. Ver lib/repFoto.ts. */
+  foto_path: string | null;
 };
 
 /** Uma modelo (perfil de conteúdo) do roster de um dos dois times. */
