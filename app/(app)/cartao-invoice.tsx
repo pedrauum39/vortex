@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
-export function CartaoInvoice({ valor }: { valor: string }) {
+/** `plano` tira a moldura de cartão — pra usar dentro de outro cartão (home). */
+export function CartaoInvoice({ valor, plano }: { valor: string; plano?: boolean }) {
   const [visivel, setVisivel] = useState(false);
 
-  return (
-    <div className="rounded-2xl border border-borda bg-superficie p-5">
+  const conteudo = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-texto-fraco">Invoice do mês atual</p>
         <button
@@ -26,8 +27,12 @@ export function CartaoInvoice({ valor }: { valor: string }) {
       >
         Ir até o invoice →
       </Link>
-    </div>
+    </>
   );
+
+  if (plano) return <div>{conteudo}</div>;
+
+  return <div className="rounded-2xl border border-borda bg-superficie p-5">{conteudo}</div>;
 }
 
 function IconeOlhoAberto() {

@@ -39,6 +39,7 @@ export type VendaDaPaginaNoTurno = { nome: string; vendido: number; meta: number
 export type LinhaMetaTurno = {
   data: string;
   turno: Turno;
+  bloco: Bloco;
   paginas: string[];
   /** true quando as páginas mostradas são o roster do time, não a modelo real trabalhada. */
   planejado: boolean;
@@ -189,6 +190,7 @@ export async function buscarMetasDoRep(
     linhas.push({
       data: shift.data,
       turno: shift.turno,
+      bloco: shift.bloco,
       paginas: paginas.map((p) => p.nome),
       planejado: !trabalhado,
       metaDoTurno,
