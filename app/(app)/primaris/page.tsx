@@ -6,7 +6,7 @@ import { buscarHistoricoModelos, buscarResumoPrimaris, type EventoHistorico, typ
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import { diaLegivel, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, type Bloco } from '@/lib/tipos';
-import { CORES, IconeRaio } from '../meta-visual';
+import { BarraMeta, CORES, IconeRaio } from '../meta-visual';
 
 type Busca = { mes?: string };
 
@@ -193,30 +193,3 @@ function LinhaHistorico({ evento }: { evento: EventoHistorico }) {
   );
 }
 
-function BarraMeta({
-  vendido,
-  meta,
-  percentual,
-  compacta,
-}: {
-  vendido: number;
-  meta: number;
-  percentual: number | null;
-  compacta?: boolean;
-}) {
-  const largura = percentual === null ? 0 : Math.min(100, Math.max(0, percentual));
-
-  return (
-    <div className={compacta ? 'min-w-[14rem]' : ''}>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-texto-fraco">
-          {dinheiro(vendido)} / {dinheiro(meta)}
-        </span>
-        <span className="font-semibold">{percentual === null ? '—' : `${percentual.toFixed(1)}%`}</span>
-      </div>
-      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-superficie-alta">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${largura}%` }} />
-      </div>
-    </div>
-  );
-}

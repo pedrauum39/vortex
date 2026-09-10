@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
-import { blocoNaData, metaProrateada } from './periodos';
+import { blocoNaData, metaProrateada, type Periodo } from './periodos';
 import { buscarPeriodos } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
@@ -230,9 +230,62 @@ export type ResumoPrimaris = {
     percentual: number | null;
   }[];
   porPagina: ResumoPagina[];
-  porTime: Record<Bloco, { vendido: number; meta: number; percentual: number | null }>;
-  total: { vendido: number; meta: number; percentual: number | null };
+} & MetasDosTimes;
+
+export type MetaBarra = { vendido: number; meta: number; percentual: number | null };
+
+export type MetasDosTimes = {
+  porTime: Record<Bloco, MetaBarra>;
+  total: MetaBarra;
 };
+
+/**
+ * Vendido x meta prorateada de cada time e do Vortex inteiro, a partir das
+ * vendas já buscadas. Pura — divide a conta entre /primaris (resumo completo)
+ * e a home (só estas barras).
+ */
+function calcularMetasDosTimes(
+  vendas: VendaDeModelo[],
+  models: { id: string; meta_mensal: number }[],
+  periodos: Periodo[],
+  inicio: string,
+  fim: string,
+): MetasDosTimes {
+  const diasDoMes = diasNoMes(inicio.slice(0, 7));
+  const porTime = {} as Record<Bloco, MetaBarra>;
+  for (const bloco of ['I', 'II'] as Bloco[]) {
+    const vendido = arred(
+      vendas.filter((v) => v.modeloBloco === bloco).reduce((s, v) => s + v.vendidoTotal, 0),
+    );
+    const meta = arred(
+      models.reduce((s, m) => s + metaProrateada(periodos, m.id, m.meta_mensal, inicio, fim, diasDoMes)[bloco], 0),
+    );
+    porTime[bloco] = { vendido, meta, percentual: percentualAtingido(vendido, meta) };
+  }
+  const vendido = arred(porTime.I.vendido + porTime.II.vendido);
+  const meta = arred(porTime.I.meta + porTime.II.meta);
+  return { porTime, total: { vendido, meta, percentual: percentualAtingido(vendido, meta) } };
+}
+
+/** Só as barras de meta (Vortex total + cada time) — pra home de todo mundo. */
+export async function buscarMetasDosTimes(
+  db: SupabaseClient,
+  inicio: string,
+  fim: string,
+): Promise<MetasDosTimes> {
+  const [vendas, { data: modelsData }, periodos] = await Promise.all([
+    buscarVendasDaEmpresa(db, inicio, fim),
+    db.from('models').select('id, meta_mensal'),
+    buscarPeriodos(db),
+  ]);
+  return calcularMetasDosTimes(
+    vendas,
+    (modelsData ?? []) as { id: string; meta_mensal: number }[],
+    periodos,
+    inicio,
+    fim,
+  );
+}
 
 /** Resumo pra aba /primaris: quem vendeu quanto, cada página, cada time e o Vortex inteiro. */
 export async function buscarResumoPrimaris(
@@ -300,26 +353,9 @@ export async function buscarResumoPrimaris(
     };
   });
 
-  const porTime = {} as ResumoPrimaris['porTime'];
-  for (const bloco of ['I', 'II'] as Bloco[]) {
-    const vendido = arred(
-      vendas.filter((v) => v.modeloBloco === bloco).reduce((s, v) => s + v.vendidoTotal, 0),
-    );
-    const meta = arred(
-      models.reduce((s, m) => s + metaProrateada(periodos, m.id, m.meta_mensal, inicio, fim, diasDoMes)[bloco], 0),
-    );
-    porTime[bloco] = { vendido, meta, percentual: percentualAtingido(vendido, meta) };
-  }
+  const { porTime, total } = calcularMetasDosTimes(vendas, models, periodos, inicio, fim);
 
-  const vendidoTotal = arred(porTime.I.vendido + porTime.II.vendido);
-  const metaTotal = arred(porTime.I.meta + porTime.II.meta);
-
-  return {
-    porRep,
-    porPagina,
-    porTime,
-    total: { vendido: vendidoTotal, meta: metaTotal, percentual: percentualAtingido(vendidoTotal, metaTotal) },
-  };
+  return { porRep, porPagina, porTime, total };
 }
 
 export type EventoHistorico = {
