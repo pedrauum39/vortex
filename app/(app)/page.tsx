@@ -3,13 +3,18 @@ import { exigirRep } from '@/lib/auth';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
-import { corDaMeta, temRaio } from '@/lib/meta';
+import { corDaMeta, percentualAtingido, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
 import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
-import { buscarBonusPrimaris, buscarResumoPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
+import {
+  buscarBonusPrimaris,
+  buscarResumoPrimaris,
+  type CargoPrimaris,
+  type ResumoPrimaris,
+} from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
-import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
+import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual, somarMeses } from '@/lib/tempo';
 import {
   HORARIOS,
   ROTULO_CARGO,
@@ -20,9 +25,16 @@ import {
   type Funcao,
   type Turno,
 } from '@/lib/tipos';
+import { CalendarioMes, type DiaDoCalendario } from './calendario-mes';
 import { CartaoInvoice } from './cartao-invoice';
 import { BarraMeta, CORES, IconeRaio, LinhaMeta } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
+
+// Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
+// URL (?cal=...) — trocar o mês do calendário não pegaria até o cache expirar.
+export const dynamic = 'force-dynamic';
+
+type Busca = { cal?: string };
 
 type MeuTurno = {
   id: string;
@@ -77,7 +89,8 @@ async function buscarTurnosVazios(hoje: string): Promise<SlotVazio[]> {
   return vazios;
 }
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<Busca> }) {
+  const { cal } = await searchParams;
   const rep = await exigirRep();
   const hoje = dataBRT();
   const supabase = await criarClienteServidor();
@@ -85,6 +98,7 @@ export default async function Dashboard() {
   const mes = mesAtual();
   const { inicio: inicioMes, fim: fimMes } = limitesDoMes(mes);
   const diasDoMes = diasNoMes(mes);
+  const mesCal = cal ?? mes;
 
   const cargoPrimaris: CargoPrimaris | null =
     rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' ? rep.cargo : null;
@@ -103,30 +117,48 @@ export default async function Dashboard() {
     notificacoes,
     resumoTime,
   ] = await Promise.all([
-      supabase
-        .from('shifts')
-        .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
-        .eq('rep_id', rep.id)
-        .gte('data', hoje)
-        .order('data')
-        .limit(10),
-      supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
-      // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
-      // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
-      // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
-      // bloqueia isso pra sessão comum, e o delta caía sempre como "pendente"
-      // (contando zero) por não conseguir enxergar o statement de quem veio
-      // antes, mesmo quando o print do próprio rep estava certinho.
-      buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMes),
-      buscarRecordeDoRep(criarClienteAdmin(), rep.id),
-      buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
-      buscarRegraVigente(criarClienteAdmin(), fimMes),
-      cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
-      cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
-      buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje).catch(() => ({ popups: [], avisos: [], todos: [] })),
-      // Cliente admin: as metas do time são da empresa inteira, não da sessão do rep.
-      buscarResumoPrimaris(criarClienteAdmin(), inicioMes, fimMes),
-    ]);
+    supabase
+      .from('shifts')
+      .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
+      .eq('rep_id', rep.id)
+      .gte('data', hoje)
+      .order('data')
+      .limit(10),
+    supabase.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false).order('nome'),
+    // Cliente admin, não a sessão do rep: buscarAnterior() (dentro das duas
+    // funções) precisa ler o statement do turno ANTERIOR na cadeia, que quase
+    // sempre é de outro rep (a escala roda entre pessoas diferentes) — a RLS
+    // bloqueia isso pra sessão comum, e o delta caía sempre como "pendente"
+    // (contando zero) por não conseguir enxergar o statement de quem veio
+    // antes, mesmo quando o print do próprio rep estava certinho.
+    buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioMes, fimMes, diasDoMes),
+    buscarRecordeDoRep(criarClienteAdmin(), rep.id),
+    buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicioMes, fimMes),
+    buscarRegraVigente(criarClienteAdmin(), fimMes),
+    cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
+    cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
+    buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje).catch(() => ({ popups: [], avisos: [], todos: [] })),
+    // Cliente admin: as metas do time são da empresa inteira, não da sessão do rep.
+    buscarResumoPrimaris(criarClienteAdmin(), inicioMes, fimMes),
+  ]);
+
+  // O calendário pode navegar meses (?cal=). No mês corrente reaproveita
+  // `metas`; num mês diferente busca de novo (só quando o rep navega).
+  let metasCal = metas;
+  if (mesCal !== mes) {
+    const { inicio, fim } = limitesDoMes(mesCal);
+    metasCal = await buscarMetasDoRep(criarClienteAdmin(), rep.id, inicio, fim, diasNoMes(mesCal));
+  }
+
+  const diasCalendario: Record<string, DiaDoCalendario> = {};
+  for (const l of metasCal.linhas) {
+    diasCalendario[l.data] = {
+      trabalhado: l.trabalhado,
+      percentual: l.trabalhado ? percentualAtingido(l.vendido, l.metaDoTurno) : null,
+      bloco: l.bloco,
+      modelos: l.paginas.join(', '),
+    };
+  }
 
   const linhasInvoice = slots
     .flatMap((slot) => linhasDoSlot(slot, regra, new Date()))
@@ -151,112 +183,98 @@ export default async function Dashboard() {
   const hojeSlots = turnos.filter((t) => t.data === hoje);
   const proximos = turnos.filter((t) => t.data > hoje).slice(0, 5);
 
+  const temAlerta =
+    turnosVazios.length > 0 || notificacoes.avisos.length > 0 || notificacoes.todos.length > 0;
+
   return (
     <div className="space-y-6">
+      {/* CABEÇALHO */}
       <div className="rounded-2xl border border-borda bg-superficie p-5">
-        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
-              {rep.nome_curto}
-            </h1>
+        <div className="flex flex-col gap-5 lg:flex-row lg:justify-between">
+          <div className="flex gap-4">
+            <FotoRep />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
+                  {rep.nome_curto}
+                </h1>
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+                    <IconeRelogio />
+                    Turno
+                  </div>
+                  <span className="mt-1.5 inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
+                    {rotuloTurno(rep.turno)}
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+                    <IconeEstrela />
+                    Cargo
+                  </div>
+                  <div className="mt-1.5">
+                    <BadgeCargo cargo={rep.cargo} />
+                  </div>
+                </div>
+              </div>
 
-            <div className="mt-4 flex flex-wrap gap-6">
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
-                  <IconeRelogio />
-                  Turno
+              {temAlerta && (
+                <div className="mt-3 space-y-1.5 rounded-xl border border-borda bg-fundo/40 p-3">
+                  {turnosVazios.map((v) => (
+                    <p
+                      key={`${v.data}|${v.turno}|${v.bloco}`}
+                      className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
+                    >
+                      Turno do dia {diaLegivel(v.data)}, {rotuloTurno(v.turno)} (Time {v.bloco === 'I' ? '1' : '2'})
+                      está vazio, procure cover.
+                    </p>
+                  ))}
+                  {notificacoes.avisos.map((n) => (
+                    <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.aviso} />
+                  ))}
+                  {notificacoes.todos.map((n) => (
+                    <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.todo} />
+                  ))}
                 </div>
-                <span className="mt-1.5 inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
-                  {rotuloTurno(rep.turno)}
-                </span>
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
-                  <IconeEstrela />
-                  Cargo
-                </div>
-                <div className="mt-1.5">
-                  <BadgeCargo cargo={rep.cargo} />
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
           <StatusHoje slots={hojeSlots} rosterPorBloco={rosterPorBloco} semEscala={turnos.length === 0} />
         </div>
-
-        {(turnosVazios.length > 0 || notificacoes.avisos.length > 0 || notificacoes.todos.length > 0) && (
-          <div className="mt-5 space-y-1.5">
-            {turnosVazios.map((v) => (
-              <p
-                key={`${v.data}|${v.turno}|${v.bloco}`}
-                className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
-              >
-                Turno do dia {diaLegivel(v.data)}, {rotuloTurno(v.turno)} (Time {v.bloco === 'I' ? '1' : '2'}) está
-                vazio, procure cover.
-              </p>
-            ))}
-            {notificacoes.avisos.map((n) => (
-              <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.aviso} />
-            ))}
-            {notificacoes.todos.map((n) => (
-              <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.todo} />
-            ))}
-          </div>
-        )}
       </div>
 
-      <section className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <CartaoMeta percentual={metas.percentualParcial} />
-        <Cartao rotulo="Total vendido (mês)" valor={dinheiro(metas.totalVendido)} />
-        <Cartao rotulo="Turnos feitos (mês)" valor={String(metas.turnosFeitos)} />
-        <CartaoInvoice valor={dinheiro(totalInvoiceComBonus)} />
-        <CartaoRecorde recorde={recorde} />
-      </section>
+      {/* LINHA 2 — resumo pessoal | metas do time */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ResumoPessoal
+          totalVendido={dinheiro(metas.totalVendido)}
+          turnosFeitos={String(metas.turnosFeitos)}
+          percentualMeta={metas.percentualParcial}
+          invoiceValor={dinheiro(totalInvoiceComBonus)}
+          recorde={recorde}
+        />
+        <MetasDoTime resumo={resumoTime} />
+      </div>
 
-      <section className="rounded-2xl border border-borda bg-superficie p-5">
-        <h2 className="text-sm font-medium text-texto-fraco">Metas do time (mês)</h2>
-        <div className="mt-4 space-y-5">
-          <BarraMeta rotulo="Vortex" logo {...resumoTime.total} />
-          {(['I', 'II'] as Bloco[]).map((bloco) => (
-            <div key={bloco}>
-              <BarraMeta rotulo={bloco === 'I' ? 'Vortex I' : 'Vortex II'} {...resumoTime.porTime[bloco]} />
-              <div className="mt-2 space-y-1 border-l border-borda pl-3">
-                {resumoTime.porPagina
-                  .filter((p) => p.bloco === bloco)
-                  .map((p) => (
-                    <LinhaMeta
-                      key={p.modeloId}
-                      rotulo={p.nome}
-                      vendido={p.vendido}
-                      meta={p.meta}
-                      percentual={p.percentual}
-                    />
-                  ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* LINHA 3 — calendário | próximos turnos */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CalendarioMes
+          mesCal={mesCal}
+          hoje={hoje}
+          diasInfo={diasCalendario}
+          mesAnteriorHref={`/?cal=${somarMeses(mesCal, -1)}`}
+          mesSeguinteHref={`/?cal=${somarMeses(mesCal, 1)}`}
+        />
+        <ProximosTurnos proximos={proximos} rosterPorBloco={rosterPorBloco} />
+      </div>
+    </div>
+  );
+}
 
-      <section className="rounded-2xl border border-borda bg-superficie p-6">
-        <h2 className="text-sm font-medium text-texto-fraco">Próximos turnos</h2>
-        {proximos.length === 0 ? (
-          <p className="mt-3 text-sm text-texto-fraco">Nada gravado à frente.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-borda">
-            {proximos.map((t) => (
-              <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
-                <span>{diaLegivel(t.data)}</span>
-                <span className="text-texto-fraco">
-                  {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
-                  {t.funcao === 'assist' && ' · Assistant'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+function FotoRep() {
+  return (
+    <div className="flex aspect-[3/4] w-24 shrink-0 items-center justify-center rounded-xl border border-dashed border-borda text-center text-[11px] text-texto-fraco">
+      em breve
     </div>
   );
 }
@@ -273,7 +291,7 @@ function StatusHoje({
   semEscala: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-borda bg-fundo/40 p-5 md:w-1/2 md:shrink-0">
+    <div className="rounded-xl border border-borda bg-fundo/40 p-5 lg:w-96 lg:shrink-0">
       <p className="text-xs font-medium uppercase tracking-wide text-texto-fraco">Hoje</p>
       {slots.length > 0 ? (
         <>
@@ -308,52 +326,131 @@ function StatusHoje({
   );
 }
 
-function CartaoMeta({ percentual }: { percentual: number | null }) {
-  if (percentual === null) {
-    return <Cartao rotulo="% da meta (turnos feitos)" valor="—" nota="meta não configurada" />;
-  }
-
-  const cor = corDaMeta(percentual);
-
+function ResumoPessoal({
+  totalVendido,
+  turnosFeitos,
+  percentualMeta,
+  invoiceValor,
+  recorde,
+}: {
+  totalVendido: string;
+  turnosFeitos: string;
+  percentualMeta: number | null;
+  invoiceValor: string;
+  recorde: RecordeTurno;
+}) {
   return (
     <div className="rounded-2xl border border-borda bg-superficie p-5">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3">
+        <ItemNumero rotulo="Total vendido (mês)" valor={totalVendido} />
+        <ItemNumero rotulo="Turnos feitos (mês)" valor={turnosFeitos} />
+        <ItemMeta percentual={percentualMeta} />
+      </div>
+      <div className="my-4 border-t border-borda" />
+      <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+        <CartaoInvoice valor={invoiceValor} plano />
+        <ItemRecorde recorde={recorde} />
+      </div>
+    </div>
+  );
+}
+
+function ItemNumero({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div>
+      <p className="text-sm text-texto-fraco">{rotulo}</p>
+      <p className="mt-1 text-2xl font-semibold">{valor}</p>
+    </div>
+  );
+}
+
+function ItemMeta({ percentual }: { percentual: number | null }) {
+  return (
+    <div>
       <p className="text-sm text-texto-fraco">% da meta (turnos feitos)</p>
-      <p className={`mt-1 flex items-center gap-1.5 text-2xl font-semibold ${CORES[cor]}`}>
-        {percentual.toFixed(1)}%
-        {temRaio(percentual) && <IconeRaio />}
+      {percentual === null ? (
+        <>
+          <p className="mt-1 text-2xl font-semibold">—</p>
+          <p className="mt-0.5 text-xs text-texto-fraco">meta não configurada</p>
+        </>
+      ) : (
+        <p className={`mt-1 flex items-center gap-1.5 text-2xl font-semibold ${CORES[corDaMeta(percentual)]}`}>
+          {percentual.toFixed(1)}%
+          {temRaio(percentual) && <IconeRaio />}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ItemRecorde({ recorde }: { recorde: RecordeTurno }) {
+  return (
+    <div>
+      <p className="text-sm text-texto-fraco">Turno recorde</p>
+      <p className="mt-1 text-2xl font-semibold">{recorde ? dinheiro(recorde.valor) : '—'}</p>
+      <p className="mt-0.5 text-xs text-texto-fraco">
+        {recorde
+          ? `${diaLegivel(recorde.data)} · ${rotuloTurno(recorde.turno)}`
+          : 'nenhum turno com print ainda'}
       </p>
     </div>
   );
 }
 
-function CartaoRecorde({ recorde }: { recorde: RecordeTurno }) {
-  if (!recorde) {
-    return <Cartao rotulo="Turno recorde" valor="—" nota="nenhum turno com print ainda" />;
-  }
-
+function MetasDoTime({ resumo }: { resumo: ResumoPrimaris }) {
   return (
-    <Cartao
-      rotulo="Turno recorde"
-      valor={dinheiro(recorde.valor)}
-      nota={`${diaLegivel(recorde.data)} · ${rotuloTurno(recorde.turno)}`}
-    />
+    <div className="rounded-2xl border border-borda bg-superficie p-5">
+      <h2 className="text-sm font-medium text-texto-fraco">Metas do time (mês)</h2>
+      <div className="mt-4 space-y-5">
+        <BarraMeta rotulo="Vortex" logo {...resumo.total} />
+        {(['I', 'II'] as Bloco[]).map((bloco) => (
+          <div key={bloco}>
+            <BarraMeta rotulo={bloco === 'I' ? 'Vortex I' : 'Vortex II'} {...resumo.porTime[bloco]} />
+            <div className="mt-2 space-y-1 border-l border-borda pl-3">
+              {resumo.porPagina
+                .filter((p) => p.bloco === bloco)
+                .map((p) => (
+                  <LinhaMeta
+                    key={p.modeloId}
+                    rotulo={p.nome}
+                    vendido={p.vendido}
+                    meta={p.meta}
+                    percentual={p.percentual}
+                  />
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function Cartao({
-  rotulo,
-  valor,
-  nota,
+function ProximosTurnos({
+  proximos,
+  rosterPorBloco,
 }: {
-  rotulo: string;
-  valor: string;
-  nota?: string;
+  proximos: MeuTurno[];
+  rosterPorBloco: Map<Bloco, string>;
 }) {
   return (
-    <div className="rounded-2xl border border-borda bg-superficie p-5">
-      <p className="text-sm text-texto-fraco">{rotulo}</p>
-      <p className="mt-1 text-2xl font-semibold">{valor}</p>
-      {nota && <p className="mt-0.5 text-xs text-texto-fraco">{nota}</p>}
+    <div className="rounded-2xl border border-borda bg-superficie p-6">
+      <h2 className="text-sm font-medium text-texto-fraco">Próximos turnos</h2>
+      {proximos.length === 0 ? (
+        <p className="mt-3 text-sm text-texto-fraco">Nada gravado à frente.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-borda">
+          {proximos.map((t) => (
+            <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
+              <span>{diaLegivel(t.data)}</span>
+              <span className="text-texto-fraco">
+                {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
+                {t.funcao === 'assist' && ' · Assistant'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

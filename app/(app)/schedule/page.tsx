@@ -13,8 +13,9 @@ import {
   somarMeses,
 } from '@/lib/tempo';
 import { TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
+import { type DiaDoCalendario } from '../calendario-mes';
 import { BotaoGerar } from './botao-gerar';
-import { MeusTurnos, type DiaDoCalendario, type MeuTurno } from './meus-turnos';
+import { MeusTurnos, type MeuTurno } from './meus-turnos';
 
 type Busca = { aba?: string; de?: string; mesCal?: string };
 
@@ -148,6 +149,8 @@ async function AbaMeus({
     diasInfo[l.data] = {
       trabalhado: l.trabalhado,
       percentual: l.trabalhado ? percentualAtingido(l.vendido, l.metaDoTurno) : null,
+      bloco: l.bloco,
+      modelos: l.paginas.join(', '),
     };
   }
   const hoje = dataBRT();
