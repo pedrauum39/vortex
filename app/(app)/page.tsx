@@ -28,6 +28,7 @@ import {
 } from '@/lib/tipos';
 import { CalendarioMes, type DiaDoCalendario } from './calendario-mes';
 import { CartaoInvoice } from './cartao-invoice';
+import { FotoAmpliavel } from './foto-ampliavel';
 import { BarraMeta, CORES, IconeRaio, LinhaMeta } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
 
@@ -279,12 +280,7 @@ function FotoRep({ url }: { url: string | null }) {
         url ? 'border-borda' : 'border-dashed border-borda'
       }`}
     >
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="size-full object-cover" />
-      ) : (
-        'em breve'
-      )}
+      {url ? <FotoAmpliavel url={url} className="size-full object-cover" /> : 'em breve'}
     </div>
   );
 }
