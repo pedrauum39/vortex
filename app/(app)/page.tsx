@@ -21,7 +21,7 @@ import {
   type Turno,
 } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
-import { BarraMeta, CORES, IconeRaio } from './meta-visual';
+import { BarraMetaMini, CORES, IconeRaio } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
 
 type MeuTurno = {
@@ -212,26 +212,14 @@ export default async function Dashboard() {
         <Cartao rotulo="Turnos feitos (mês)" valor={String(metas.turnosFeitos)} />
         <CartaoInvoice valor={dinheiro(totalInvoiceComBonus)} />
         <CartaoRecorde recorde={recorde} />
-      </section>
-
-      <section className="rounded-2xl border border-borda bg-superficie p-5">
-        <h2 className="text-sm font-medium text-texto-fraco">Vortex — meta total (os dois times)</h2>
-        <div className="mt-3">
-          <BarraMeta {...metasTimes.total} />
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-2">
-        {(['I', 'II'] as Bloco[]).map((bloco) => (
-          <div key={bloco} className="rounded-2xl border border-borda bg-superficie p-5">
-            <h2 className="text-sm font-medium text-accent">
-              {bloco === 'I' ? 'Time 1 · Vortex I' : 'Time 2 · Vortex II'}
-            </h2>
-            <div className="mt-3">
-              <BarraMeta {...metasTimes.porTime[bloco]} />
-            </div>
+        <div className="rounded-2xl border border-borda bg-superficie p-5">
+          <p className="text-sm text-texto-fraco">Metas do time (mês)</p>
+          <div className="mt-2.5 space-y-2.5">
+            <BarraMetaMini rotulo="Vortex" percentual={metasTimes.total.percentual} />
+            <BarraMetaMini rotulo="Time 1" percentual={metasTimes.porTime.I.percentual} />
+            <BarraMetaMini rotulo="Time 2" percentual={metasTimes.porTime.II.percentual} />
           </div>
-        ))}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-borda bg-superficie p-6">
@@ -268,20 +256,20 @@ function StatusHoje({
   semEscala: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-borda bg-fundo/40 p-4 md:w-72 md:shrink-0">
+    <div className="rounded-xl border border-borda bg-fundo/40 p-5 md:w-1/2 md:shrink-0">
       <p className="text-xs font-medium uppercase tracking-wide text-texto-fraco">Hoje</p>
       {slots.length > 0 ? (
         <>
-          <div className="mt-2 space-y-2">
+          <div className="mt-3 space-y-3">
             {slots.map((t) => (
               <div key={t.id}>
-                <p className="font-medium">
+                <p className="text-lg font-medium">
                   {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
                   {t.funcao === 'assist' && (
-                    <span className="ml-2 rounded-md bg-accent-fraco px-1.5 py-0.5 text-xs text-accent">Assistant</span>
+                    <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">Assistant</span>
                   )}
                 </p>
-                <p className="mt-0.5 text-xs text-texto-fraco">
+                <p className="mt-1 text-sm text-texto-fraco">
                   {HORARIOS[t.turno].inicio} às {HORARIOS[t.turno].fim}
                 </p>
               </div>
@@ -289,13 +277,13 @@ function StatusHoje({
           </div>
           <Link
             href="/turno"
-            className="mt-3 inline-block rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo transition hover:bg-accent-forte"
+            className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
           >
             Ir para o turno
           </Link>
         </>
       ) : (
-        <p className="mt-2 text-lg font-medium text-texto-fraco">
+        <p className="mt-3 text-xl font-medium text-texto-fraco">
           {semEscala ? 'Escala ainda não gerada' : 'Folga'}
         </p>
       )}
