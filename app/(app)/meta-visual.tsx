@@ -39,6 +39,30 @@ export function BarraMeta({
   );
 }
 
+/** Versão enxuta da BarraMeta: rótulo + percentual + barra fina, sem os valores
+ *  em dinheiro — pra caber num cartão pequeno da grade da home. */
+export function BarraMetaMini({
+  rotulo,
+  percentual,
+}: {
+  rotulo: string;
+  percentual: number | null;
+}) {
+  const largura = percentual === null ? 0 : Math.min(100, Math.max(0, percentual));
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-texto-fraco">{rotulo}</span>
+        <span className="font-semibold">{percentual === null ? '—' : `${percentual.toFixed(1)}%`}</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-superficie-alta">
+        <div className="h-full rounded-full bg-accent" style={{ width: `${largura}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export function IconeRaio({ className = 'size-5' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
