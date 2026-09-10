@@ -7,7 +7,7 @@ import { corDaMeta, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
 import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
-import { buscarBonusPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
+import { buscarBonusPrimaris, buscarMetasDosTimes, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
 import {
@@ -21,7 +21,7 @@ import {
   type Turno,
 } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
-import { CORES, IconeRaio } from './meta-visual';
+import { BarraMeta, CORES, IconeRaio } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
 
 type MeuTurno = {
@@ -91,8 +91,18 @@ export default async function Dashboard() {
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
-  const [{ data }, { data: modelsData }, metas, recorde, slots, regra, bonus, turnosVazios, notificacoes] =
-    await Promise.all([
+  const [
+    { data },
+    { data: modelsData },
+    metas,
+    recorde,
+    slots,
+    regra,
+    bonus,
+    turnosVazios,
+    notificacoes,
+    metasTimes,
+  ] = await Promise.all([
       supabase
         .from('shifts')
         .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
@@ -114,6 +124,8 @@ export default async function Dashboard() {
       cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
       cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
       buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje).catch(() => ({ popups: [], avisos: [], todos: [] })),
+      // Cliente admin: as barras de meta são da empresa inteira, não da sessão do rep.
+      buscarMetasDosTimes(criarClienteAdmin(), inicioMes, fimMes),
     ]);
 
   const linhasInvoice = slots
@@ -142,12 +154,39 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-borda bg-superficie p-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
-          {rep.nome_curto}
-        </h1>
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-accent drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]">
+              {rep.nome_curto}
+            </h1>
 
-        {turnosVazios.length > 0 && (
-          <div className="mt-3 space-y-1.5">
+            <div className="mt-4 flex flex-wrap gap-6">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+                  <IconeRelogio />
+                  Turno
+                </div>
+                <span className="mt-1.5 inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
+                  {rotuloTurno(rep.turno)}
+                </span>
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
+                  <IconeEstrela />
+                  Cargo
+                </div>
+                <div className="mt-1.5">
+                  <BadgeCargo cargo={rep.cargo} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <StatusHoje slots={hojeSlots} rosterPorBloco={rosterPorBloco} semEscala={turnos.length === 0} />
+        </div>
+
+        {(turnosVazios.length > 0 || notificacoes.avisos.length > 0 || notificacoes.todos.length > 0) && (
+          <div className="mt-5 space-y-1.5">
             {turnosVazios.map((v) => (
               <p
                 key={`${v.data}|${v.turno}|${v.bloco}`}
@@ -157,11 +196,6 @@ export default async function Dashboard() {
                 vazio, procure cover.
               </p>
             ))}
-          </div>
-        )}
-
-        {(notificacoes.avisos.length > 0 || notificacoes.todos.length > 0) && (
-          <div className="mt-3 space-y-1.5">
             {notificacoes.avisos.map((n) => (
               <NotificacaoCard key={n.id} id={n.id} mensagem={n.mensagem} rotuloBotao={ROTULO_CONFIRMAR.aviso} />
             ))}
@@ -170,63 +204,7 @@ export default async function Dashboard() {
             ))}
           </div>
         )}
-
-        <div className="mt-4 flex flex-wrap gap-6">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
-              <IconeRelogio />
-              Turno
-            </div>
-            <span className="mt-1.5 inline-block rounded-lg bg-superficie-alta px-3 py-1 text-sm font-semibold">
-              {rotuloTurno(rep.turno)}
-            </span>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-texto-fraco">
-              <IconeEstrela />
-              Cargo
-            </div>
-            <div className="mt-1.5">
-              <BadgeCargo cargo={rep.cargo} />
-            </div>
-          </div>
-        </div>
       </div>
-
-      <section className="rounded-2xl border border-borda bg-superficie p-6">
-        <h2 className="text-sm font-medium text-texto-fraco">Hoje</h2>
-        {hojeSlots.length > 0 ? (
-          <>
-            <div className="mt-2 space-y-3">
-              {hojeSlots.map((t) => (
-                <div key={t.id}>
-                  <p className="text-xl font-medium">
-                    {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
-                    {t.funcao === 'assist' && (
-                      <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">
-                        Assistant
-                      </span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-sm text-texto-fraco">
-                    {HORARIOS[t.turno].inicio} às {HORARIOS[t.turno].fim}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <Link
-              href="/turno"
-              className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
-            >
-              Ir para o turno
-            </Link>
-          </>
-        ) : (
-          <p className="mt-2 text-xl font-medium text-texto-fraco">
-            {turnos.length === 0 ? 'Escala ainda não gerada' : 'Folga'}
-          </p>
-        )}
-      </section>
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <CartaoMeta percentual={metas.percentualParcial} />
@@ -234,6 +212,26 @@ export default async function Dashboard() {
         <Cartao rotulo="Turnos feitos (mês)" valor={String(metas.turnosFeitos)} />
         <CartaoInvoice valor={dinheiro(totalInvoiceComBonus)} />
         <CartaoRecorde recorde={recorde} />
+      </section>
+
+      <section className="rounded-2xl border border-borda bg-superficie p-5">
+        <h2 className="text-sm font-medium text-texto-fraco">Vortex — meta total (os dois times)</h2>
+        <div className="mt-3">
+          <BarraMeta {...metasTimes.total} />
+        </div>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2">
+        {(['I', 'II'] as Bloco[]).map((bloco) => (
+          <div key={bloco} className="rounded-2xl border border-borda bg-superficie p-5">
+            <h2 className="text-sm font-medium text-accent">
+              {bloco === 'I' ? 'Time 1 · Vortex I' : 'Time 2 · Vortex II'}
+            </h2>
+            <div className="mt-3">
+              <BarraMeta {...metasTimes.porTime[bloco]} />
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="rounded-2xl border border-borda bg-superficie p-6">
@@ -254,6 +252,53 @@ export default async function Dashboard() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Status do dia, no canto do cabeçalho: o turno de hoje (com modelos e horário
+ *  e o atalho pro turno) ou "Folga". */
+function StatusHoje({
+  slots,
+  rosterPorBloco,
+  semEscala,
+}: {
+  slots: MeuTurno[];
+  rosterPorBloco: Map<Bloco, string>;
+  semEscala: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-borda bg-fundo/40 p-4 md:w-72 md:shrink-0">
+      <p className="text-xs font-medium uppercase tracking-wide text-texto-fraco">Hoje</p>
+      {slots.length > 0 ? (
+        <>
+          <div className="mt-2 space-y-2">
+            {slots.map((t) => (
+              <div key={t.id}>
+                <p className="font-medium">
+                  {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
+                  {t.funcao === 'assist' && (
+                    <span className="ml-2 rounded-md bg-accent-fraco px-1.5 py-0.5 text-xs text-accent">Assistant</span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-xs text-texto-fraco">
+                  {HORARIOS[t.turno].inicio} às {HORARIOS[t.turno].fim}
+                </p>
+              </div>
+            ))}
+          </div>
+          <Link
+            href="/turno"
+            className="mt-3 inline-block rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-fundo transition hover:bg-accent-forte"
+          >
+            Ir para o turno
+          </Link>
+        </>
+      ) : (
+        <p className="mt-2 text-lg font-medium text-texto-fraco">
+          {semEscala ? 'Escala ainda não gerada' : 'Folga'}
+        </p>
+      )}
     </div>
   );
 }
