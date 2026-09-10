@@ -7,7 +7,7 @@ import { corDaMeta, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
 import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
-import { buscarBonusPrimaris, buscarMetasDosTimes, type CargoPrimaris } from '@/lib/primarisDb';
+import { buscarBonusPrimaris, buscarResumoPrimaris, type CargoPrimaris } from '@/lib/primarisDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual } from '@/lib/tempo';
 import {
@@ -21,7 +21,7 @@ import {
   type Turno,
 } from '@/lib/tipos';
 import { CartaoInvoice } from './cartao-invoice';
-import { BarraMetaMini, CORES, IconeRaio } from './meta-visual';
+import { BarraMeta, CORES, IconeRaio, LinhaMeta } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
 
 type MeuTurno = {
@@ -101,7 +101,7 @@ export default async function Dashboard() {
     bonus,
     turnosVazios,
     notificacoes,
-    metasTimes,
+    resumoTime,
   ] = await Promise.all([
       supabase
         .from('shifts')
@@ -124,8 +124,8 @@ export default async function Dashboard() {
       cargoPrimaris ? buscarBonusPrimaris(criarClienteAdmin(), cargoPrimaris, inicioMes, fimMes) : null,
       cargoPrimaris ? buscarTurnosVazios(hoje) : Promise.resolve([]),
       buscarNotificacoesPendentesDoRep(supabase, rep.id, hoje).catch(() => ({ popups: [], avisos: [], todos: [] })),
-      // Cliente admin: as barras de meta são da empresa inteira, não da sessão do rep.
-      buscarMetasDosTimes(criarClienteAdmin(), inicioMes, fimMes),
+      // Cliente admin: as metas do time são da empresa inteira, não da sessão do rep.
+      buscarResumoPrimaris(criarClienteAdmin(), inicioMes, fimMes),
     ]);
 
   const linhasInvoice = slots
@@ -212,13 +212,30 @@ export default async function Dashboard() {
         <Cartao rotulo="Turnos feitos (mês)" valor={String(metas.turnosFeitos)} />
         <CartaoInvoice valor={dinheiro(totalInvoiceComBonus)} />
         <CartaoRecorde recorde={recorde} />
-        <div className="rounded-2xl border border-borda bg-superficie p-5">
-          <p className="text-sm text-texto-fraco">Metas do time (mês)</p>
-          <div className="mt-2.5 space-y-2.5">
-            <BarraMetaMini rotulo="Vortex" percentual={metasTimes.total.percentual} />
-            <BarraMetaMini rotulo="Time 1" percentual={metasTimes.porTime.I.percentual} />
-            <BarraMetaMini rotulo="Time 2" percentual={metasTimes.porTime.II.percentual} />
-          </div>
+      </section>
+
+      <section className="rounded-2xl border border-borda bg-superficie p-5">
+        <h2 className="text-sm font-medium text-texto-fraco">Metas do time (mês)</h2>
+        <div className="mt-4 space-y-5">
+          <BarraMeta rotulo="Vortex" logo {...resumoTime.total} />
+          {(['I', 'II'] as Bloco[]).map((bloco) => (
+            <div key={bloco}>
+              <BarraMeta rotulo={bloco === 'I' ? 'Vortex I' : 'Vortex II'} {...resumoTime.porTime[bloco]} />
+              <div className="mt-2 space-y-1 border-l border-borda pl-3">
+                {resumoTime.porPagina
+                  .filter((p) => p.bloco === bloco)
+                  .map((p) => (
+                    <LinhaMeta
+                      key={p.modeloId}
+                      rotulo={p.nome}
+                      vendido={p.vendido}
+                      meta={p.meta}
+                      percentual={p.percentual}
+                    />
+                  ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

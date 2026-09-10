@@ -267,27 +267,8 @@ function calcularMetasDosTimes(
   return { porTime, total: { vendido, meta, percentual: percentualAtingido(vendido, meta) } };
 }
 
-/** Só as barras de meta (Vortex total + cada time) — pra home de todo mundo. */
-export async function buscarMetasDosTimes(
-  db: SupabaseClient,
-  inicio: string,
-  fim: string,
-): Promise<MetasDosTimes> {
-  const [vendas, { data: modelsData }, periodos] = await Promise.all([
-    buscarVendasDaEmpresa(db, inicio, fim),
-    db.from('models').select('id, meta_mensal'),
-    buscarPeriodos(db),
-  ]);
-  return calcularMetasDosTimes(
-    vendas,
-    (modelsData ?? []) as { id: string; meta_mensal: number }[],
-    periodos,
-    inicio,
-    fim,
-  );
-}
-
-/** Resumo pra aba /primaris: quem vendeu quanto, cada página, cada time e o Vortex inteiro. */
+/** Resumo pra aba /primaris e pro bloco "Metas do time" da home: quem vendeu
+ *  quanto, cada página, cada time e o Vortex inteiro. */
 export async function buscarResumoPrimaris(
   db: SupabaseClient,
   inicio: string,
