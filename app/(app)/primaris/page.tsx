@@ -92,7 +92,7 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
               {resumo.porRep.map((r) => (
                 <tr key={r.repId} className="border-b border-borda last:border-0">
                   <td className="px-4 py-2.5">
-                    <Link href={`/admin/reps/${r.repId}?mes=${mes}`} className="text-accent hover:underline">
+                    <Link href={`/primaris/${r.repId}?mes=${mes}`} className="text-accent hover:underline">
                       {r.nomeCurto}
                     </Link>
                   </td>
