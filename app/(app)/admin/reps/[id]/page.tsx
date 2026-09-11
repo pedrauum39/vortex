@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { corDaMeta, percentualAtingido, temRaio } from '@/lib/meta';
 import { buscarMetasDoRep } from '@/lib/metaDb';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { diaLegivel, diasNoMes, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, rotuloTurno, type Rep } from '@/lib/tipos';
+import { CORES, IconeRaio } from '../../../meta-visual';
 
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
@@ -91,27 +93,56 @@ export default async function DetalheRep({
                 <th className="px-3 py-3 font-medium">Página(s)</th>
                 <th className="px-3 py-3 text-right font-medium">Meta do turno</th>
                 <th className="px-3 py-3 text-right font-medium">Vendido</th>
+                <th className="px-3 py-3 text-right font-medium">%</th>
                 <th className="px-4 py-3 font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
-              {metas.linhas.map((l) => (
-                <tr key={`${l.data}-${l.turno}`} className="border-b border-borda last:border-0">
-                  <td className="px-4 py-2.5">{diaLegivel(l.data)}</td>
-                  <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(l.turno)}</td>
-                  <td className="px-3 py-2.5">
-                    {l.paginas.join(', ') || <span className="text-texto-fraco">—</span>}
-                    {l.planejado && <span className="ml-2 text-xs text-texto-fraco">(planejado)</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    {l.trabalhado ? dinheiro(l.vendido) : <span className="text-texto-fraco">—</span>}
-                  </td>
-                  <td className="px-4 py-2.5 text-sm text-texto-fraco">
-                    {!l.trabalhado ? 'futuro' : l.pendente ? 'aguardando print' : 'concluído'}
-                  </td>
-                </tr>
-              ))}
+              {metas.linhas.map((l) => {
+                const pct = l.trabalhado ? percentualAtingido(l.vendido, l.metaDoTurno) : null;
+                return (
+                  <tr key={`${l.data}-${l.turno}`} className="border-b border-borda last:border-0">
+                    <td className="px-4 py-2.5">{diaLegivel(l.data)}</td>
+                    <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                    <td className="px-3 py-2.5">
+                      {l.paginas.join(', ') || <span className="text-texto-fraco">—</span>}
+                      {l.planejado && <span className="ml-2 text-xs text-texto-fraco">(planejado)</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      {l.trabalhado ? dinheiro(l.vendido) : <span className="text-texto-fraco">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {pct === null ? (
+                        <span className="text-texto-fraco">—</span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 ${CORES[corDaMeta(pct)]}`}>
+                          {pct.toFixed(1)}%
+                          {temRaio(pct) && <IconeRaio className="size-4" />}
+                        </span>
+                      )}
+                      {/* Só faz sentido detalhar por página quando o turno teve mais de
+                          uma (double) — com uma só, o total já É o da página. */}
+                      {l.trabalhado && l.porPagina.length > 1 && (
+                        <div className="mt-1 space-y-0.5 text-xs font-normal text-texto-fraco">
+                          {l.porPagina.map((p) => {
+                            const pctPagina = percentualAtingido(p.vendido, p.meta);
+                            return (
+                              <div key={p.nome}>
+                                {p.nome}: {dinheiro(p.vendido)} / {dinheiro(p.meta)}{' '}
+                                {pctPagina === null ? '—' : `(${pctPagina.toFixed(0)}%)`}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-texto-fraco">
+                      {!l.trabalhado ? 'futuro' : l.pendente ? 'aguardando print' : 'concluído'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

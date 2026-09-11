@@ -91,7 +91,11 @@ export default async function Primaris({ searchParams }: { searchParams: Promise
             <tbody>
               {resumo.porRep.map((r) => (
                 <tr key={r.repId} className="border-b border-borda last:border-0">
-                  <td className="px-4 py-2.5">{r.nomeCurto}</td>
+                  <td className="px-4 py-2.5">
+                    <Link href={`/admin/reps/${r.repId}?mes=${mes}`} className="text-accent hover:underline">
+                      {r.nomeCurto}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2.5 text-texto-fraco">{ROTULO_CARGO[r.cargo]}</td>
                   <td className="px-3 py-2.5 text-right font-medium">{dinheiro(r.vendido)}</td>
                   <td className="px-3 py-2.5 text-right text-texto-fraco">{dinheiro(r.meta)}</td>
