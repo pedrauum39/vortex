@@ -332,7 +332,7 @@ function StatusHoje({
             </Link>
             <Link
               href="/planejar"
-              className="inline-block rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent-fraco"
+              className="inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
             >
               Planejar Turno
             </Link>
@@ -345,7 +345,7 @@ function StatusHoje({
           </p>
           <Link
             href="/planejar"
-            className="mt-4 inline-block rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent-fraco"
+            className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
           >
             Planejar Turno
           </Link>
