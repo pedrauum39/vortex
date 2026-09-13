@@ -323,17 +323,33 @@ function StatusHoje({
               </div>
             ))}
           </div>
-          <Link
-            href="/turno"
-            className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
-          >
-            Ir para o turno
-          </Link>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/turno"
+              className="inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-fundo transition hover:bg-accent-forte"
+            >
+              Ir para o turno
+            </Link>
+            <Link
+              href="/planejar"
+              className="inline-block rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent-fraco"
+            >
+              Planejar Turno
+            </Link>
+          </div>
         </>
       ) : (
-        <p className="mt-3 text-xl font-medium text-texto-fraco">
-          {semEscala ? 'Escala ainda não gerada' : 'Folga'}
-        </p>
+        <>
+          <p className="mt-3 text-xl font-medium text-texto-fraco">
+            {semEscala ? 'Escala ainda não gerada' : 'Folga'}
+          </p>
+          <Link
+            href="/planejar"
+            className="mt-4 inline-block rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent-fraco"
+          >
+            Planejar Turno
+          </Link>
+        </>
       )}
     </div>
   );
