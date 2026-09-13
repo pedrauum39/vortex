@@ -1,7 +1,7 @@
 # Workspace do time Vortex — estado e handoff
 
 > Documento de continuidade. Escrito para ser lido do zero em outra conversa.
-> Última atualização: 25/08/2026. Sessão longa, puxada por um pedido real do usuário ("Issy Black desativou e o card do Time 1 zerou na /primaris") que virou uma feature inteira: **troca de time de modelo** com histórico por período (`model_bloco_periodos`), pra parar de reescrever a atribuição histórica de vendas quando uma modelo muda de time ou desativa. Implementado via subagent-driven-development (plano + 7 tasks + revisão final de branch inteiro) — o processo pegou 3 bugs reais antes de chegar em produção (ver "SESSÃO DE 25/08" abaixo). Depois disso, três correções em cascata pedidas pelo usuário testando ao vivo: o roster do "simular ponto" em `/admin/turnos` não respeitava a data do turno (modelo desativada sumia do checkbox mesmo pra turnos de quando ela ainda tava ativa), "Precisam de atenção" não pegava comissão pendente (só ponto aberto), e o site inteiro estava **muito lento** — causa raiz achada e corrigida: `buscarAnterior()` era chamado em loop sequencial (~195 combinações turno×modelo só neste mês, ~400 round-trips um atrás do outro) em `/`, `/invoice`, `/primaris` e `/admin/turnos`. Ver "SESSÃO DE 25/08" mais abaixo pra tudo.
+> Última atualização: 13/09/2026. Sessão mais recente (07–13/09, ver "SESSÃO DE 07–13/09" abaixo) foi a mais longa até agora: log de auditoria da grade da escala (única feature com brainstorm/spec/plano completo desta leva), home redesenhada em várias rodadas a partir de uma montagem no Paint, foto de perfil do rep, calendário mostrando turno de Assistant (bug corrigido), acesso ao desempenho do rep a partir de `/primaris` sem cair no menu do admin, e a feature mais trabalhosa: **"Planejar Turno"**, um bloco de notas tipo Notion (parágrafos livres + blocos "mass" numerados intercalados, arrastáveis pela alça, texto rico de verdade, sanitizado no servidor) pra cada rep preparar mass messages e respostas antes do turno. As sessões anteriores (25/08 pra trás) continuam abaixo, sem mudança.
 
 ---
 
@@ -11,7 +11,7 @@ Não é mais só local. O site está no ar, os reps já estão se cadastrando e 
 
 ```bash
 npm run dev        # servidor local, localhost:3000
-npm test            # 111 testes, todos verdes
+npm test            # 134 testes, todos verdes
 npm run typecheck
 npm run build       # roda antes de qualquer commit — pega erro que o dev não pega
 npm run eval:ocr    # compara modelos de OCR contra prints reais salvos em evals/statements/
@@ -306,6 +306,62 @@ Fix: trocado `for` sequencial por `Promise.all` nos 4 lugares com esse padrão �
 
 ---
 
+## Decisões e features da SESSÃO DE 07–13/09 (log da escala, home redesenhada, fotos, Planejar Turno)
+
+> Entre a sessão de 25/08 (acima) e esta, rodaram sessões não documentadas aqui (dá pra ver no `git log`): sistema de notificações (popup/aviso/todo — migrações 0023/0024), centralização da aba Time do Schedule, correção de abas presas em `/turno` quando há mais de um turno do mesmo tipo, e um ajuste visual em `admin/models`. Não foram reconstruídas neste arquivo — só o `git log` tem o detalhe dessas. A partir daqui é o que rolou nesta sessão, do começo ao fim.
+
+Sessão bem longa, toda no fluxo "eu implemento, dou deploy, o usuário testa ao vivo e pede ajuste" — sem plano formal pras últimas features (o usuário pediu explicitamente pra pular a cerimônia de brainstorm/spec depois da primeira feature: "vamo fazer igual sempre fizemos, vc da deploy, eu olho e peço pra mudar"). Só a primeira (log da escala) passou por brainstorm + spec + plano + subagent-driven-development completo; o resto foi implementação direta com verificação (`typecheck && lint && test && build`) antes de cada push.
+
+### 34. Log de alterações da escala em `/admin/turnos`
+
+Pedido: quando o admin troca o rep de um turno na grade, mostrar embaixo um histórico de "quem saiu, quem entrou". Único item da sessão com processo completo (brainstorm → spec → plano → subagent-driven-development, 4 tasks + revisão final de branch inteiro).
+
+- **Tabela nova `escala_alteracoes`** (migração 0025, RLS: quem já vê a aba admin lê — `is_admin() or pode_ver()` —, só admin grava, **sem policy de update/delete** — auditoria imutável por desenho). Migração 0026 fecha uma brecha real: o Supabase concede `UPDATE/DELETE/TRUNCATE` de graça pro role `authenticated` por padrão, e `TRUNCATE` não passa por RLS — sem policy de update/delete isso trava UPDATE/DELETE mas não TRUNCATE. `revoke update, delete, truncate ... from authenticated` fecha de vez (achado pela revisão final de branch, mesmo padrão do `0023_notificacoes.sql`).
+- `aplicarSlot()` (`admin/turnos/actions.ts`) grava uma linha toda vez que o `rep_id` de um slot muda (troca, slot novo, slot esvaziado) — inclusive via `criarTurno`/`apagarTurno` (formulário e lista), não só a grade, depois do usuário pedir pra cobrir os três controles. Helper `registrarAlteracao()` compartilhado pelos três.
+- Tela: bloco "Mudanças feitas [na semana]" agrupado por **quem alterou + dia da mudança** (não o dia do turno), com botão **"Copiar"** que gera texto em `**negrito**`/`➤` pensado pra colar no Telegram (`lib/logEscala.ts`, puro/testado). Cada linha mostra turno+dia do turno+modelos do bloco (resolvidas por `blocoNaData(periodos, ...)` — não pelo time atual da modelo, pra não errar o nome de quem já trocou de time desde então).
+
+### 35. Home redesenhada — várias rodadas em cima da mesma tela
+
+O usuário mandou uma montagem feita no Paint com anotações e pediu réplica fiel; depois mais 3-4 rodadas de ajuste fino olhando o deploy real. Estado final:
+
+- **Cabeçalho**: espaço pra foto do rep (ver #37) + nome + chips Turno/Cargo à esquerda; caixa de notificações/avisos de turno vazio; bloco "Hoje" (turno do dia + botões **"Ir para o turno"** e **"Planejar Turno"**, ver #38) à direita.
+- **Métricas pessoais**: os 5 cards separados de antes viraram **um cartão só**, duas fileiras (Total vendido/Turnos feitos/% da meta em cima; Invoice do mês/Turno recorde embaixo) — `CartaoInvoice` ganhou a prop `plano` (sem moldura própria) pra caber dentro.
+- **"Metas do time"**: card ao lado do resumo pessoal — barra Vortex (com o logo do site, 16px) + uma barra por time, cada uma com a lista de modelos daquele time (vendido/meta em dinheiro e %) embaixo. Vem de `buscarResumoPrimaris()` (mesma função de `/primaris`) — **roda pra QUALQUER rep agora**, não só primaris (decisão do usuário: "todo mundo vê"). `lib/primarisDb.ts` ganhou `calcularMetasDosTimes()` (puro) compartilhado entre o resumo completo e essa versão. `BarraMeta`/`LinhaMeta` moraram pra `meta-visual.tsx` (era só de `/primaris`, agora compartilhado).
+- **Calendário do mês**: extraído de `/schedule` → "Meus turnos" pra um componente compartilhado (`app/(app)/calendario-mes.tsx`) — agora aparece também na home, com navegação de mês própria (`?cal=YYYY-MM`). Ganhou uma **caixinha ao passar o mouse** num dia com turno, mostrando "Time X · modelos daquele dia" (`bg-accent` sólido, tipo tooltip). Fica ao lado de "Próximos turnos".
+
+**Custo de performance aceito conscientemente**: a home de TODO rep agora roda `buscarResumoPrimaris()` (por baixo, `buscarVendasDaEmpresa()` — a mesma função pesada da armadilha #31) — antes só rodava pra quem já tinha uma seção de primaris. Ninguém reportou lentidão até agora, mas é o primeiro lugar a olhar se a home ficar lenta de novo (ver "Pendências").
+
+### 36. Bug real achado depois do redesenho: calendário mostrava turno de Assistant como se fosse folga
+
+`buscarMetasDoRep()` só olha `funcao='regular'` de propósito (assistente não tem venda própria — decisão #16 antiga). Consequência colateral nova: um dia só de Assistant não entra em `linhas`, e o `CalendarioMes` (tanto na home quanto em `/schedule`) mostrava esse dia sem nenhum destaque, como se fosse folga. `lib/metaDb.ts` ganhou `buscarDiasDeAssist()` (busca só os dias de Assistant do período, com o roster do bloco) — as duas páginas mesclam esse resultado no mapa do calendário, sem mexer em `buscarMetasDoRep`.
+
+### 37. Foto de perfil do rep
+
+- **Migração 0027**: `reps.foto_path` (text) + bucket de storage **público** `rep-fotos` (a `<img>` carrega direto pela URL, sem sessão — o caminho tem o `rep_id` na pasta + um `uuid` no arquivo, então não é adivinhável; escrita só via server action com service role).
+- Upload em `/admin/reps`: miniatura + **enviar/trocar/remover** ao lado do nome de cada rep (`enviarFotoRep`/`removerFotoRep`, `admin/reps/actions.ts`) — cada envio gera um caminho novo (uuid) e apaga o arquivo antigo, pra não ter cache de navegador preso mostrando a foto velha.
+- **Bug real, corrigido na hora**: o Next limita o body de Server Actions a **1 MB por padrão** — qualquer foto de tamanho decente estourava com "Body exceeded 1 MB limit". `next.config.ts` ganhou `experimental.serverActions.bodySizeLimit: '10mb'`; a action valida até 8 MB.
+- Fotos são **3:4** (retrato) — o quadro da home e a miniatura do admin usam esse aspect ratio.
+- **Clicar na foto amplia** ela inteira (sem corte) por cima da tela — `app/(app)/foto-ampliavel.tsx`, componente cliente reutilizado na home e em `/admin/reps`.
+
+### 38. "Planejar Turno" — bloco de notas do rep pra mass messages e respostas prontas
+
+A feature mais trabalhosa da sessão, com várias rodadas de ajuste depois do primeiro deploy (o usuário foi refinando olhando o resultado real, não numa spec fechada de antes). Estado final, não a primeira tentativa:
+
+- **Tabela `planejamentos_turno`** (migração 0028; coluna `texto_livre` da migração 0029 ficou **sem uso** — foi um desenho intermediário abandonado, ver abaixo — inofensiva, mas não confiar nela se reaparecer). Uma linha por `(rep_id, data, modelo_id)`, RLS: dono lê/escreve, `is_admin()` só lê (admin/primaris conseguem abrir o planejamento de qualquer rep, mas nunca editam por cima).
+- **Abas livres**: o rep escolhe qualquer data + qualquer modelo ativa como sub-aba (não depende da escala real) — mas tem um atalho "turno já escalado" que preenche data+modelo(s) de uma vez a partir dos turnos que o rep realmente tem marcado, pra poupar trabalho.
+- **Conteúdo — mistura livre de parágrafos e blocos "mass"** (`lib/planejamentoDb.ts`: `ItemPlanejamento = ItemTexto | ItemMass`, uma lista só, ordem = ordem de exibição): o rep intercala texto livre e blocos mass numerados na ordem que quiser (ex.: texto, mass, mass, texto, mass), tudo dentro do MESMO cartão — **não é um bloco de texto separado dos blocos mass**, essa foi uma tentativa intermediária que o usuário rejeitou explicitamente ("quero que os bloquinhos de mass fiquem DENTRO do bloco de notas").
+  - Bloco "mass": numerado (só conta os blocos mass, parágrafos não entram na conta), com texto rico de verdade (negrito + 5 cores, por SELEÇÃO de texto — `document.execCommand`, não o bloco inteiro) e um campo "…" embaixo pra resposta pronta/anotação. Botão **copiar** (texto puro, sem marcação) em cada campo.
+  - Parágrafo livre: sempre sobra um em branco no fim da lista (senão precisaria puxar um de cima, dar Enter e arrastar pra ter onde escrever lá embaixo) — calculado na renderização (não persistido até o rep digitar algo nele, pra não acumular linha em branco à toa). Enter no fim de um parágrafo cria o próximo (Shift+Enter só quebra linha); Backspace num parágrafo vazio apaga ele e devolve o foco pro anterior.
+  - **Arrastar só pela alcinha** (⠿⠿), não o bloco inteiro — arrastar de qualquer ponto brigava com selecionar/editar o texto de dentro. `draggable` só fica ligado entre o mousedown na alça e o fim do arraste (ver armadilha nova).
+- **Sanitização no servidor** (`lib/sanitizarHtml.ts`, pacote `sanitize-html` novo — único pacote novo desta sessão): antes de gravar, só `<b>`/`<span style="color">`/quebra de linha sobrevivem, resto é removido — necessário porque o conteúdo é editado livre num `contentEditable` no navegador e depois **lido por outras pessoas** (admin/primaris via a policy de select), então nunca dá pra confiar no HTML que chega do cliente.
+- Link "Planejar Turno" no menu principal (ao lado de "Turnos") e como botão sólido (mesma cor de "Ir para o turno") na home. Admin/primaris abrem o de qualquer rep por "Ver planejamento →" em `/admin/reps/[id]`/`/primaris/[id]` (`?rep=<id>`), só leitura.
+
+### 39. Acesso ao desempenho do rep, de dentro de `/primaris`
+
+Pedido simples que virou dois ajustes: (1) o nome do rep na tabela "Por rep" de `/primaris` virou link pro detalhe (`/admin/reps/[id]`, tela de meta por mês já existente) — o acesso já existia via `admin/layout.tsx` (`podeVerAdmin()` libera primaris), só faltava o caminho na tela; (2) o usuário reclamou que isso trocava a aba ativa do menu pra "Admin" e mostrava o sub-menu do admin, mesmo vindo do Primaris. Fix: conteúdo extraído pra `app/(app)/detalhe-rep.tsx` (componente puro), servido por DUAS rotas finas — `/admin/reps/[id]` (como sempre) e `/primaris/[id]` (nova, com a MESMA guarda de acesso do `/primaris/page.tsx`, já que não passa pelo layout do admin e por isso precisa checar sozinha). `/primaris` linka pra `/primaris/[id]` — fica na aba certa. De quebra, a tabela por turno de `DetalheRep` ganhou coluna **%** (com cor por faixa + raio) e o detalhamento por página (vendido/meta em dinheiro e %) nos turnos double — igual o próprio rep já via no histórico de `/turno`, só que faltava aqui.
+
+---
+
 ## Armadilhas técnicas descobertas (pra não cair de novo)
 
 ### Da sessão de implementação inicial
@@ -382,13 +438,21 @@ Fix: trocado `for` sequencial por `Promise.all` nos 4 lugares com esse padrão �
 
 31. **Loop sequencial de `await` dentro de um `for` é o tipo de bug que só aparece devagar, conforme o dado cresce — e é fácil de nunca notar em dev.** `buscarVendasDaEmpresa`/`buscarMetasDoRep`/`buscarRecordeDoRep` chamavam `buscarAnterior()` (2 idas ao banco) um de cada vez, dentro de loops, desde muito antes desta sessão — provavelmente sempre rodou assim, só que com poucos turnos no banco isso levava frações de segundo. Com ~195 combinações turno×modelo só no mês atual (e `buscarRecordeDoRep` sem filtro de data NENHUM, crescendo pra sempre), virou lentidão perceptível no site inteiro — carregar, trocar de aba, timeout ocasional. **Fix mecânico, sem mudar lógica nenhuma**: trocar o `for` sequencial por montar a lista de tarefas primeiro (síncrono) e rodar `Promise.all` sobre elas, processando os resultados depois num segundo passo síncrono. **Lição: qualquer `for`/`for...of` com `await` no corpo, iterando sobre uma lista que cresce com o uso real (turnos, vendas, linhas), é candidato a esse mesmo bug — performance no ambiente de dev com dado de teste não é evidência de nada aqui.**
 
+### Da sessão de 07–13/09
+
+32. **Next.js limita o body de Server Actions a 1 MB por padrão — qualquer upload de arquivo real (foto, print grande) estoura com "Body exceeded 1 MB limit" sem aviso nenhum até acontecer.** Só apareceu ao testar upload de foto de perfil de verdade em produção. Fix: `next.config.ts` → `experimental.serverActions.bodySizeLimit: '10mb'` (a action em si valida um teto mais apertado, 8 MB). **Lição: qualquer feature nova que sobe arquivo via Server Action (não via Storage direto do cliente) precisa desse ajuste — o padrão do framework é pequeno demais pra imagem de verdade.**
+
+33. **Espalhar (`{...props}`) um objeto que carrega `className` DEPOIS do `className` explícito do elemento apaga a classe fixa inteira, não soma.** No editor de blocos arrastáveis, `dragProps` incluía `className: arrastando ? 'opacity-40' : ''` — o objeto era espalhado depois do `className="rounded-xl border-2 ..."` do card, e JSX resolve props repetidas pela ÚLTIMA ocorrência: o card inteiro ficava sem nenhum estilo (perdia a borda colorida) toda vez, não só durante o arraste. Só foi notado porque o usuário reportou visualmente ("perdeu a cor"). **Fix**: nunca passar `className` dentro de um objeto de props espalhado por cima de um elemento que já tem seu próprio `className` fixo — separar o estado condicional (aqui, um boolean `arrastando`) como prop própria e compor a string de classes dentro do componente.
+
+34. **`setState` dentro do corpo de um `useEffect` (não numa subscription de sistema externo) é sinalizado pelo lint do projeto (`react-hooks/set-state-in-effect`) e não é só estilo — é o mesmo anti-padrão que já tinha mordido o loading-overlay (armadilha antiga #20) e o popup de boas-vindas (decisão #28).** Tentativa inicial de "garantir que a aba sempre tem pelo meno um parágrafo vazio" usava `useEffect(() => { if (vazio) setState(...) }, [aba])` — pegou no lint antes mesmo de ir pra produção. Resolvido calculando o valor derivado (o "parágrafo virtual" a mostrar) direto no corpo do componente a cada render, sem `useEffect` nenhum — só vira estado de verdade quando o usuário efetivamente digita algo nele. **Lição: quando a necessidade é "complementar o estado que falta pra renderizar direito", quase sempre dá pra calcular na hora (valor derivado) em vez de sincronizar via efeito — o efeito só é necessário quando a fonte da verdade é externa ao React (DOM, `localStorage`, outro sistema).**
+
 ---
 
-## Modelo de dados atual (depois de 22 migrações)
+## Modelo de dados atual (depois de 29 migrações)
 
 ```
 reps            id, auth_user_id, nome_curto, nome_oficial, turno, papel, cargo,
-                role, valor_hora, ativo, observador
+                role, valor_hora, ativo, observador, foto_path
                 -- observador: acompanha admin/schedule/primaris sem editar
                 -- nada (migração 0014) — ver decisão #14 e armadilha #14.
                 -- Além dos 9 reps de verdade, a tabela também tem 3 reps
@@ -399,6 +463,9 @@ reps            id, auth_user_id, nome_curto, nome_oficial, turno, papel, cargo,
                 -- — cargo de ACESSO (leitura, igual observador), não de
                 -- comissão; comissão dele é sempre 0%. Não é uma pessoa
                 -- fixa, é selecionável no dropdown de cargo pra qualquer rep.
+                -- foto_path (migração 0027, sessão 07-13/09): caminho no
+                -- bucket público `rep-fotos`. Upload/troca/remoção só em
+                -- /admin/reps (lib/repFoto.ts monta a URL pública).
 models          id, nome, bloco (I|II), ativa, meta_mensal, extra
                 -- roster por time + meta (migração 0010). extra (bool,
                 -- migração 0019 — renomeada de "independente"; "externa"
@@ -450,6 +517,36 @@ model_bloco_periodos  id, model_id, bloco, inicio (date), fim (date, null = aber
                 -- a correção da armadilha #29. Ver lib/periodos.ts
                 -- (blocoNaData, metaProrateada, puro/testado) e
                 -- lib/periodosDb.ts (buscarPeriodos, compartilhado).
+notificacoes            id, tipo (popup|aviso|todo), mensagem, data_inicio, data_fim, ativo
+notificacao_destinatarios  notificacao_id, rep_id, lida_em
+                -- Migrações 0023/0024 — de uma sessão ANTERIOR a esta e não
+                -- detalhada neste arquivo (ver nota no início da seção
+                -- "SESSÃO DE 07–13/09"). popup = modal único até confirmar;
+                -- aviso = banner com janela de datas; todo = banner sem
+                -- prazo, "já fiz". notificacao_destinatarios é materializada
+                -- por rep alvo na criação.
+escala_alteracoes  id, data, turno, bloco, funcao, rep_saiu, rep_entrou,
+                alterado_por, criado_em
+                -- Migração 0025 (+ 0026, revoke update/delete/truncate —
+                -- ver armadilha desta sessão), sessão 07-13/09. Log
+                -- append-only de troca de rep num slot da grade — grava em
+                -- aplicarSlot()/criarTurno()/apagarTurno() (admin/turnos/
+                -- actions.ts). Sem policy de update/delete: auditoria
+                -- imutável por desenho, não só por convenção. Ver
+                -- lib/logEscala.ts (agrupamento + texto do botão Copiar).
+planejamentos_turno  id, rep_id, data, modelo_id, itens (jsonb), texto_livre,
+                atualizado_em
+                -- Migração 0028 (+ 0029, coluna texto_livre — ver abaixo),
+                -- sessão 07-13/09. Uma linha por (rep, data, modelo) do
+                -- "Planejar Turno". unique(rep_id, data, modelo_id). itens é
+                -- a lista ordenada e MISTA de parágrafos livres + blocos
+                -- "mass" (lib/planejamentoDb.ts: ItemTexto | ItemMass).
+                -- texto_livre (0029) FICOU SEM USO — foi um desenho
+                -- intermediário (bloco de notas separado dos blocos mass)
+                -- que o usuário pediu pra desfazer logo depois; a coluna
+                -- ficou pra trás, inofensiva (default ''), mas não é lida
+                -- nem escrita por nenhum código atual. RLS: dono lê/escreve
+                -- tudo, is_admin() só lê (nunca escreve por cima).
 ```
 
 `escala_time` (view, security definer) expõe `data, turno, bloco, funcao, origem, rep_nome, modelos_nome` pra qualquer rep autenticado — é o que a aba "Time" do schedule lê. `modelos_nome` vem de `shift_log_models` (modelo REAL trabalhada), não de um planejamento.
@@ -482,6 +579,13 @@ Lista das migrações, em ordem — todas já rodadas no Supabase de produção 
 | 0020 | Sessão 18/08: cria `turnos_extra` (+ RLS) — base do novo "Turno Extra" |
 | 0021 | Sessão 25/08: cria `model_bloco_periodos` (+ RLS) + backfill — base da troca de time de modelo |
 | 0022 | Sessão 25/08: reparo de dado — fecha o período aberto das modelos já `ativa=false` antes da 0021 existir (Issy Black, Kaylin), que senão contariam meta prorateada pra sempre (armadilha #30) |
+| 0023 | Sessão anterior a esta, não detalhada aqui: cria `notificacoes` + `notificacao_destinatarios` (sistema popup/aviso/todo) |
+| 0024 | Idem: índice em `notificacao_destinatarios` |
+| 0025 | Sessão 07-13/09: cria `escala_alteracoes` (log de troca de rep na grade) + RLS |
+| 0026 | Sessão 07-13/09: `revoke update, delete, truncate on escala_alteracoes from authenticated` — fecha a brecha do TRUNCATE (armadilha #32) |
+| 0027 | Sessão 07-13/09: `reps.foto_path` + bucket público `rep-fotos` (foto de perfil) |
+| 0028 | Sessão 07-13/09: cria `planejamentos_turno` (+ RLS) — base do "Planejar Turno" |
+| 0029 | Sessão 07-13/09: `planejamentos_turno.texto_livre` — desenho intermediário abandonado, coluna ficou sem uso (ver acima) |
 
 ### Reps que NÃO são os 9 do time
 
@@ -694,7 +798,11 @@ app/(app)/
                                   admin_5c); tabela "Por rep" com Meta e % atingida; tabela
                                   "Por página" ganhou coluna de Projeção (MTD extrapolado);
                                   sessão 25/08: seção "Histórico" (buscarHistoricoModelos(),
-                                  só aparece se houve troca/desativação no mês selecionado)
+                                  só aparece se houve troca/desativação no mês selecionado);
+                                  sessão 07-13/09: nome do rep vira link pra primaris/[id]/
+  primaris/[id]/page.tsx          NOVO (sessão 07-13/09): mesma guarda de acesso do
+                                  page.tsx (não passa pelo layout do admin de propósito —
+                                  ver decisão #39); renderiza ../../detalhe-rep.tsx
   admin/
     layout.tsx                   guarda: podeVerAdmin() (admin/primaris/observador VEEM;
                                   ehAdmin() sozinho continua travando toda escrita)
@@ -703,7 +811,11 @@ app/(app)/
                                   + coluna "Login" (vincular) + coluna "Observador" — podeEditar
                                   (=ehAdmin()) esconde o botão "editar" e os controles de
                                   vincular/desvincular login pro observador
-    reps/[id]/page.tsx            tela de meta por rep (mês, nav ←/→) — só leitura, sem gate extra
+    reps/[id]/page.tsx            rota fina (sessão 07-13/09): conteúdo real virou
+                                  ../../detalhe-rep.tsx (compartilhado com primaris/[id]/page.tsx
+                                  — ver abaixo); tela de meta por rep (mês, nav ←/→), ganhou
+                                  coluna % (cor+raio) e detalhe por página nos turnos double +
+                                  link "Ver planejamento →" (/planejar?rep=id)
     models/                      roster por time, meta_mensal editável, badge/toggle de
                                   "extra" (linha-modelo.tsx, renomeado de "independente" na
                                   sessão 18/08 — "externa" foi removida) + checkbox no
@@ -733,7 +845,63 @@ app/(app)/
                                   mesmo fix upsert-then-delete-only-removed do simularPonto() +
                                   apagarTurnoExtraAdmin() + removerModeloDoPonto() (sessão
                                   25/08); page.tsx: montagem de linhasPorShift virou
-                                  Promise.all por slot (armadilha #31)
+                                  Promise.all por slot (armadilha #31); sessão 07-13/09:
+                                  actions.ts ganhou registrarAlteracao() (helper chamado por
+                                  aplicarSlot/criarTurno/apagarTurno — grava escala_alteracoes);
+                                  page.tsx + log-alteracoes.tsx (NOVO) renderizam o bloco
+                                  "Mudanças feitas" (lib/logEscala.ts faz o agrupamento/texto)
+  reps/actions.ts                sessão 07-13/09: enviarFotoRep()/removerFotoRep() —
+                                  service role, apaga o arquivo antigo antes de subir o novo
+  reps/linha-rep.tsx              sessão 07-13/09: miniatura + enviar/trocar/remover foto
+                                  ao lado do nome (fotoDoRep(), FotoAmpliavel)
+
+--- Novo NESTA sessão (07-13/09), fora da árvore acima ---
+
+app/(app)/
+  page.tsx                        home redesenhada por completo (decisão #35): cabeçalho
+                                  (foto + chips + notificações + "Hoje" com os dois botões),
+                                  card de resumo pessoal (CartaoInvoice ganhou prop `plano`),
+                                  card "Metas do time" (roda buscarResumoPrimaris() pra
+                                  QUALQUER rep agora), CalendarioMes + Próximos turnos;
+                                  ?cal=YYYY-MM navega o mês do calendário
+  nav.tsx                         ganhou "Planejar Turno" no menu principal, ao lado de "Turnos"
+  meta-visual.tsx                 ganhou BarraMeta/LinhaMeta (vieram de primaris/page.tsx —
+                                  agora compartilhado) e BarraMetaMini (removida de novo depois,
+                                  ver decisão #35 — "Metas do time" não usa mais a versão mini)
+  calendario-mes.tsx              NOVO — CalendarioMes extraído de schedule/meus-turnos.tsx,
+                                  compartilhado com a home; hover num dia com turno mostra
+                                  "Time X · modelos" (bg-accent sólido)
+  detalhe-rep.tsx                 NOVO — conteúdo de "desempenho do rep por mês", compartilhado
+                                  por admin/reps/[id]/page.tsx e primaris/[id]/page.tsx (decisão #39)
+  foto-ampliavel.tsx              NOVO — client, clique na miniatura abre a foto inteira
+                                  (sem corte) por cima da tela; usado na home e em admin/reps
+  planejar/                       NOVO — "Planejar Turno" (decisão #38)
+    page.tsx                      guarda de acesso (?rep= exige is_admin() se não for o próprio);
+                                  busca abas existentes (lib/planejamentoDb.ts), modelos ativas,
+                                  e os turnos já escalados do rep (atalho "turno já escalado")
+    planejador.tsx                client, o grosso do estado: abas por data/modelo, autosave
+                                  debounced (900ms), parágrafo em branco sempre no fim (derivado
+                                  no render, não em efeito — armadilha #34)
+    blocos.tsx                    BlocoTexto/BlocoMass/ListaBlocosPlanejamento — drag só pela
+                                  alcinha (armadilha #33), Enter cria próximo parágrafo,
+                                  Backspace em parágrafo vazio apaga
+    actions.ts                    criarAba/apagarAba/salvarItens — sempre pelo rep da sessão
+                                  (nunca um rep_id vindo do cliente)
+lib/
+  logEscala.ts + .test.ts        NOVO — agrupamento/formatação do log de escala_alteracoes
+                                  (usado por admin/turnos/log-alteracoes.tsx)
+  planejamentoDb.ts              NOVO — tipos ItemTexto/ItemMass/ItemPlanejamento/
+                                  AbaPlanejamento + buscarPlanejamentos()
+  sanitizarHtml.ts               NOVO — sanitizarConteudo(), só <b>/cor/quebra de linha
+                                  sobrevivem (pacote `sanitize-html`, único pacote novo da sessão)
+  repFoto.ts                     NOVO — fotoDoRep(fotoPath) monta a URL pública do bucket
+  metaDb.ts                      ganhou buscarDiasDeAssist() (decisão #36) e bloco em
+                                  LinhaMetaTurno (faltava pro calendário resolver o time)
+  primarisDb.ts                  ganhou calcularMetasDosTimes() (puro, compartilhado entre
+                                  buscarResumoPrimaris() e a versão enxuta que a home usava
+                                  antes de virar buscarResumoPrimaris() puro e simples)
+next.config.ts                   NOVO: experimental.serverActions.bodySizeLimit = '10mb'
+                                  (armadilha #32 — default do Next é 1 MB)
 ```
 
 ---
@@ -748,6 +916,10 @@ app/(app)/
 - **Nenhuma "modelo de fora" (nome livre) foi lançada ainda** — o Turno Extra do roster (Kaylin) já foi usado de verdade (1 lançamento real confirmado no banco), mas o campo de nome livre (modelo fora dos dois times) segue só testado em código.
 - **Mudança de time/desativação no MEIO do dia perde as vendas já registradas naquele dia** (achado na revisão final da feature #29, decisão consciente de não bloquear o lançamento por causa disso): como `fim` é exclusivo, `fecharPeriodo(id, hoje)` faz o período parar ANTES de hoje — uma modelo desativada às 15h com uma venda das 10h da manhã perde essa venda de qualquer atribuição (nem o time antigo nem o novo contam). Pra `moverTime` isso é correto (hoje já é do time novo); pra "desativar" puro é uma perda real, só que rara (ação manual, admin único). Se incomodar, a correção é `fecharPeriodo` usar `somarDias(hoje, 1)` como `fim` **só** no caminho de desativação (não no de troca).
 - **Kaylin tem histórico de statements de ANTES do "Turno Extra" existir (18/08) presos em "aberto" pra sempre** — a cadeia de desconto dela nunca vai resolver nesses registros antigos (não existe statement anterior real pra comparar). Usar o botão "remover" (decisão #32) em cada um quando aparecer em "Precisam de atenção" — não é bug, é dado legado que só se resolve manualmente, um de cada vez, conforme aparece.
+- **`planejamentos_turno.texto_livre`** (migração 0029) está sem uso — desenho intermediário abandonado do "Planejar Turno" (decisão #38). Baixo risco (default `''`, nada lê nem escreve), mas se um dia sobrar tempo dá pra dropar numa migração de limpeza.
+- **Home de todo rep agora roda `buscarResumoPrimaris()`** (decisão #35 — card "Metas do time") — a mesma função pesada da armadilha #31 (`buscarVendasDaEmpresa()`), que antes só rodava pra quem tinha seção de primaris. Ninguém reportou lentidão nova até o fim desta sessão, mas é o primeiro lugar a olhar se a home ficar lenta de novo — o padrão de cache (`unstable_cache`/revalidação por tempo) ainda não foi considerado pra essa chamada.
+- **`criarTurno`/`apagarTurno` (admin/turnos/actions.ts) não chamam `revalidar()` dentro de um `try/finally`** como `salvarGrade()` já faz (achado na revisão da feature #34) — se o insert em `escala_alteracoes` falhar depois do `shifts` já ter mudado, o admin pode ver a grade desatualizada até recarregar manualmente. Consistência pendente, não um bug de dado.
+- **Vulnerabilidades de dependência reportadas pelo `npm audit`** (nanoid, Next.js, postcss, sharp) — todas em dependências transitivas do próprio Next/Tailwind, não de nada adicionado nesta sessão (o único pacote novo, `sanitize-html`, não aparece no audit). `npm audit fix --force` bumpa o Next pra fora do range atual — não foi feito, é decisão do usuário se/quando atualizar.
 
 ---
 
