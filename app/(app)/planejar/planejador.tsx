@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import type { AbaPlanejamento, ItemMass, ItemPlanejamento, ItemTexto } from '@/lib/planejamentoDb';
+import type { AbaPlanejamento, ItemMass } from '@/lib/planejamentoDb';
 import { diaLegivel } from '@/lib/tempo';
-import { apagarAba, criarAba, salvarItens } from './actions';
-import { ListaItens } from './blocos';
+import { apagarAba, criarAba, salvarConteudo } from './actions';
+import { ListaBlocosMass, NotebookLivre } from './blocos';
 
 type TurnoEscalado = { data: string; rotulo: string; modelos: { id: string; nome: string }[] };
 
@@ -52,10 +52,10 @@ export function Planejador({
   async function adicionarModelo(data: string, modeloId: string) {
     setAbas((atual) => {
       const existe = atual.find((a) => a.data === data);
-      if (!existe) return [{ data, modelos: [{ modeloId, itens: [] }] }, ...atual];
+      if (!existe) return [{ data, modelos: [{ modeloId, itens: [], textoLivre: '' }] }, ...atual];
       if (existe.modelos.some((m) => m.modeloId === modeloId)) return atual;
       return atual.map((a) =>
-        a.data === data ? { ...a, modelos: [...a.modelos, { modeloId, itens: [] }] } : a,
+        a.data === data ? { ...a, modelos: [...a.modelos, { modeloId, itens: [], textoLivre: '' }] } : a,
       );
     });
     setDataAtiva(data);
@@ -95,7 +95,7 @@ export function Planejador({
     }
   }
 
-  function agendarSalvar(data: string, modeloId: string, itens: ItemPlanejamento[]) {
+  function agendarSalvar(data: string, modeloId: string, itens: ItemMass[], textoLivre: string) {
     const chave = `${data}|${modeloId}`;
     const timerAtual = timers.current.get(chave);
     if (timerAtual) clearTimeout(timerAtual);
@@ -103,42 +103,44 @@ export function Planejador({
     timers.current.set(
       chave,
       setTimeout(() => {
-        salvarItens(data, modeloId, itens)
+        salvarConteudo(data, modeloId, itens, textoLivre)
           .then(() => setStatus('salvo'))
           .catch(() => setStatus('idle'));
       }, 900),
     );
   }
 
-  function atualizarItensDoAtivo(itens: ItemPlanejamento[]) {
-    if (!dataAtiva || !modeloAtivo) return;
+  function atualizarAtivo(patch: { itens?: ItemMass[]; textoLivre?: string }) {
+    if (!dataAtiva || !modeloAtivo || !modeloAtual) return;
+    const itens = patch.itens ?? modeloAtual.itens;
+    const textoLivre = patch.textoLivre ?? modeloAtual.textoLivre;
     setAbas((atual) =>
       atual.map((a) =>
         a.data !== dataAtiva
           ? a
-          : { ...a, modelos: a.modelos.map((m) => (m.modeloId !== modeloAtivo ? m : { ...m, itens })) },
+          : {
+              ...a,
+              modelos: a.modelos.map((m) => (m.modeloId !== modeloAtivo ? m : { ...m, itens, textoLivre })),
+            },
       ),
     );
-    agendarSalvar(dataAtiva, modeloAtivo, itens);
+    agendarSalvar(dataAtiva, modeloAtivo, itens, textoLivre);
   }
 
-  function adicionarItem(tipo: 'mass' | 'texto') {
+  function adicionarMass() {
     if (!modeloAtual) return;
-    const novoItem: ItemPlanejamento =
-      tipo === 'mass'
-        ? { id: crypto.randomUUID(), tipo: 'mass', texto: '', nota: '' }
-        : { id: crypto.randomUUID(), tipo: 'texto', html: '' };
-    atualizarItensDoAtivo([...modeloAtual.itens, novoItem]);
+    const novoItem: ItemMass = { id: crypto.randomUUID(), texto: '', nota: '' };
+    atualizarAtivo({ itens: [...modeloAtual.itens, novoItem] });
   }
 
-  function alterarItem(id: string, patch: Partial<ItemMass> | Partial<ItemTexto>) {
+  function alterarItem(id: string, patch: Partial<ItemMass>) {
     if (!modeloAtual) return;
-    atualizarItensDoAtivo(modeloAtual.itens.map((i) => (i.id === id ? ({ ...i, ...patch } as ItemPlanejamento) : i)));
+    atualizarAtivo({ itens: modeloAtual.itens.map((i) => (i.id === id ? { ...i, ...patch } : i)) });
   }
 
   function removerItem(id: string) {
     if (!modeloAtual) return;
-    atualizarItensDoAtivo(modeloAtual.itens.filter((i) => i.id !== id));
+    atualizarAtivo({ itens: modeloAtual.itens.filter((i) => i.id !== id) });
   }
 
   return (
@@ -253,40 +255,39 @@ export function Planejador({
             <div className="rounded-2xl border border-borda bg-superficie p-5">
               <div className="flex items-center gap-3">
                 {podeEditar && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => adicionarItem('mass')}
-                      className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
-                    >
-                      + Mass
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adicionarItem('texto')}
-                      className="rounded-lg border border-borda px-3 py-1.5 text-sm hover:border-accent"
-                    >
-                      + Texto
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={adicionarMass}
+                    className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
+                  >
+                    + Mass
+                  </button>
                 )}
                 <span className="ml-auto text-xs text-texto-fraco">
                   {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
                 </span>
               </div>
 
-              <div className="mt-4">
-                {modeloAtual.itens.length === 0 ? (
-                  <p className="text-sm text-texto-fraco">Nada por aqui ainda.</p>
-                ) : (
-                  <ListaItens
+              {modeloAtual.itens.length > 0 && (
+                <div className="mt-4">
+                  <ListaBlocosMass
                     itens={modeloAtual.itens}
                     podeEditar={podeEditar}
-                    onReordenar={atualizarItensDoAtivo}
+                    onReordenar={(itens) => atualizarAtivo({ itens })}
                     onAlterarItem={alterarItem}
                     onRemoverItem={removerItem}
                   />
-                )}
+                </div>
+              )}
+
+              {/* O bloco de notas livre — sem botão pra criar, é sempre a "folha"
+                  de baixo do caderno. */}
+              <div className="mt-4">
+                <NotebookLivre
+                  html={modeloAtual.textoLivre}
+                  podeEditar={podeEditar}
+                  onMudar={(html) => atualizarAtivo({ textoLivre: html })}
+                />
               </div>
             </div>
           ) : (
