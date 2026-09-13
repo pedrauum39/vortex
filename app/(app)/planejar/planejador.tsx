@@ -79,8 +79,15 @@ export function Planejador({
       ? itensReais
       : [...itensReais, { id: idLinhaFinal, tipo: 'texto', html: '' }];
 
-  function atualizarItens(itens: ItemPlanejamento[]) {
+  function atualizarItens(itensNovos: ItemPlanejamento[]) {
     if (!dataAtiva || !modeloAtivo) return;
+    // O parágrafo fantasma do fim (id fixo, reaproveitado a cada render) não
+    // pode virar item de verdade só por ter sido incluído numa reordenação —
+    // senão ele "gruda" fora da última posição, e no próximo render outro
+    // fantasma nasce com o MESMO id, duplicando pra sempre. Some ele sempre
+    // que estiver vazio, e só sobrevive se o rep realmente escreveu algo.
+    const idPlaceholder = `linha-final-${dataAtiva}-${modeloAtivo}`;
+    const itens = itensNovos.filter((i) => i.id !== idPlaceholder || (i.tipo === 'texto' && i.html.trim() !== ''));
     setAbas((atual) =>
       atual.map((a) =>
         a.data !== dataAtiva
