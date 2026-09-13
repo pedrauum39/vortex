@@ -66,13 +66,18 @@ export function Planejador({
   // — sem isto, pra ter espaço lá embaixo seria preciso pegar um bloco de
   // cima, dar Enter e arrastar. Só vira de verdade um item salvo quando o
   // rep digita algo nele (onMudarItens grava o array com o conteúdo novo no
-  // lugar do vazio). O id é derivado da própria aba (não random) pra ficar
-  // estável entre renders — se trocasse a cada render, o bloco remontaria e
-  // perderia o foco/cursor.
+  // lugar do vazio). O id só é sorteado de novo quando um item de verdade é
+  // promovido (o total de itens reais muda) — fica estável entre renders
+  // enquanto ninguém digita nele (senão o bloco remontaria e perderia o
+  // foco/cursor), mas nunca reaproveita o id de um fantasma já promovido —
+  // reaproveitar causava duplicação infinita ao arrastar/digitar (dois itens
+  // com o mesmo id, o filtro/map abaixo mexendo nos dois de uma vez).
   const itensReais = modeloAtual?.itens ?? [];
   const ultimoReal = itensReais[itensReais.length - 1];
   const ultimoJaEhParagrafoVazio = ultimoReal?.tipo === 'texto' && ultimoReal.html.trim() === '';
-  const idLinhaFinal = `linha-final-${dataAtiva ?? ''}-${modeloAtivo ?? ''}`;
+  // deps só controlam quando sortear um id novo — o factory não lê nenhuma delas.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const idLinhaFinal = useMemo(() => crypto.randomUUID(), [dataAtiva, modeloAtivo, itensReais.length]);
   const itensExibidos: ItemPlanejamento[] = !modeloAtual
     ? []
     : ultimoJaEhParagrafoVazio
@@ -81,13 +86,11 @@ export function Planejador({
 
   function atualizarItens(itensNovos: ItemPlanejamento[]) {
     if (!dataAtiva || !modeloAtivo) return;
-    // O parágrafo fantasma do fim (id fixo, reaproveitado a cada render) não
-    // pode virar item de verdade só por ter sido incluído numa reordenação —
-    // senão ele "gruda" fora da última posição, e no próximo render outro
-    // fantasma nasce com o MESMO id, duplicando pra sempre. Some ele sempre
-    // que estiver vazio, e só sobrevive se o rep realmente escreveu algo.
-    const idPlaceholder = `linha-final-${dataAtiva}-${modeloAtivo}`;
-    const itens = itensNovos.filter((i) => i.id !== idPlaceholder || (i.tipo === 'texto' && i.html.trim() !== ''));
+    // O parágrafo fantasma do fim não pode virar item de verdade só por ter
+    // sido incluído numa reordenação — senão ele "gruda" fora da última
+    // posição, achando espaço livre pra outro fantasma nascer ali. Some
+    // sempre que ainda estiver vazio; só sobrevive se o rep escreveu algo.
+    const itens = itensNovos.filter((i) => i.id !== idLinhaFinal || (i.tipo === 'texto' && i.html.trim() !== ''));
     setAbas((atual) =>
       atual.map((a) =>
         a.data !== dataAtiva
