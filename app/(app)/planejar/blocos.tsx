@@ -23,8 +23,11 @@ function aplicar(comando: string, valor?: string) {
 
 function Alca() {
   return (
-    <span className="cursor-grab select-none text-texto-fraco opacity-0 transition group-hover:opacity-100 active:cursor-grabbing">
-      ⠿
+    <span
+      className="cursor-grab select-none rounded px-1 text-texto-fraco hover:bg-cyan-500/20 hover:text-texto active:cursor-grabbing"
+      title="Arrastar pra reordenar"
+    >
+      ⠿⠿
     </span>
   );
 }
@@ -60,13 +63,24 @@ function BotaoCopiar({ obterTexto }: { obterTexto: () => string }) {
     <button
       type="button"
       onClick={copiar}
-      className="rounded px-1.5 py-0.5 text-xs text-texto-fraco hover:bg-cyan-500/20 hover:text-texto"
+      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+        copiado
+          ? 'border-green-500/50 bg-green-500/10 text-green-300'
+          : 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20'
+      }`}
       title="Copiar"
     >
       {copiado ? 'copiado!' : 'copiar'}
     </button>
   );
 }
+
+type DragProps = {
+  draggable?: boolean;
+  onDragStart?: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (e: DragEvent<HTMLDivElement>) => void;
+  onDrop?: (e: DragEvent<HTMLDivElement>) => void;
+};
 
 function BlocoMass({
   numero,
@@ -75,55 +89,67 @@ function BlocoMass({
   onMudar,
   onRemover,
   dragProps,
+  arrastando,
 }: {
   numero: number;
   item: ItemMass;
   podeEditar: boolean;
   onMudar: (patch: Partial<Pick<ItemMass, 'texto' | 'nota'>>) => void;
   onRemover: () => void;
-  dragProps: Record<string, unknown>;
+  dragProps: DragProps;
+  arrastando: boolean;
 }) {
   const refTexto = useConteudoEditavel(item.texto);
   const refNota = useConteudoEditavel(item.nota);
 
   return (
-    <div className="group rounded-xl border-2 border-cyan-500/60 bg-cyan-500/[0.06] p-3" {...dragProps}>
-      <div className="flex items-center justify-between gap-2">
+    <div
+      className={`rounded-xl border-2 border-cyan-500/60 bg-cyan-500/[0.06] p-3 transition ${arrastando ? 'opacity-40' : ''}`}
+      {...dragProps}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           {podeEditar && <Alca />}
           <span className="flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-semibold text-cyan-300">
             {numero}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 opacity-0 transition group-hover:opacity-100">
+        <div className="flex items-center gap-1.5">
           {podeEditar && (
             <>
               <button
                 type="button"
                 onMouseDown={preservarSelecao}
                 onClick={() => aplicar('bold')}
-                className="rounded px-1.5 py-0.5 text-xs font-bold text-texto-fraco hover:bg-cyan-500/20 hover:text-texto"
+                className="rounded-md border border-borda px-2 py-1 text-xs font-bold hover:border-cyan-500/50 hover:bg-cyan-500/20"
                 title="Negrito"
               >
                 B
               </button>
-              {CORES.map((c) => (
-                <button
-                  key={c.valor}
-                  type="button"
-                  onMouseDown={preservarSelecao}
-                  onClick={() => aplicar('foreColor', c.valor)}
-                  className="size-4 rounded-full border border-borda"
-                  style={{ backgroundColor: c.valor }}
-                  title={c.nome}
-                />
-              ))}
+              <div className="flex items-center gap-1 rounded-md border border-borda px-1.5 py-1">
+                {CORES.map((c) => (
+                  <button
+                    key={c.valor}
+                    type="button"
+                    onMouseDown={preservarSelecao}
+                    onClick={() => aplicar('foreColor', c.valor)}
+                    className="size-4 rounded-full border border-borda"
+                    style={{ backgroundColor: c.valor }}
+                    title={c.nome}
+                  />
+                ))}
+              </div>
             </>
           )}
           <BotaoCopiar obterTexto={() => refTexto.current?.innerText ?? ''} />
           {podeEditar && (
-            <button type="button" onClick={onRemover} className="text-xs text-red-400 hover:underline">
-              remover
+            <button
+              type="button"
+              onClick={onRemover}
+              className="rounded-md border border-red-500/40 px-2.5 py-1 text-xs font-medium text-red-400 hover:bg-red-500/10"
+              title="Apagar este bloco"
+            >
+              apagar
             </button>
           )}
         </div>
@@ -152,7 +178,8 @@ function BlocoMass({
   );
 }
 
-/** A lista dos blocos "mass" de uma aba (data+modelo) — arrastáveis entre si. */
+/** A lista dos blocos "mass" de uma aba (data+modelo) — arrastáveis entre si
+ *  pela alça (⠿⠿) no canto. */
 export function ListaBlocosMass({
   itens,
   podeEditar,
@@ -182,26 +209,40 @@ export function ListaBlocosMass({
 
   return (
     <div className="space-y-3">
-      {itens.map((item, indice) => {
-        const dragProps = podeEditar
+      {itens.map((item) => {
+        // Índice recalculado a cada render (não guardado no item) — a
+        // numeração é sempre a posição atual no array, mesmo depois de
+        // arrastar pra outro lugar.
+        const numero = itens.findIndex((i) => i.id === item.id) + 1;
+        const dragProps: DragProps = podeEditar
           ? {
               draggable: true,
-              onDragStart: () => setArrastando(item.id),
-              onDragOver: (e: DragEvent) => e.preventDefault(),
-              onDrop: () => aoSoltarEm(item.id),
-              className: arrastando === item.id ? 'opacity-40' : '',
+              onDragStart: (e) => {
+                // Firefox só completa o drag se algo for gravado em
+                // dataTransfer — sem isto, o drag nem começa em alguns
+                // navegadores.
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', item.id);
+                setArrastando(item.id);
+              },
+              onDragOver: (e) => e.preventDefault(),
+              onDrop: (e) => {
+                e.preventDefault();
+                aoSoltarEm(item.id);
+              },
             }
           : {};
 
         return (
           <BlocoMass
             key={item.id}
-            numero={indice + 1}
+            numero={numero}
             item={item}
             podeEditar={podeEditar}
             onMudar={(patch) => onAlterarItem(item.id, patch)}
             onRemover={() => onRemoverItem(item.id)}
             dragProps={dragProps}
+            arrastando={arrastando === item.id}
           />
         );
       })}
