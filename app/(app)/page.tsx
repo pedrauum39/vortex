@@ -4,7 +4,7 @@ import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, totaisDoPeriodo } from '@/lib/invoice';
 import { buscarSlotsDoRep } from '@/lib/invoiceDb';
 import { corDaMeta, percentualAtingido, temRaio } from '@/lib/meta';
-import { buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
+import { buscarDiasDeAssist, buscarMetasDoRep, buscarRecordeDoRep, type RecordeTurno } from '@/lib/metaDb';
 import { ROTULO_CONFIRMAR } from '@/lib/notificacoes';
 import { buscarNotificacoesPendentesDoRep } from '@/lib/notificacoesDb';
 import {
@@ -146,11 +146,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   // O calendário pode navegar meses (?cal=). No mês corrente reaproveita
   // `metas`; num mês diferente busca de novo (só quando o rep navega).
-  let metasCal = metas;
-  if (mesCal !== mes) {
-    const { inicio, fim } = limitesDoMes(mesCal);
-    metasCal = await buscarMetasDoRep(criarClienteAdmin(), rep.id, inicio, fim, diasNoMes(mesCal));
-  }
+  const { inicio: inicioCal, fim: fimCal } = limitesDoMes(mesCal);
+  const [metasCal, assistCal] = await Promise.all([
+    mesCal === mes ? metas : buscarMetasDoRep(criarClienteAdmin(), rep.id, inicioCal, fimCal, diasNoMes(mesCal)),
+    buscarDiasDeAssist(criarClienteAdmin(), rep.id, inicioCal, fimCal),
+  ]);
 
   const diasCalendario: Record<string, DiaDoCalendario> = {};
   for (const l of metasCal.linhas) {
@@ -160,6 +160,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       bloco: l.bloco,
       modelos: l.paginas.join(', '),
     };
+  }
+  // Turno de Assistant não entra em buscarMetasDoRep (sem venda própria) —
+  // sem isto, um dia só de Assistant aparecia como folga no calendário.
+  for (const a of assistCal) {
+    if (!diasCalendario[a.data]) {
+      diasCalendario[a.data] = { trabalhado: false, percentual: null, bloco: a.bloco, modelos: a.modelos.join(', ') };
+    }
   }
 
   const linhasInvoice = slots

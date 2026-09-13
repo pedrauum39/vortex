@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { percentualAtingido } from '@/lib/meta';
-import { buscarMetasDoRep } from '@/lib/metaDb';
+import { buscarDiasDeAssist, buscarMetasDoRep } from '@/lib/metaDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import {
   dataBRT,
@@ -119,7 +119,7 @@ async function AbaMeus({
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto "Meus turnos" mostraria o time inteiro para o admin.
-  const [{ data }, { data: modelsData }, metasDoMes] = await Promise.all([
+  const [{ data }, { data: modelsData }, metasDoMes, assistDoMes] = await Promise.all([
     supabase
       .from('shifts')
       .select(
@@ -135,6 +135,7 @@ async function AbaMeus({
     // outro rep — RLS bloqueia isso pra sessão comum (armadilha já mordeu
     // antes: métricas pessoais zeradas por não enxergar o statement alheio).
     buscarMetasDoRep(criarClienteAdmin(), repId, inicioMes, fimMes, diasNoMes(mesCal)),
+    buscarDiasDeAssist(criarClienteAdmin(), repId, inicioMes, fimMes),
   ]);
 
   const rosterPorBloco: Record<string, string> = {};
@@ -152,6 +153,13 @@ async function AbaMeus({
       bloco: l.bloco,
       modelos: l.paginas.join(', '),
     };
+  }
+  // Turno de Assistant não entra em buscarMetasDoRep (sem venda própria) —
+  // sem isto, um dia só de Assistant aparecia como folga no calendário.
+  for (const a of assistDoMes) {
+    if (!diasInfo[a.data]) {
+      diasInfo[a.data] = { trabalhado: false, percentual: null, bloco: a.bloco, modelos: a.modelos.join(', ') };
+    }
   }
   const hoje = dataBRT();
 
