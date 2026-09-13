@@ -45,19 +45,22 @@ export function Planejador({
   const abaAtual = abas.find((a) => a.data === dataAtiva) ?? null;
   const modeloAtual = abaAtual?.modelos.find((m) => m.modeloId === modeloAtivo) ?? null;
 
-  // Uma aba sem nenhum item ainda (nova, ou salva vazia antes de escrever
-  // qualquer coisa) mostra um parágrafo em branco pra ter onde clicar — só
-  // vira de verdade um item salvo quando o rep digita algo nele (o primeiro
-  // onMudarItens já grava esse array no lugar do vazio). O id é derivado da
-  // própria aba (não random) pra ficar estável entre renders — se trocasse
-  // a cada render, o bloco remontaria e perderia o foco/cursor.
-  const idVazioPadrao = `vazio-${dataAtiva ?? ''}-${modeloAtivo ?? ''}`;
-  const itensExibidos: ItemPlanejamento[] =
-    modeloAtual && modeloAtual.itens.length > 0
-      ? modeloAtual.itens
-      : modeloAtual
-        ? [{ id: idVazioPadrao, tipo: 'texto', html: '' }]
-        : [];
+  // Sempre sobra um parágrafo em branco no fim da lista, pronto pra escrever
+  // — sem isto, pra ter espaço lá embaixo seria preciso pegar um bloco de
+  // cima, dar Enter e arrastar. Só vira de verdade um item salvo quando o
+  // rep digita algo nele (onMudarItens grava o array com o conteúdo novo no
+  // lugar do vazio). O id é derivado da própria aba (não random) pra ficar
+  // estável entre renders — se trocasse a cada render, o bloco remontaria e
+  // perderia o foco/cursor.
+  const itensReais = modeloAtual?.itens ?? [];
+  const ultimoReal = itensReais[itensReais.length - 1];
+  const ultimoJaEhParagrafoVazio = ultimoReal?.tipo === 'texto' && ultimoReal.html.trim() === '';
+  const idLinhaFinal = `linha-final-${dataAtiva ?? ''}-${modeloAtivo ?? ''}`;
+  const itensExibidos: ItemPlanejamento[] = !modeloAtual
+    ? []
+    : ultimoJaEhParagrafoVazio
+      ? itensReais
+      : [...itensReais, { id: idLinhaFinal, tipo: 'texto', html: '' }];
 
   function atualizarItens(itens: ItemPlanejamento[]) {
     if (!dataAtiva || !modeloAtivo) return;
