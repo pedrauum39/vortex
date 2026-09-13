@@ -33,7 +33,7 @@ function tocarBeep(ctx: AudioContext, quando: number) {
   osc.type = 'sine';
   osc.frequency.value = 880;
   gain.gain.setValueAtTime(0.0001, quando);
-  gain.gain.exponentialRampToValueAtTime(0.35, quando + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.9, quando + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, quando + 0.35);
   osc.connect(gain).connect(ctx.destination);
   osc.start(quando);
