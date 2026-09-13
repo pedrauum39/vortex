@@ -414,18 +414,14 @@ function BlocoMass({
 }
 
 function numerarBlocosMass(itens: ItemPlanejamento[]): Map<string, number> {
+  // Uma sequência só pros dois tipos (mass e .22) — a ordem na lista decide
+  // o número, não o tipo do bloco.
   const numeros = new Map<string, number>();
-  let nPadrao = 0;
-  let nPonto22 = 0;
+  let n = 0;
   for (const item of itens) {
     if (item.tipo !== 'mass') continue;
-    if (item.variante === 'ponto22') {
-      nPonto22 += 1;
-      numeros.set(item.id, nPonto22);
-    } else {
-      nPadrao += 1;
-      numeros.set(item.id, nPadrao);
-    }
+    n += 1;
+    numeros.set(item.id, n);
   }
   return numeros;
 }
