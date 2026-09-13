@@ -215,6 +215,49 @@ export async function buscarMetasDoRep(
   };
 }
 
+export type DiaDeAssist = { data: string; turno: Turno; bloco: Bloco; modelos: string[] };
+
+/**
+ * Dias em que o rep tem turno de Assistant no período. `buscarMetasDoRep`
+ * de propósito só olha `funcao='regular'` (o assistente não tem venda
+ * própria — leva fatia da comissão do regular, sem meta dele), mas isso
+ * também significa que um dia só de Assistant não aparece em `linhas` — o
+ * calendário do mês (CalendarioMes) precisava disto pra não mostrar esse
+ * dia como se fosse folga.
+ */
+export async function buscarDiasDeAssist(
+  db: SupabaseClient,
+  repId: string,
+  inicio: string,
+  fim: string,
+): Promise<DiaDeAssist[]> {
+  const [{ data: shiftsData }, { data: modelsData }] = await Promise.all([
+    db
+      .from('shifts')
+      .select('data, turno, bloco, shift_logs(shift_log_models(models(nome)))')
+      .eq('rep_id', repId)
+      .eq('funcao', 'assist')
+      .gte('data', inicio)
+      .lte('data', fim),
+    db.from('models').select('nome, bloco').eq('ativa', true).eq('extra', false),
+  ]);
+
+  const roster = (modelsData ?? []) as { nome: string; bloco: Bloco }[];
+  type Linha = {
+    data: string;
+    turno: Turno;
+    bloco: Bloco;
+    shift_logs: { shift_log_models: { models: { nome: string } }[] }[];
+  };
+
+  return ((shiftsData ?? []) as unknown as Linha[]).map((s) => {
+    const nomesDoLog = s.shift_logs[0]?.shift_log_models.map((m) => m.models.nome) ?? [];
+    const modelos =
+      nomesDoLog.length > 0 ? nomesDoLog : roster.filter((m) => m.bloco === s.bloco).map((m) => m.nome);
+    return { data: s.data, turno: s.turno, bloco: s.bloco, modelos };
+  });
+}
+
 export type RecordeTurno = { data: string; turno: Turno; valor: number } | null;
 
 /**
