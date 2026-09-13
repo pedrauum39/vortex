@@ -7,6 +7,7 @@ const ROTAS = [
   { href: '/', rotulo: 'Início' },
   { href: '/schedule', rotulo: 'Schedule' },
   { href: '/turno', rotulo: 'Turnos' },
+  { href: '/planejar', rotulo: 'Planejar Turno' },
   { href: '/invoice', rotulo: 'Invoice' },
 ];
 
