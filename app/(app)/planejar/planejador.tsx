@@ -252,37 +252,43 @@ export function Planejador({
           </div>
 
           {modeloAtual ? (
-            <div className="rounded-2xl border border-borda bg-superficie p-5">
-              <div className="flex items-center gap-3">
-                {podeEditar && (
-                  <button
-                    type="button"
-                    onClick={adicionarMass}
-                    className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
-                  >
-                    + Mass
-                  </button>
+            <div className="space-y-4">
+              {/* Blocos "mass" — cartão próprio, independente do caderno abaixo. */}
+              <div className="rounded-2xl border border-borda bg-superficie p-5">
+                <div className="flex items-center gap-3">
+                  {podeEditar && (
+                    <button
+                      type="button"
+                      onClick={adicionarMass}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
+                    >
+                      + Mass
+                    </button>
+                  )}
+                  <span className="ml-auto text-xs text-texto-fraco">
+                    {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
+                  </span>
+                </div>
+
+                {modeloAtual.itens.length > 0 ? (
+                  <div className="mt-4">
+                    <ListaBlocosMass
+                      itens={modeloAtual.itens}
+                      podeEditar={podeEditar}
+                      onReordenar={(itens) => atualizarAtivo({ itens })}
+                      onAlterarItem={alterarItem}
+                      onRemoverItem={removerItem}
+                    />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-texto-fraco">Nenhum bloco mass ainda.</p>
                 )}
-                <span className="ml-auto text-xs text-texto-fraco">
-                  {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
-                </span>
               </div>
 
-              {modeloAtual.itens.length > 0 && (
-                <div className="mt-4">
-                  <ListaBlocosMass
-                    itens={modeloAtual.itens}
-                    podeEditar={podeEditar}
-                    onReordenar={(itens) => atualizarAtivo({ itens })}
-                    onAlterarItem={alterarItem}
-                    onRemoverItem={removerItem}
-                  />
-                </div>
-              )}
-
-              {/* O bloco de notas livre — sem botão pra criar, é sempre a "folha"
-                  de baixo do caderno. */}
-              <div className="mt-4">
+              {/* O bloco de notas livre — cartão separado, sem botão pra criar,
+                  é sempre a "folha" do caderno. */}
+              <div className="rounded-2xl border border-borda bg-superficie p-5">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-texto-fraco">Bloco de notas</p>
                 <NotebookLivre
                   html={modeloAtual.textoLivre}
                   podeEditar={podeEditar}
