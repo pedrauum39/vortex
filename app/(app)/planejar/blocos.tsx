@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type DragEvent } from 'react';
-import type { ItemMass } from '@/lib/planejamentoDb';
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import type { ItemMass, ItemPlanejamento, ItemTexto } from '@/lib/planejamentoDb';
 
 // Paleta fixa pro texto rico (negrito + cor) — Notion-like. O primeiro
 // item volta pra cor padrão do tema (remove destaque).
@@ -21,17 +21,6 @@ function aplicar(comando: string, valor?: string) {
   document.execCommand(comando, false, valor);
 }
 
-function Alca() {
-  return (
-    <span
-      className="cursor-grab select-none rounded px-1 text-texto-fraco hover:bg-cyan-500/20 hover:text-texto active:cursor-grabbing"
-      title="Arrastar pra reordenar"
-    >
-      ⠿⠿
-    </span>
-  );
-}
-
 /** div contentEditable "não-controlado": o HTML inicial é escrito uma vez no
  *  mount (via ref), e dali pra frente o DOM é a fonte da verdade — se a gente
  *  reescrevesse innerHTML a cada tecla (componente controlado), o cursor
@@ -44,6 +33,44 @@ function useConteudoEditavel(htmlInicial: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return ref;
+}
+
+function focarNoFim(el: HTMLElement) {
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const selecao = window.getSelection();
+  selecao?.removeAllRanges();
+  selecao?.addRange(range);
+}
+
+/** O bloco só pode ser arrastado a partir da alcinha (⠿⠿) — sem isto,
+ *  arrastar de qualquer ponto do bloco brigava com selecionar/editar o
+ *  texto dentro dele. `draggable` fica ligado só entre o mousedown na alça
+ *  e o fim do drag (ou um mouseup sem chegar a arrastar). */
+function useArrastavelPorAlca() {
+  const [podeArrastar, setPodeArrastar] = useState(false);
+  return {
+    podeArrastar,
+    alcaProps: {
+      onMouseDown: () => setPodeArrastar(true),
+      onMouseUp: () => setPodeArrastar(false),
+    },
+    resetar: () => setPodeArrastar(false),
+  };
+}
+
+function Alca({ alcaProps }: { alcaProps: { onMouseDown: () => void; onMouseUp: () => void } }) {
+  return (
+    <span
+      {...alcaProps}
+      className="cursor-grab select-none text-texto-fraco opacity-30 transition group-hover:opacity-100 active:cursor-grabbing"
+      title="Arrastar pra reordenar"
+    >
+      ⠿⠿
+    </span>
+  );
 }
 
 function BotaoCopiar({ obterTexto }: { obterTexto: () => string }) {
@@ -76,11 +103,78 @@ function BotaoCopiar({ obterTexto }: { obterTexto: () => string }) {
 }
 
 type DragProps = {
-  draggable?: boolean;
-  onDragStart?: (e: DragEvent<HTMLDivElement>) => void;
-  onDragOver?: (e: DragEvent<HTMLDivElement>) => void;
-  onDrop?: (e: DragEvent<HTMLDivElement>) => void;
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: DragEvent<HTMLDivElement>) => void;
 };
+
+function BlocoTexto({
+  item,
+  podeEditar,
+  onMudar,
+  onQuebrar,
+  onApagarSeVazio,
+  deveFocar,
+  aoFocar,
+  dragProps,
+  arrastando,
+}: {
+  item: ItemTexto;
+  podeEditar: boolean;
+  onMudar: (html: string) => void;
+  onQuebrar: () => void;
+  onApagarSeVazio: () => void;
+  deveFocar: boolean;
+  aoFocar: () => void;
+  dragProps: DragProps;
+  arrastando: boolean;
+}) {
+  const ref = useConteudoEditavel(item.html);
+  const { podeArrastar, alcaProps, resetar } = useArrastavelPorAlca();
+
+  useEffect(() => {
+    if (deveFocar && ref.current) {
+      focarNoFim(ref.current);
+      aoFocar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deveFocar]);
+
+  function aoTeclar(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter cria o próximo parágrafo (como um caderno) — Shift+Enter quebra
+      // linha dentro do mesmo bloco.
+      e.preventDefault();
+      onQuebrar();
+    } else if (e.key === 'Backspace' && ref.current?.innerText.trim() === '') {
+      e.preventDefault();
+      onApagarSeVazio();
+    }
+  }
+
+  return (
+    <div
+      draggable={podeArrastar}
+      onDragEnd={resetar}
+      {...dragProps}
+      className={`group flex items-start gap-2 rounded-lg px-1 py-0.5 transition ${arrastando ? 'opacity-40' : ''}`}
+    >
+      {podeEditar && (
+        <span className="mt-0.5">
+          <Alca alcaProps={alcaProps} />
+        </span>
+      )}
+      <div
+        ref={ref}
+        contentEditable={podeEditar}
+        suppressContentEditableWarning
+        onInput={() => onMudar(ref.current!.innerHTML)}
+        onKeyDown={podeEditar ? aoTeclar : undefined}
+        className="min-h-[1.5rem] flex-1 text-sm leading-relaxed outline-none empty:before:text-texto-fraco empty:before:content-['Escreva_livremente…']"
+      />
+    </div>
+  );
+}
 
 function BlocoMass({
   numero,
@@ -101,15 +195,18 @@ function BlocoMass({
 }) {
   const refTexto = useConteudoEditavel(item.texto);
   const refNota = useConteudoEditavel(item.nota);
+  const { podeArrastar, alcaProps, resetar } = useArrastavelPorAlca();
 
   return (
     <div
-      className={`rounded-xl border-2 border-cyan-500/60 bg-cyan-500/[0.06] p-3 transition ${arrastando ? 'opacity-40' : ''}`}
+      draggable={podeArrastar}
+      onDragEnd={resetar}
       {...dragProps}
+      className={`group rounded-xl border-2 border-cyan-500/60 bg-cyan-500/[0.06] p-3 transition ${arrastando ? 'opacity-40' : ''}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          {podeEditar && <Alca />}
+          {podeEditar && <Alca alcaProps={alcaProps} />}
           <span className="flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-semibold text-cyan-300">
             {numero}
           </span>
@@ -178,22 +275,40 @@ function BlocoMass({
   );
 }
 
-/** A lista dos blocos "mass" de uma aba (data+modelo) — arrastáveis entre si
- *  pela alça (⠿⠿) no canto. */
-export function ListaBlocosMass({
+function numerarBlocosMass(itens: ItemPlanejamento[]): Map<string, number> {
+  const numeros = new Map<string, number>();
+  let n = 0;
+  for (const item of itens) {
+    if (item.tipo === 'mass') {
+      n += 1;
+      numeros.set(item.id, n);
+    }
+  }
+  return numeros;
+}
+
+/**
+ * A lista MISTA de uma aba (data+modelo) — parágrafos livres e blocos
+ * "mass" intercalados como o rep quiser, todos arrastáveis entre si (pela
+ * alça). Enter no fim de um parágrafo cria o próximo; Backspace num
+ * parágrafo vazio apaga ele e volta o foco pro anterior.
+ */
+export function ListaBlocosPlanejamento({
   itens,
   podeEditar,
-  onReordenar,
-  onAlterarItem,
-  onRemoverItem,
+  onMudarItens,
+  onAlterarMass,
+  onRemoverMass,
 }: {
-  itens: ItemMass[];
+  itens: ItemPlanejamento[];
   podeEditar: boolean;
-  onReordenar: (itens: ItemMass[]) => void;
-  onAlterarItem: (id: string, patch: Partial<ItemMass>) => void;
-  onRemoverItem: (id: string) => void;
+  onMudarItens: (itens: ItemPlanejamento[]) => void;
+  onAlterarMass: (id: string, patch: Partial<Pick<ItemMass, 'texto' | 'nota'>>) => void;
+  onRemoverMass: (id: string) => void;
 }) {
   const [arrastando, setArrastando] = useState<string | null>(null);
+  const [focoPendente, setFocoPendente] = useState<string | null>(null);
+  const numeros = numerarBlocosMass(itens);
 
   function aoSoltarEm(alvoId: string) {
     if (!arrastando || arrastando === alvoId) return setArrastando(null);
@@ -204,72 +319,76 @@ export function ListaBlocosMass({
     const novos = [...itens];
     const [movido] = novos.splice(de, 1);
     novos.splice(para, 0, movido);
-    onReordenar(novos);
+    onMudarItens(novos);
+  }
+
+  function quebrarApos(id: string) {
+    const idx = itens.findIndex((i) => i.id === id);
+    if (idx === -1) return;
+    const novoId = crypto.randomUUID();
+    const novos = [...itens];
+    novos.splice(idx + 1, 0, { id: novoId, tipo: 'texto', html: '' });
+    onMudarItens(novos);
+    setFocoPendente(novoId);
+  }
+
+  function apagarTextoSeVazio(id: string) {
+    const idx = itens.findIndex((i) => i.id === id);
+    if (idx <= 0) return; // mantém sempre pelo menos o primeiro bloco
+    const anterior = itens[idx - 1];
+    onMudarItens(itens.filter((i) => i.id !== id));
+    setFocoPendente(anterior.id);
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1">
       {itens.map((item) => {
-        // Índice recalculado a cada render (não guardado no item) — a
-        // numeração é sempre a posição atual no array, mesmo depois de
-        // arrastar pra outro lugar.
-        const numero = itens.findIndex((i) => i.id === item.id) + 1;
-        const dragProps: DragProps = podeEditar
-          ? {
-              draggable: true,
-              onDragStart: (e) => {
-                // Firefox só completa o drag se algo for gravado em
-                // dataTransfer — sem isto, o drag nem começa em alguns
-                // navegadores.
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', item.id);
-                setArrastando(item.id);
-              },
-              onDragOver: (e) => e.preventDefault(),
-              onDrop: (e) => {
-                e.preventDefault();
-                aoSoltarEm(item.id);
-              },
-            }
-          : {};
+        const dragProps: DragProps = {
+          onDragStart: (e) => {
+            // Firefox só completa o drag se algo for gravado em
+            // dataTransfer — sem isto, o drag nem começa em alguns navegadores.
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.id);
+            setArrastando(item.id);
+          },
+          onDragOver: (e) => e.preventDefault(),
+          onDrop: (e) => {
+            e.preventDefault();
+            aoSoltarEm(item.id);
+          },
+        };
+
+        if (item.tipo === 'mass') {
+          return (
+            <div key={item.id} className="py-2">
+              <BlocoMass
+                numero={numeros.get(item.id) ?? 0}
+                item={item}
+                podeEditar={podeEditar}
+                onMudar={(patch) => onAlterarMass(item.id, patch)}
+                onRemover={() => onRemoverMass(item.id)}
+                dragProps={dragProps}
+                arrastando={arrastando === item.id}
+              />
+            </div>
+          );
+        }
 
         return (
-          <BlocoMass
+          <BlocoTexto
             key={item.id}
-            numero={numero}
             item={item}
             podeEditar={podeEditar}
-            onMudar={(patch) => onAlterarItem(item.id, patch)}
-            onRemover={() => onRemoverItem(item.id)}
+            onMudar={(html) => onMudarItens(itens.map((i) => (i.id === item.id ? { ...i, html } : i)))}
+            onQuebrar={() => quebrarApos(item.id)}
+            onApagarSeVazio={() => apagarTextoSeVazio(item.id)}
+            deveFocar={focoPendente === item.id}
+            aoFocar={() => setFocoPendente(null)}
             dragProps={dragProps}
             arrastando={arrastando === item.id}
           />
         );
       })}
     </div>
-  );
-}
-
-/** O "resto da folha" — bloco de notas livre, sempre presente, sem botão
- *  pra criar: clica e escreve, como um caderno de verdade. */
-export function NotebookLivre({
-  html,
-  podeEditar,
-  onMudar,
-}: {
-  html: string;
-  podeEditar: boolean;
-  onMudar: (html: string) => void;
-}) {
-  const ref = useConteudoEditavel(html);
-
-  return (
-    <div
-      ref={ref}
-      contentEditable={podeEditar}
-      suppressContentEditableWarning
-      onInput={() => onMudar(ref.current!.innerHTML)}
-      className="min-h-[10rem] text-sm leading-relaxed outline-none empty:before:text-texto-fraco empty:before:content-['Escreva_livremente_aqui…']"
-    />
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import type { AbaPlanejamento, ItemMass } from '@/lib/planejamentoDb';
+import type { AbaPlanejamento, ItemMass, ItemPlanejamento } from '@/lib/planejamentoDb';
 import { diaLegivel } from '@/lib/tempo';
-import { apagarAba, criarAba, salvarConteudo } from './actions';
-import { ListaBlocosMass, NotebookLivre } from './blocos';
+import { apagarAba, criarAba, salvarItens } from './actions';
+import { ListaBlocosPlanejamento } from './blocos';
 
 type TurnoEscalado = { data: string; rotulo: string; modelos: { id: string; nome: string }[] };
 
@@ -21,6 +21,8 @@ const pill = (ativo: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm transition ${
     ativo ? 'bg-accent-fraco text-accent' : 'text-texto-fraco hover:bg-superficie-alta hover:text-texto'
   }`;
+
+const criarItemTextoVazio = (): ItemPlanejamento => ({ id: crypto.randomUUID(), tipo: 'texto', html: '' });
 
 export function Planejador({
   podeEditar,
@@ -43,6 +45,32 @@ export function Planejador({
   const abaAtual = abas.find((a) => a.data === dataAtiva) ?? null;
   const modeloAtual = abaAtual?.modelos.find((m) => m.modeloId === modeloAtivo) ?? null;
 
+  // Uma aba sem nenhum item ainda (nova, ou salva vazia antes de escrever
+  // qualquer coisa) mostra um parágrafo em branco pra ter onde clicar — só
+  // vira de verdade um item salvo quando o rep digita algo nele (o primeiro
+  // onMudarItens já grava esse array no lugar do vazio). O id é derivado da
+  // própria aba (não random) pra ficar estável entre renders — se trocasse
+  // a cada render, o bloco remontaria e perderia o foco/cursor.
+  const idVazioPadrao = `vazio-${dataAtiva ?? ''}-${modeloAtivo ?? ''}`;
+  const itensExibidos: ItemPlanejamento[] =
+    modeloAtual && modeloAtual.itens.length > 0
+      ? modeloAtual.itens
+      : modeloAtual
+        ? [{ id: idVazioPadrao, tipo: 'texto', html: '' }]
+        : [];
+
+  function atualizarItens(itens: ItemPlanejamento[]) {
+    if (!dataAtiva || !modeloAtivo) return;
+    setAbas((atual) =>
+      atual.map((a) =>
+        a.data !== dataAtiva
+          ? a
+          : { ...a, modelos: a.modelos.map((m) => (m.modeloId !== modeloAtivo ? m : { ...m, itens })) },
+      ),
+    );
+    agendarSalvar(dataAtiva, modeloAtivo, itens);
+  }
+
   function selecionarAba(data: string) {
     setDataAtiva(data);
     const aba = abas.find((a) => a.data === data);
@@ -52,10 +80,10 @@ export function Planejador({
   async function adicionarModelo(data: string, modeloId: string) {
     setAbas((atual) => {
       const existe = atual.find((a) => a.data === data);
-      if (!existe) return [{ data, modelos: [{ modeloId, itens: [], textoLivre: '' }] }, ...atual];
+      if (!existe) return [{ data, modelos: [{ modeloId, itens: [criarItemTextoVazio()] }] }, ...atual];
       if (existe.modelos.some((m) => m.modeloId === modeloId)) return atual;
       return atual.map((a) =>
-        a.data === data ? { ...a, modelos: [...a.modelos, { modeloId, itens: [], textoLivre: '' }] } : a,
+        a.data === data ? { ...a, modelos: [...a.modelos, { modeloId, itens: [criarItemTextoVazio()] }] } : a,
       );
     });
     setDataAtiva(data);
@@ -95,7 +123,7 @@ export function Planejador({
     }
   }
 
-  function agendarSalvar(data: string, modeloId: string, itens: ItemMass[], textoLivre: string) {
+  function agendarSalvar(data: string, modeloId: string, itens: ItemPlanejamento[]) {
     const chave = `${data}|${modeloId}`;
     const timerAtual = timers.current.get(chave);
     if (timerAtual) clearTimeout(timerAtual);
@@ -103,44 +131,30 @@ export function Planejador({
     timers.current.set(
       chave,
       setTimeout(() => {
-        salvarConteudo(data, modeloId, itens, textoLivre)
+        salvarItens(data, modeloId, itens)
           .then(() => setStatus('salvo'))
           .catch(() => setStatus('idle'));
       }, 900),
     );
   }
 
-  function atualizarAtivo(patch: { itens?: ItemMass[]; textoLivre?: string }) {
-    if (!dataAtiva || !modeloAtivo || !modeloAtual) return;
-    const itens = patch.itens ?? modeloAtual.itens;
-    const textoLivre = patch.textoLivre ?? modeloAtual.textoLivre;
-    setAbas((atual) =>
-      atual.map((a) =>
-        a.data !== dataAtiva
-          ? a
-          : {
-              ...a,
-              modelos: a.modelos.map((m) => (m.modeloId !== modeloAtivo ? m : { ...m, itens, textoLivre })),
-            },
-      ),
-    );
-    agendarSalvar(dataAtiva, modeloAtivo, itens, textoLivre);
-  }
-
   function adicionarMass() {
     if (!modeloAtual) return;
-    const novoItem: ItemMass = { id: crypto.randomUUID(), texto: '', nota: '' };
-    atualizarAtivo({ itens: [...modeloAtual.itens, novoItem] });
+    const novoItem: ItemMass = { id: crypto.randomUUID(), tipo: 'mass', texto: '', nota: '' };
+    atualizarItens([...modeloAtual.itens, novoItem]);
   }
 
-  function alterarItem(id: string, patch: Partial<ItemMass>) {
+  function alterarMass(id: string, patch: Partial<Pick<ItemMass, 'texto' | 'nota'>>) {
     if (!modeloAtual) return;
-    atualizarAtivo({ itens: modeloAtual.itens.map((i) => (i.id === id ? { ...i, ...patch } : i)) });
+    atualizarItens(
+      modeloAtual.itens.map((i) => (i.id === id && i.tipo === 'mass' ? { ...i, ...patch } : i)),
+    );
   }
 
-  function removerItem(id: string) {
+  function removerMass(id: string) {
     if (!modeloAtual) return;
-    atualizarAtivo({ itens: modeloAtual.itens.filter((i) => i.id !== id) });
+    const restantes = modeloAtual.itens.filter((i) => i.id !== id);
+    atualizarItens(restantes.length > 0 ? restantes : [criarItemTextoVazio()]);
   }
 
   return (
@@ -252,47 +266,29 @@ export function Planejador({
           </div>
 
           {modeloAtual ? (
-            <div className="space-y-4">
-              {/* Blocos "mass" — cartão próprio, independente do caderno abaixo. */}
-              <div className="rounded-2xl border border-borda bg-superficie p-5">
-                <div className="flex items-center gap-3">
-                  {podeEditar && (
-                    <button
-                      type="button"
-                      onClick={adicionarMass}
-                      className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
-                    >
-                      + Mass
-                    </button>
-                  )}
-                  <span className="ml-auto text-xs text-texto-fraco">
-                    {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
-                  </span>
-                </div>
-
-                {modeloAtual.itens.length > 0 ? (
-                  <div className="mt-4">
-                    <ListaBlocosMass
-                      itens={modeloAtual.itens}
-                      podeEditar={podeEditar}
-                      onReordenar={(itens) => atualizarAtivo({ itens })}
-                      onAlterarItem={alterarItem}
-                      onRemoverItem={removerItem}
-                    />
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-texto-fraco">Nenhum bloco mass ainda.</p>
+            <div className="rounded-2xl border border-borda bg-superficie p-5">
+              <div className="flex items-center gap-3">
+                {podeEditar && (
+                  <button
+                    type="button"
+                    onClick={adicionarMass}
+                    className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
+                  >
+                    + Mass
+                  </button>
                 )}
+                <span className="ml-auto text-xs text-texto-fraco">
+                  {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
+                </span>
               </div>
 
-              {/* O bloco de notas livre — cartão separado, sem botão pra criar,
-                  é sempre a "folha" do caderno. */}
-              <div className="rounded-2xl border border-borda bg-superficie p-5">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-texto-fraco">Bloco de notas</p>
-                <NotebookLivre
-                  html={modeloAtual.textoLivre}
+              <div className="mt-3">
+                <ListaBlocosPlanejamento
+                  itens={itensExibidos}
                   podeEditar={podeEditar}
-                  onMudar={(html) => atualizarAtivo({ textoLivre: html })}
+                  onMudarItens={atualizarItens}
+                  onAlterarMass={alterarMass}
+                  onRemoverMass={removerMass}
                 />
               </div>
             </div>
