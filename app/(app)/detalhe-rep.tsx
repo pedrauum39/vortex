@@ -53,6 +53,9 @@ export async function DetalheRep({
         <p className="mt-1 text-sm text-texto-fraco">
           {rep.nome_oficial} · {rotuloTurno(rep.turno)} · {ROTULO_CARGO[rep.cargo]}
         </p>
+        <Link href={`/planejar?rep=${id}`} className="mt-2 inline-block text-sm text-accent hover:underline">
+          Ver planejamento →
+        </Link>
       </div>
 
       <div className="flex items-center gap-1 text-sm">
