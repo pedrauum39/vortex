@@ -41,7 +41,20 @@ export async function apagarAba(data: string, modeloId: string) {
 function sanitizarItens(itens: ItemPlanejamento[]): ItemPlanejamento[] {
   return itens.map((item) =>
     item.tipo === 'mass'
-      ? { id: item.id, tipo: 'mass' as const, texto: sanitizarConteudo(item.texto), nota: sanitizarConteudo(item.nota) }
+      ? {
+          id: item.id,
+          tipo: 'mass' as const,
+          variante: item.variante === 'ponto22' ? ('ponto22' as const) : ('padrao' as const),
+          texto: sanitizarConteudo(item.texto),
+          nota: sanitizarConteudo(item.nota),
+          horario: typeof item.horario === 'string' ? item.horario : '',
+          alarmeAtivo: item.alarmeAtivo !== false,
+          preco: typeof item.preco === 'string' ? item.preco : '',
+          unlocks: typeof item.unlocks === 'string' ? item.unlocks : '',
+          views: typeof item.views === 'string' ? item.views : '',
+          enviada: item.enviada === 'sim' || item.enviada === 'nao' ? item.enviada : null,
+          funcionou: item.funcionou === 'sim' || item.funcionou === 'nao' ? item.funcionou : null,
+        }
       : { id: item.id, tipo: 'texto' as const, html: sanitizarConteudo(item.html) },
   );
 }

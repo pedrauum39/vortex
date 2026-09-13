@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { AbaPlanejamento, ItemMass, ItemPlanejamento } from '@/lib/planejamentoDb';
 import { diaLegivel } from '@/lib/tempo';
 import { apagarAba, criarAba, salvarItens } from './actions';
+import { useAlarmesDeMass } from './alarme';
 import { ListaBlocosPlanejamento } from './blocos';
 
 type TurnoEscalado = { data: string; rotulo: string; modelos: { id: string; nome: string }[] };
@@ -24,6 +25,21 @@ const pill = (ativo: boolean) =>
 
 const criarItemTextoVazio = (): ItemPlanejamento => ({ id: crypto.randomUUID(), tipo: 'texto', html: '' });
 
+const criarItemMass = (variante: ItemMass['variante']): ItemMass => ({
+  id: crypto.randomUUID(),
+  tipo: 'mass',
+  variante,
+  texto: '',
+  nota: '',
+  horario: '',
+  alarmeAtivo: true,
+  preco: '',
+  unlocks: '',
+  views: '',
+  enviada: null,
+  funcionou: null,
+});
+
 export function Planejador({
   podeEditar,
   nomeAlvo,
@@ -39,6 +55,7 @@ export function Planejador({
   const [mostrarNovaAba, setMostrarNovaAba] = useState(false);
   const [novaDataManual, setNovaDataManual] = useState('');
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useAlarmesDeMass(podeEditar ? abas : []);
 
   const nomesModelos = useMemo(() => new Map(todosModelos.map((m) => [m.id, m.nome])), [todosModelos]);
   const abasOrdenadas = useMemo(() => [...abas].sort((a, b) => b.data.localeCompare(a.data)), [abas]);
@@ -143,11 +160,15 @@ export function Planejador({
 
   function adicionarMass() {
     if (!modeloAtual) return;
-    const novoItem: ItemMass = { id: crypto.randomUUID(), tipo: 'mass', texto: '', nota: '' };
-    atualizarItens([...modeloAtual.itens, novoItem]);
+    atualizarItens([...modeloAtual.itens, criarItemMass('padrao')]);
   }
 
-  function alterarMass(id: string, patch: Partial<Pick<ItemMass, 'texto' | 'nota'>>) {
+  function adicionarPonto22() {
+    if (!modeloAtual) return;
+    atualizarItens([...modeloAtual.itens, criarItemMass('ponto22')]);
+  }
+
+  function alterarMass(id: string, patch: Partial<Omit<ItemMass, 'id' | 'tipo' | 'variante'>>) {
     if (!modeloAtual) return;
     atualizarItens(
       modeloAtual.itens.map((i) => (i.id === id && i.tipo === 'mass' ? { ...i, ...patch } : i)),
@@ -272,13 +293,22 @@ export function Planejador({
             <div className="rounded-2xl border border-borda bg-superficie p-5">
               <div className="flex items-center gap-3">
                 {podeEditar && (
-                  <button
-                    type="button"
-                    onClick={adicionarMass}
-                    className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
-                  >
-                    + Mass
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={adicionarMass}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-fundo hover:bg-accent-forte"
+                    >
+                      + Mass
+                    </button>
+                    <button
+                      type="button"
+                      onClick={adicionarPonto22}
+                      className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-3 py-1.5 text-sm font-medium text-violet-300 hover:bg-violet-500/20"
+                    >
+                      + .22
+                    </button>
+                  </>
                 )}
                 <span className="ml-auto text-xs text-texto-fraco">
                   {status === 'salvando' ? 'salvando…' : status === 'salvo' ? 'salvo' : ''}
