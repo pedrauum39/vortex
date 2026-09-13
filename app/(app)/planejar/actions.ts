@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { exigirRep } from '@/lib/auth';
-import type { ItemMass, ItemPlanejamento } from '@/lib/planejamentoDb';
+import type { ItemMass } from '@/lib/planejamentoDb';
 import { sanitizarConteudo } from '@/lib/sanitizarHtml';
 import { criarClienteServidor } from '@/lib/supabase/server';
 
@@ -15,7 +15,7 @@ export async function criarAba(data: string, modeloId: string) {
   const { error } = await supabase
     .from('planejamentos_turno')
     .upsert(
-      { rep_id: rep.id, data, modelo_id: modeloId, itens: [] },
+      { rep_id: rep.id, data, modelo_id: modeloId, itens: [], texto_livre: '' },
       { onConflict: 'rep_id,data,modelo_id', ignoreDuplicates: true },
     );
   if (error) throw new Error(error.message);
@@ -38,31 +38,25 @@ export async function apagarAba(data: string, modeloId: string) {
   revalidatePath('/planejar');
 }
 
-function sanitizarItens(itens: ItemPlanejamento[]): ItemPlanejamento[] {
-  return itens.map((item) =>
-    item.tipo === 'mass'
-      ? ({
-          id: item.id,
-          tipo: 'mass',
-          texto: sanitizarConteudo(item.texto),
-          nota: sanitizarConteudo(item.nota),
-        } satisfies ItemMass)
-      : { id: item.id, tipo: 'texto', html: sanitizarConteudo(item.html) },
-  );
-}
-
-/** Grava a lista de itens inteira (a ordem do array é a ordem de exibição —
- *  reordenar no editor já manda o array na ordem nova). */
-export async function salvarItens(data: string, modeloId: string, itens: ItemPlanejamento[]) {
+/** Grava os blocos mass (a ordem do array já é a ordem de exibição) e o
+ *  texto livre inteiros — sanitizados no servidor antes de gravar. */
+export async function salvarConteudo(data: string, modeloId: string, itens: ItemMass[], textoLivre: string) {
   const rep = await exigirRep();
   const supabase = await criarClienteServidor();
+
+  const itensSanitizados = itens.map((item) => ({
+    id: item.id,
+    texto: sanitizarConteudo(item.texto),
+    nota: sanitizarConteudo(item.nota),
+  }));
 
   const { error } = await supabase.from('planejamentos_turno').upsert(
     {
       rep_id: rep.id,
       data,
       modelo_id: modeloId,
-      itens: sanitizarItens(itens),
+      itens: itensSanitizados,
+      texto_livre: sanitizarConteudo(textoLivre),
       atualizado_em: new Date().toISOString(),
     },
     { onConflict: 'rep_id,data,modelo_id' },

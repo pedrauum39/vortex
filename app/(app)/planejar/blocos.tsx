@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type DragEvent } from 'react';
-import type { ItemMass, ItemPlanejamento, ItemTexto } from '@/lib/planejamentoDb';
+import type { ItemMass } from '@/lib/planejamentoDb';
 
 // Paleta fixa pro texto rico (negrito + cor) — Notion-like. O primeiro
 // item volta pra cor padrão do tema (remove destaque).
@@ -32,42 +32,39 @@ function Alca() {
 /** div contentEditable "não-controlado": o HTML inicial é escrito uma vez no
  *  mount (via ref), e dali pra frente o DOM é a fonte da verdade — se a gente
  *  reescrevesse innerHTML a cada tecla (componente controlado), o cursor
- *  pularia pro início a cada letra digitada. */
+ *  pularia pro início a cada letra digitada. Trocar de aba desmonta/remonta
+ *  (key diferente no chamador), então o mount novo pega o conteúdo certo. */
 function useConteudoEditavel(htmlInicial: string) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.innerHTML = htmlInicial;
-    // Só na montagem deste bloco (a troca de aba desmonta/remonta por causa
-    // da key={item.id} no chamador) — não a cada valor novo de htmlInicial.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return ref;
 }
 
-function BlocoTexto({
-  item,
-  podeEditar,
-  onMudar,
-  dragProps,
-}: {
-  item: ItemTexto;
-  podeEditar: boolean;
-  onMudar: (html: string) => void;
-  dragProps: Record<string, unknown>;
-}) {
-  const ref = useConteudoEditavel(item.html);
+function BotaoCopiar({ obterTexto }: { obterTexto: () => string }) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(obterTexto());
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // navegador sem permissão de clipboard — não trava a tela, só não copia.
+    }
+  }
 
   return (
-    <div className="group flex items-start gap-2" {...dragProps}>
-      {podeEditar && <Alca />}
-      <div
-        ref={ref}
-        contentEditable={podeEditar}
-        suppressContentEditableWarning
-        onInput={() => onMudar(ref.current!.innerHTML)}
-        className="min-h-[1.5rem] flex-1 text-sm leading-relaxed outline-none"
-      />
-    </div>
+    <button
+      type="button"
+      onClick={copiar}
+      className="rounded px-1.5 py-0.5 text-xs text-texto-fraco hover:bg-cyan-500/20 hover:text-texto"
+      title="Copiar"
+    >
+      {copiado ? 'copiado!' : 'copiar'}
+    </button>
   );
 }
 
@@ -91,40 +88,45 @@ function BlocoMass({
 
   return (
     <div className="group rounded-xl border-2 border-cyan-500/60 bg-cyan-500/[0.06] p-3" {...dragProps}>
-      <div className="flex flex-wrap items-center gap-2">
-        {podeEditar && <Alca />}
-        <span className="text-sm font-semibold text-cyan-300">{numero}: mass digitada pelo rep</span>
-        {podeEditar && (
-          <div className="ml-auto flex items-center gap-1.5 opacity-0 transition group-hover:opacity-100">
-            <button
-              type="button"
-              onMouseDown={preservarSelecao}
-              onClick={() => aplicar('bold')}
-              className="rounded px-1.5 py-0.5 text-xs font-bold text-texto-fraco hover:bg-cyan-500/20 hover:text-texto"
-              title="Negrito"
-            >
-              B
-            </button>
-            {CORES.map((c) => (
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {podeEditar && <Alca />}
+          <span className="flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-semibold text-cyan-300">
+            {numero}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 opacity-0 transition group-hover:opacity-100">
+          {podeEditar && (
+            <>
               <button
-                key={c.valor}
                 type="button"
                 onMouseDown={preservarSelecao}
-                onClick={() => aplicar('foreColor', c.valor)}
-                className="size-4 rounded-full border border-borda"
-                style={{ backgroundColor: c.valor }}
-                title={c.nome}
-              />
-            ))}
-            <button
-              type="button"
-              onClick={onRemover}
-              className="ml-1 text-xs text-red-400 hover:underline"
-            >
+                onClick={() => aplicar('bold')}
+                className="rounded px-1.5 py-0.5 text-xs font-bold text-texto-fraco hover:bg-cyan-500/20 hover:text-texto"
+                title="Negrito"
+              >
+                B
+              </button>
+              {CORES.map((c) => (
+                <button
+                  key={c.valor}
+                  type="button"
+                  onMouseDown={preservarSelecao}
+                  onClick={() => aplicar('foreColor', c.valor)}
+                  className="size-4 rounded-full border border-borda"
+                  style={{ backgroundColor: c.valor }}
+                  title={c.nome}
+                />
+              ))}
+            </>
+          )}
+          <BotaoCopiar obterTexto={() => refTexto.current?.innerText ?? ''} />
+          {podeEditar && (
+            <button type="button" onClick={onRemover} className="text-xs text-red-400 hover:underline">
               remover
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div
         ref={refTexto}
@@ -134,7 +136,10 @@ function BlocoMass({
         className="mt-2 min-h-[2.5rem] text-sm leading-relaxed outline-none"
       />
       <div className="mt-2 border-t border-cyan-500/20 pt-1.5">
-        <p className="text-xs text-texto-fraco">…</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-texto-fraco">…</p>
+          <BotaoCopiar obterTexto={() => refNota.current?.innerText ?? ''} />
+        </div>
         <div
           ref={refNota}
           contentEditable={podeEditar}
@@ -147,22 +152,18 @@ function BlocoMass({
   );
 }
 
-/**
- * A lista inteira de itens de uma aba (data+modelo) — mistura livre de
- * parágrafos e blocos "mass", arrastáveis entre si. A numeração conta só os
- * blocos mass (os parágrafos livres não entram na contagem).
- */
-export function ListaItens({
+/** A lista dos blocos "mass" de uma aba (data+modelo) — arrastáveis entre si. */
+export function ListaBlocosMass({
   itens,
   podeEditar,
   onReordenar,
   onAlterarItem,
   onRemoverItem,
 }: {
-  itens: ItemPlanejamento[];
+  itens: ItemMass[];
   podeEditar: boolean;
-  onReordenar: (itens: ItemPlanejamento[]) => void;
-  onAlterarItem: (id: string, patch: Partial<ItemMass> | Partial<ItemTexto>) => void;
+  onReordenar: (itens: ItemMass[]) => void;
+  onAlterarItem: (id: string, patch: Partial<ItemMass>) => void;
   onRemoverItem: (id: string) => void;
 }) {
   const [arrastando, setArrastando] = useState<string | null>(null);
@@ -182,10 +183,6 @@ export function ListaItens({
   return (
     <div className="space-y-3">
       {itens.map((item, indice) => {
-        // Numeração conta só os blocos mass até aqui — os parágrafos livres
-        // ficam de fora da contagem (calculado sem mutar variável de fora do
-        // map, que o eslint do react-compiler não deixa).
-        const numeroMass = itens.slice(0, indice + 1).filter((i) => i.tipo === 'mass').length;
         const dragProps = podeEditar
           ? {
               draggable: true,
@@ -196,26 +193,42 @@ export function ListaItens({
             }
           : {};
 
-        return item.tipo === 'mass' ? (
+        return (
           <BlocoMass
             key={item.id}
-            numero={numeroMass}
+            numero={indice + 1}
             item={item}
             podeEditar={podeEditar}
             onMudar={(patch) => onAlterarItem(item.id, patch)}
             onRemover={() => onRemoverItem(item.id)}
             dragProps={dragProps}
           />
-        ) : (
-          <BlocoTexto
-            key={item.id}
-            item={item}
-            podeEditar={podeEditar}
-            onMudar={(html) => onAlterarItem(item.id, { html })}
-            dragProps={dragProps}
-          />
         );
       })}
     </div>
+  );
+}
+
+/** O "resto da folha" — bloco de notas livre, sempre presente, sem botão
+ *  pra criar: clica e escreve, como um caderno de verdade. */
+export function NotebookLivre({
+  html,
+  podeEditar,
+  onMudar,
+}: {
+  html: string;
+  podeEditar: boolean;
+  onMudar: (html: string) => void;
+}) {
+  const ref = useConteudoEditavel(html);
+
+  return (
+    <div
+      ref={ref}
+      contentEditable={podeEditar}
+      suppressContentEditableWarning
+      onInput={() => onMudar(ref.current!.innerHTML)}
+      className="min-h-[10rem] text-sm leading-relaxed outline-none empty:before:text-texto-fraco empty:before:content-['Escreva_livremente_aqui…']"
+    />
   );
 }
