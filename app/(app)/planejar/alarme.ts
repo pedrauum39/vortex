@@ -48,8 +48,7 @@ function tocarRing() {
   tocarBeep(ctx, ctx.currentTime + 0.9);
 }
 
-function hojeLocalISO() {
-  const d = new Date();
+function dataLocalISO(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -60,10 +59,11 @@ function agoraHHMM() {
 
 /** Roda em segundo plano: a cada 15s, olha TODOS os blocos mass (de todas as
  *  abas já carregadas, não só a que está aberta na tela) e toca um "ring"
- *  quando o horário marcado bate com o relógio do navegador — só no dia da
- *  aba (uma mass marcada pro turno de amanhã não toca hoje). Guarda o que já
- *  tocou (por id+horário+dia) num Set em ref pra não repetir dentro do mesmo
- *  minuto. */
+ *  quando o horário marcado bate com o relógio do navegador — na aba do dia
+ *  OU do dia anterior (turno T6/T1 atravessa a meia-noite: uma mass marcada
+ *  pras 00:15 de um turno que começou ontem à noite ainda precisa tocar
+ *  depois que o relógio virar o dia). Guarda o que já tocou (por
+ *  id+horário+dia) num Set em ref pra não repetir dentro do mesmo minuto. */
 export function useAlarmesDeMass(abas: AbaPlanejamento[]) {
   const jaTocou = useRef(new Set<string>());
 
@@ -73,10 +73,12 @@ export function useAlarmesDeMass(abas: AbaPlanejamento[]) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      const hoje = hojeLocalISO();
+      const agoraData = new Date();
+      const hoje = dataLocalISO(agoraData);
+      const ontem = dataLocalISO(new Date(agoraData.getTime() - 24 * 60 * 60 * 1000));
       const agora = agoraHHMM();
       for (const aba of abas) {
-        if (aba.data !== hoje) continue;
+        if (aba.data !== hoje && aba.data !== ontem) continue;
         for (const modelo of aba.modelos) {
           for (const item of modelo.itens) {
             if (item.tipo !== 'mass' || !item.alarmeAtivo || !item.horario || item.horario !== agora) continue;
