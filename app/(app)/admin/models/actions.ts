@@ -45,14 +45,22 @@ async function abrirPeriodo(
   if (error) throw new Error(error.message);
 }
 
-export async function criarModelo(nome: string, bloco: Bloco, extra: boolean) {
+/** `desde` (opcional, default hoje) deixa abrir o período dela numa data
+ *  passada — pra uma modelo que já trabalhou turnos antes de ser cadastrada
+ *  aparecer no roster desses turnos antigos em admin/turnos (blocoNaData só
+ *  resolve dentro do período; sem isto ela só apareceria dali em diante). */
+export async function criarModelo(nome: string, bloco: Bloco, extra: boolean, desde?: string, metaMensal?: number) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
-  const { data, error } = await supabase.from('models').insert({ nome, bloco, extra }).select('id').single();
+  const { data, error } = await supabase
+    .from('models')
+    .insert({ nome, bloco, extra, meta_mensal: metaMensal || 0 })
+    .select('id')
+    .single();
   if (error) throw new Error(error.message);
 
-  await abrirPeriodo(supabase, data.id, bloco, dataBRT());
+  await abrirPeriodo(supabase, data.id, bloco, desde || dataBRT());
 
   revalidar();
 }
