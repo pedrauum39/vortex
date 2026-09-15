@@ -1,4 +1,5 @@
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import { buscarPeriodos } from '@/lib/periodosDb';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import type { Model } from '@/lib/tipos';
 import { FormularioModelo, LinhaModelo } from './linha-modelo';
@@ -8,8 +9,12 @@ export default async function AdminModels() {
   const podeEditar = ehAdmin(rep);
 
   const supabase = await criarClienteServidor();
-  const { data } = await supabase.from('models').select('*').order('bloco').order('nome');
+  const [{ data }, periodos] = await Promise.all([
+    supabase.from('models').select('*').order('bloco').order('nome'),
+    buscarPeriodos(supabase),
+  ]);
   const models = (data ?? []) as Model[];
+  const inicioAberto = new Map(periodos.filter((p) => p.fim === null).map((p) => [p.modeloId, p.inicio]));
 
   return (
     <div className="grid gap-6 sm:grid-cols-2">
@@ -25,7 +30,7 @@ export default async function AdminModels() {
                 {models
                   .filter((m) => m.bloco === bloco)
                   .map((m) => (
-                    <LinhaModelo key={m.id} model={m} podeEditar={podeEditar} />
+                    <LinhaModelo key={m.id} model={m} podeEditar={podeEditar} inicioAtual={inicioAberto.get(m.id) ?? null} />
                   ))}
                 {models.filter((m) => m.bloco === bloco).length === 0 && (
                   <tr>

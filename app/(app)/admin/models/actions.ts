@@ -103,6 +103,24 @@ export async function definirExtra(id: string, extra: boolean) {
   revalidar();
 }
 
+/** Corrige a data de início do período ABERTO da modelo (o que decide desde
+ *  quando ela aparece no roster de admin/turnos pra corrigir/lançar turno
+ *  antigo — ver blocoNaData em lib/periodos.ts). Não mexe em período já
+ *  fechado (histórico de troca de time/desativação continua intocado). */
+export async function ajustarInicioPeriodo(id: string, inicio: string) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase
+    .from('model_bloco_periodos')
+    .update({ inicio })
+    .eq('model_id', id)
+    .is('fim', null);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
 export async function renomearModelo(id: string, nome: string) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
