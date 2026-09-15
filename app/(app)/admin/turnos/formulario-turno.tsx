@@ -13,6 +13,7 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
   const [bloco, setBloco] = useState<Bloco>('I');
   const [funcao, setFuncao] = useState<Funcao>('regular');
   const [repId, setRepId] = useState(reps[0]?.id ?? '');
+  const [contaVenda, setContaVenda] = useState(true);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -23,7 +24,7 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
       setErro(null);
       setOk(false);
       try {
-        await criarTurno({ data, turno, bloco, funcao, repId });
+        await criarTurno({ data, turno, bloco, funcao, repId, contaVenda });
         setOk(true);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
@@ -80,6 +81,19 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
               </option>
             ))}
           </select>
+        </label>
+
+        <label
+          className="flex items-center gap-1.5 text-xs text-texto-fraco"
+          title="Desmarcado: o turno não entra na meta da página nem no bônus dos primaris — só fica disponível como leitura anterior pra cadeia de desconto (ex.: modelo nova sem T6/T1 registrado antes dela)."
+        >
+          <input
+            type="checkbox"
+            checked={contaVenda}
+            onChange={(e) => setContaVenda(e.target.checked)}
+            className="size-3.5 accent-[var(--color-accent)]"
+          />
+          somar turno
         </label>
 
         <button

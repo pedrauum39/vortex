@@ -54,6 +54,7 @@ type LinhaShift = {
   data: string;
   turno: Turno;
   rep_id: string | null;
+  conta_venda: boolean;
   reps: { cargo: Cargo } | null;
   shift_logs: {
     shift_log_models: { model_id: string; models: { nome: string; bloco: Bloco } }[];
@@ -81,7 +82,7 @@ export async function buscarVendasDaEmpresa(
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, rep_id, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, rep_id, conta_venda, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
     )
     .eq('funcao', 'regular')
     .gte('data', inicioBusca)
@@ -105,6 +106,11 @@ export async function buscarVendasDaEmpresa(
     statement: LinhaShift['shift_logs'][number]['statements'][number];
   }[] = [];
   for (const shift of shifts) {
+    // "somar turno" desmarcado (ex.: leitura anterior manual de modelo nova,
+    // sem T6/T1 de verdade antes dela) — serve só de base pra cadeia de
+    // desconto (buscarAnterior lê direto de statements, não passa por aqui),
+    // nunca entra na meta da página nem no bônus dos primaris.
+    if (!shift.conta_venda) continue;
     const log = shift.shift_logs[0];
     if (!log || !shift.rep_id || !shift.reps) continue;
 
