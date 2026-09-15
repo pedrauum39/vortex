@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { dataBRT } from '@/lib/tempo';
 import type { Bloco, Model } from '@/lib/tipos';
 import {
+  ajustarInicioPeriodo,
   apagarModelo,
   criarModelo,
   definirAtivaModelo,
@@ -16,10 +17,19 @@ import {
 const dinheiro = (valor: number) =>
   valor.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
-export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: boolean }) {
+export function LinhaModelo({
+  model,
+  podeEditar,
+  inicioAtual,
+}: {
+  model: Model;
+  podeEditar: boolean;
+  inicioAtual: string | null;
+}) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(model.nome);
   const [metaMensal, setMetaMensal] = useState(model.meta_mensal);
+  const [desde, setDesde] = useState(inicioAtual ?? dataBRT());
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -58,13 +68,24 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
       </td>
       <td className="px-3 py-2.5 text-texto-fraco">
         {editando ? (
-          <input
-            type="number"
-            step="0.01"
-            value={metaMensal}
-            onChange={(e) => setMetaMensal(Number(e.target.value))}
-            className="w-28 rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              step="0.01"
+              value={metaMensal}
+              onChange={(e) => setMetaMensal(Number(e.target.value))}
+              className="w-28 rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent"
+            />
+            <label className="flex items-center gap-1 text-xs">
+              desde
+              <input
+                type="date"
+                value={desde}
+                onChange={(e) => setDesde(e.target.value)}
+                className="rounded-md border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-accent"
+              />
+            </label>
+          </div>
         ) : (
           <>meta {dinheiro(model.meta_mensal)}/mês</>
         )}
@@ -78,6 +99,7 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
               onClick={() => {
                 setNome(model.nome);
                 setMetaMensal(model.meta_mensal);
+                setDesde(inicioAtual ?? dataBRT());
                 setEditando(false);
               }}
               className="text-xs text-texto-fraco hover:text-texto"
@@ -91,6 +113,7 @@ export function LinhaModelo({ model, podeEditar }: { model: Model; podeEditar: b
                 rodar(async () => {
                   await renomearModelo(model.id, nome);
                   await definirMetaMensal(model.id, metaMensal);
+                  if (desde !== inicioAtual) await ajustarInicioPeriodo(model.id, desde);
                 })
               }
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
