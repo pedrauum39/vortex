@@ -217,6 +217,12 @@ export type ResumoPagina = {
   /** Ritmo de venda até hoje, extrapolado pro mês inteiro — null antes do mês começar. */
   projecao: number | null;
   percentualProjetado: number | null;
+  /** Net que ela já tinha antes de entrar pro time (models.valor_entrada) —
+   *  só quando > 0, pra desenhar a barra "entrou com X · time fez Y". */
+  valorEntrada: number;
+  /** Soma de tudo já vendido desde que o período atual dela começou (não só
+   *  o mês corrente) — null se valorEntrada é 0 (barra não aparece). */
+  geradoDesdeEntrada: number | null;
 };
 
 export type ResumoPrimaris = {
@@ -277,12 +283,19 @@ export async function buscarResumoPrimaris(
   const [vendas, { data: repsData }, { data: modelsData }, periodos] = await Promise.all([
     buscarVendasDaEmpresa(db, inicio, fim),
     db.from('reps').select('id, nome_curto, cargo').eq('ativo', true).order('nome_curto'),
-    db.from('models').select('id, nome, bloco, meta_mensal, ativa').order('bloco').order('nome'),
+    db.from('models').select('id, nome, bloco, meta_mensal, ativa, valor_entrada').order('bloco').order('nome'),
     buscarPeriodos(db),
   ]);
 
   const reps = (repsData ?? []) as { id: string; nome_curto: string; cargo: Cargo }[];
-  const models = (modelsData ?? []) as { id: string; nome: string; bloco: Bloco; meta_mensal: number; ativa: boolean }[];
+  const models = (modelsData ?? []) as {
+    id: string;
+    nome: string;
+    bloco: Bloco;
+    meta_mensal: number;
+    ativa: boolean;
+    valor_entrada: number;
+  }[];
   const modelsAtivos = models.filter((m) => m.ativa);
   const metaPorModelo = new Map(modelsAtivos.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
@@ -319,6 +332,24 @@ export async function buscarResumoPrimaris(
     })
     .sort((a, b) => b.vendido - a.vendido);
 
+  // Só busca o total gerado desde a entrada pras modelos que realmente têm
+  // valor_entrada > 0 (a imensa maioria não tem) — evita mais uma varredura
+  // de vendas por página à toa.
+  const hoje = dataBRT();
+  const comValorEntrada = modelsAtivos.filter((m) => m.valor_entrada > 0);
+  const geradosDesdeEntrada = await Promise.all(
+    comValorEntrada.map(async (m) => {
+      const periodoAberto = periodos.find((p) => p.modeloId === m.id && p.fim === null);
+      if (!periodoAberto) return [m.id, 0] as const;
+      const vendasDesdeEntrada = await buscarVendasDaEmpresa(db, periodoAberto.inicio, hoje);
+      const total = arred(
+        vendasDesdeEntrada.filter((v) => v.modeloId === m.id).reduce((s, v) => s + v.vendidoTotal, 0),
+      );
+      return [m.id, total] as const;
+    }),
+  );
+  const geradoPorModelo = new Map(geradosDesdeEntrada);
+
   const porPagina: ResumoPagina[] = modelsAtivos.map((m) => {
     const vendido = arred(vendidoPorModelo.get(m.id) ?? 0);
     const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
@@ -331,6 +362,8 @@ export async function buscarResumoPrimaris(
       percentual: percentualAtingido(vendido, m.meta_mensal),
       projecao,
       percentualProjetado: projecao === null ? null : percentualAtingido(projecao, m.meta_mensal),
+      valorEntrada: m.valor_entrada,
+      geradoDesdeEntrada: m.valor_entrada > 0 ? (geradoPorModelo.get(m.id) ?? 0) : null,
     };
   });
 

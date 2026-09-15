@@ -6,7 +6,7 @@ import { buscarHistoricoModelos, buscarResumoPrimaris, type EventoHistorico, typ
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import { diaLegivel, limitesDoMes, mesAtual, mesLegivel, somarMeses } from '@/lib/tempo';
 import { ROTULO_CARGO, type Bloco } from '@/lib/tipos';
-import { BarraMeta, CORES, IconeRaio } from '../meta-visual';
+import { BarraEntrada, BarraMeta, CORES, IconeRaio } from '../meta-visual';
 
 type Busca = { mes?: string };
 
@@ -161,6 +161,11 @@ function LinhaPagina({ pagina }: { pagina: ResumoPagina }) {
       <td className="px-3 py-3 text-texto-fraco">{pagina.bloco === 'I' ? 'Vortex I' : 'Vortex II'}</td>
       <td className="px-4 py-3">
         <BarraMeta vendido={pagina.vendido} meta={pagina.meta} percentual={pagina.percentual} compacta />
+        {pagina.valorEntrada > 0 && pagina.geradoDesdeEntrada !== null && (
+          <div className="mt-2">
+            <BarraEntrada valorEntrada={pagina.valorEntrada} gerado={pagina.geradoDesdeEntrada} />
+          </div>
+        )}
       </td>
       <td className="px-4 py-3 text-right">
         {pagina.projecao === null ? (

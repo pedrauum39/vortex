@@ -29,7 +29,7 @@ import {
 import { CalendarioMes, type DiaDoCalendario } from './calendario-mes';
 import { CartaoInvoice } from './cartao-invoice';
 import { FotoAmpliavel } from './foto-ampliavel';
-import { BarraMeta, CORES, IconeRaio, LinhaMeta } from './meta-visual';
+import { BarraEntrada, BarraMeta, CORES, IconeRaio, LinhaMeta } from './meta-visual';
 import { NotificacaoCard } from './notificacao-card';
 
 // Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
@@ -439,13 +439,14 @@ function MetasDoTime({ resumo }: { resumo: ResumoPrimaris }) {
               {resumo.porPagina
                 .filter((p) => p.bloco === bloco)
                 .map((p) => (
-                  <LinhaMeta
-                    key={p.modeloId}
-                    rotulo={p.nome}
-                    vendido={p.vendido}
-                    meta={p.meta}
-                    percentual={p.percentual}
-                  />
+                  <div key={p.modeloId}>
+                    <LinhaMeta rotulo={p.nome} vendido={p.vendido} meta={p.meta} percentual={p.percentual} />
+                    {p.valorEntrada > 0 && p.geradoDesdeEntrada !== null && (
+                      <div className="mt-1">
+                        <BarraEntrada valorEntrada={p.valorEntrada} gerado={p.geradoDesdeEntrada} />
+                      </div>
+                    )}
+                  </div>
                 ))}
             </div>
           </div>

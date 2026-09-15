@@ -10,6 +10,7 @@ import {
   definirAtivaModelo,
   definirExtra,
   definirMetaMensal,
+  definirValorEntrada,
   moverTime,
   renomearModelo,
 } from './actions';
@@ -30,6 +31,7 @@ export function LinhaModelo({
   const [nome, setNome] = useState(model.nome);
   const [metaMensal, setMetaMensal] = useState(model.meta_mensal);
   const [desde, setDesde] = useState(inicioAtual ?? dataBRT());
+  const [valorEntrada, setValorEntrada] = useState(model.valor_entrada);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -85,9 +87,23 @@ export function LinhaModelo({
                 className="rounded-md border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-accent"
               />
             </label>
+            <label className="flex items-center gap-1 text-xs" title="Net que ela já tinha antes de entrar pro time — só pra mostrar na barrinha, não muda comissão nenhuma.">
+              entrou com
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={valorEntrada}
+                onChange={(e) => setValorEntrada(Number(e.target.value))}
+                className="w-24 rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-accent"
+              />
+            </label>
           </div>
         ) : (
-          <>meta {dinheiro(model.meta_mensal)}/mês</>
+          <>
+            meta {dinheiro(model.meta_mensal)}/mês
+            {model.valor_entrada > 0 && <> · entrou com {dinheiro(model.valor_entrada)}</>}
+          </>
         )}
       </td>
       <td className="px-4 py-2.5 text-right">
@@ -100,6 +116,7 @@ export function LinhaModelo({
                 setNome(model.nome);
                 setMetaMensal(model.meta_mensal);
                 setDesde(inicioAtual ?? dataBRT());
+                setValorEntrada(model.valor_entrada);
                 setEditando(false);
               }}
               className="text-xs text-texto-fraco hover:text-texto"
@@ -114,6 +131,7 @@ export function LinhaModelo({
                   await renomearModelo(model.id, nome);
                   await definirMetaMensal(model.id, metaMensal);
                   if (desde !== inicioAtual) await ajustarInicioPeriodo(model.id, desde);
+                  if (valorEntrada !== model.valor_entrada) await definirValorEntrada(model.id, valorEntrada);
                 })
               }
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-fundo hover:bg-accent-forte disabled:opacity-50"
@@ -176,6 +194,7 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
   const [extra, setExtra] = useState(false);
   const [desde, setDesde] = useState(dataBRT());
   const [metaMensal, setMetaMensal] = useState(0);
+  const [valorEntrada, setValorEntrada] = useState(0);
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
@@ -184,11 +203,12 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
     executar(async () => {
       setErro(null);
       try {
-        await criarModelo(nome.trim(), bloco, extra, desde, metaMensal);
+        await criarModelo(nome.trim(), bloco, extra, desde, metaMensal, valorEntrada);
         setNome('');
         setExtra(false);
         setDesde(dataBRT());
         setMetaMensal(0);
+        setValorEntrada(0);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu para criar.');
       }
@@ -243,6 +263,17 @@ export function FormularioModelo({ bloco }: { bloco: Bloco }) {
             min="0"
             value={metaMensal}
             onChange={(e) => setMetaMensal(Number(e.target.value))}
+            className="w-24 rounded-md border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-accent"
+          />
+        </label>
+        <label className="flex items-center gap-1.5" title="Net que ela já tinha antes de entrar pro time — só pra mostrar na barrinha, não muda comissão nenhuma.">
+          entrou com
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={valorEntrada}
+            onChange={(e) => setValorEntrada(Number(e.target.value))}
             className="w-24 rounded-md border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-accent"
           />
         </label>
