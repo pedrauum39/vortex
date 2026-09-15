@@ -40,6 +40,10 @@ export async function criarTurno(dados: {
   bloco: Bloco;
   funcao: Funcao;
   repId: string;
+  /** Desmarcado: o turno não entra na meta da página nem no bônus de
+   *  Party/Team addition — só fica disponível como leitura anterior pra
+   *  cadeia de desconto (ex.: modelo nova sem T6/T1 registrado antes dela). */
+  contaVenda?: boolean;
 }) {
   const admin = await exigirAdmin();
   const supabase = await criarClienteServidor();
@@ -62,6 +66,7 @@ export async function criarTurno(dados: {
       funcao: dados.funcao,
       rep_id: dados.repId,
       origem: 'manual',
+      conta_venda: dados.contaVenda ?? true,
     },
     { onConflict: 'data,turno,bloco,funcao' },
   );
