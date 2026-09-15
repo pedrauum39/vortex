@@ -63,6 +63,9 @@ export type Model = {
   /** Sem cadeia de desconto confiável (ex.: Kaylin) — nunca aparece no
    * clock-in normal, só é reportada pela aba "Turno Extra" (turnos_extra). */
   extra: boolean;
+  /** Net que ela já tinha antes de entrar pro time — só informativo/visual,
+   * não entra em nenhum cálculo de comissão. */
+  valor_entrada: number;
 };
 
 /** Um lançamento da aba "Turno Extra" — nunca passa por shifts/statements. */

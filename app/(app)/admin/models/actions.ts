@@ -49,13 +49,20 @@ async function abrirPeriodo(
  *  passada — pra uma modelo que já trabalhou turnos antes de ser cadastrada
  *  aparecer no roster desses turnos antigos em admin/turnos (blocoNaData só
  *  resolve dentro do período; sem isto ela só apareceria dali em diante). */
-export async function criarModelo(nome: string, bloco: Bloco, extra: boolean, desde?: string, metaMensal?: number) {
+export async function criarModelo(
+  nome: string,
+  bloco: Bloco,
+  extra: boolean,
+  desde?: string,
+  metaMensal?: number,
+  valorEntrada?: number,
+) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
   const { data, error } = await supabase
     .from('models')
-    .insert({ nome, bloco, extra, meta_mensal: metaMensal || 0 })
+    .insert({ nome, bloco, extra, meta_mensal: metaMensal || 0, valor_entrada: valorEntrada || 0 })
     .select('id')
     .single();
   if (error) throw new Error(error.message);
@@ -164,6 +171,18 @@ export async function definirMetaMensal(id: string, metaMensal: number) {
   const supabase = await criarClienteServidor();
 
   const { error } = await supabase.from('models').update({ meta_mensal: metaMensal }).eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
+/** Só informativo/visual (ver decisão do usuário) — nunca entra na cadeia de
+ *  desconto nem em nenhum cálculo de comissão. */
+export async function definirValorEntrada(id: string, valorEntrada: number) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('models').update({ valor_entrada: valorEntrada }).eq('id', id);
   if (error) throw new Error(error.message);
 
   revalidar();
