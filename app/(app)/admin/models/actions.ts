@@ -239,13 +239,27 @@ export async function definirValorEntrada(id: string, valorEntrada: number) {
   revalidar();
 }
 
-/** shifts.model_id tem ON DELETE SET NULL — apagar não quebra turnos existentes. */
-export async function apagarModelo(id: string) {
+/** shifts.model_id tem ON DELETE SET NULL — apagar não quebra turnos existentes.
+ *  statements.model_id e turnos_extra.model_id NÃO têm cascade — página com
+ *  venda ou turno extra real registrado bloqueia a exclusão (constraint
+ *  23503, foreign key violation) pra não perder histórico financeiro.
+ *  Devolve o erro em vez de lançar: o Next apaga a mensagem de exceptions de
+ *  Server Action em produção (o admin só veria "An error occurred...", sem
+ *  dizer o motivo real). */
+export async function apagarModelo(id: string): Promise<{ erro: string | null }> {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
 
   const { error } = await supabase.from('models').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '23503') {
+      return {
+        erro: 'Não dá pra apagar: essa página já tem venda ou turno extra registrado. Desative-a em vez de apagar.',
+      };
+    }
+    throw new Error(error.message);
+  }
 
   revalidar();
+  return { erro: null };
 }

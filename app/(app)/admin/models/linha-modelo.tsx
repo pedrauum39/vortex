@@ -35,11 +35,15 @@ export function LinhaModelo({
   const [pendente, executar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
-  const rodar = (acao: () => Promise<void>) =>
+  const rodar = (acao: () => Promise<void | { erro: string | null }>) =>
     executar(async () => {
       setErro(null);
       try {
-        await acao();
+        const resultado = await acao();
+        if (resultado?.erro) {
+          setErro(resultado.erro);
+          return;
+        }
         setEditando(false);
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Não deu.');
