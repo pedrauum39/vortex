@@ -7,8 +7,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { comissaoTurnoExtra } from './comissao';
 import { buscarRegraVigente } from './comissaoDb';
-import { baseComissao, deltaTurno, totalDasLinhas, type LinhasNet } from './statement';
+import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
+import { somarDias } from './tempo';
 import type { Cargo, Turno } from './tipos';
+
+/** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
+ * — um T6T1 datado no último dia do mês pertence ao mês seguinte, mesma regra
+ * de lib/primarisDb.ts e lib/metaDb.ts. */
+function dentroDoPeriodo(turno: Turno, data: string, inicio: string, fim: string): boolean {
+  const dia = diaDoStatement(turno, data);
+  return dia >= inicio && dia <= fim;
+}
 
 type LinhaCrua = {
   id: string;
@@ -73,15 +82,19 @@ export async function buscarTurnosExtraDoRep(
   inicio: string,
   fim: string,
 ): Promise<LinhaTurnoExtra[]> {
+  // Busca desde um dia antes: um T6T1 do fim do período anterior pode
+  // pertencer a este (diaDoStatement), mas sua `data` fica fora da janela crua.
   const { data } = await db
     .from('turnos_extra')
     .select(CAMPOS)
     .eq('rep_id', repId)
-    .gte('data', inicio)
+    .gte('data', somarDias(inicio, -1))
     .lte('data', fim)
     .order('data');
 
-  const linhas = (data ?? []) as unknown as LinhaCrua[];
+  const linhas = ((data ?? []) as unknown as LinhaCrua[]).filter((l) =>
+    dentroDoPeriodo(l.turno, l.data, inicio, fim),
+  );
   return Promise.all(linhas.map((l) => montarLinha(db, l, cargo, l.data)));
 }
 
@@ -94,11 +107,13 @@ export async function buscarTurnosExtraAdmin(
   const { data } = await db
     .from('turnos_extra')
     .select(`${CAMPOS}, reps(nome_curto, cargo)`)
-    .gte('data', inicio)
+    .gte('data', somarDias(inicio, -1))
     .lte('data', fim)
     .order('data');
 
-  const linhas = (data ?? []) as unknown as (LinhaCrua & { reps: { nome_curto: string; cargo: Cargo } | null })[];
+  const linhas = ((data ?? []) as unknown as (LinhaCrua & { reps: { nome_curto: string; cargo: Cargo } | null })[]).filter(
+    (l) => dentroDoPeriodo(l.turno, l.data, inicio, fim),
+  );
   return Promise.all(
     linhas.map(async (l) => ({
       ...(await montarLinha(db, l, l.reps?.cargo ?? 'tertius', l.data)),

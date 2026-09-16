@@ -251,8 +251,10 @@ export default async function TurnoPage({
 
   // Meta diária de cada página nesse turno: meta mensal da página, repartida
   // pelo percentual fixo do turno (42/28/30%) e pelos dias do mês — mesma
-  // conta de lib/meta.ts usada no dashboard e em /admin/reps/[id].
-  const diasDoMes = diasNoMes(data.slice(0, 7));
+  // conta de lib/meta.ts usada no dashboard e em /admin/reps/[id]. Dias do mês
+  // do dia de STATEMENT, não da data crua — um T6T1 no último dia do mês
+  // pertence ao mês seguinte (diaDoStatement).
+  const diasDoMes = diasNoMes(diaDoStatement(turnoDoSlot, data).slice(0, 7));
   const metasDiarias: Record<string, number> = {};
   for (const m of (models ?? []) as Model[]) {
     metasDiarias[m.id] = metaDiariaDaPagina(m.meta_mensal, turnoDoSlot, diasDoMes);
