@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import type { AbaPlanejamento } from '@/lib/planejamentoDb';
+import { HORARIOS, type Turno } from '@/lib/tipos';
+import { janelaDoTurno } from '@/lib/turno';
 
 let audioCtx: AudioContext | null = null;
 
@@ -48,22 +50,36 @@ function tocarRing() {
   tocarBeep(ctx, ctx.currentTime + 0.9);
 }
 
-function dataLocalISO(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function paraMinutos(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
 }
 
-function agoraHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** Em qual dos 3 turnos oficiais um horário cai — T6/T1 cruza meia-noite
+ *  (21:00–05:00), então tanto "22:00" quanto "02:00" pertencem a ele. */
+function turnoDoHorario(horario: string): Turno {
+  const minutos = paraMinutos(horario);
+  for (const turno of Object.keys(HORARIOS) as Turno[]) {
+    const inicio = paraMinutos(HORARIOS[turno].inicio);
+    const fim = paraMinutos(HORARIOS[turno].fim);
+    const cruzaMeiaNoite = fim <= inicio;
+    if (cruzaMeiaNoite ? minutos >= inicio || minutos < fim : minutos >= inicio && minutos < fim) return turno;
+  }
+  return 'T6T1';
+}
+
+function agoraHHMM(agora: Date) {
+  return `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
 }
 
 /** Roda em segundo plano: a cada 15s, olha TODOS os blocos mass (de todas as
  *  abas já carregadas, não só a que está aberta na tela) e toca um "ring"
- *  quando o horário marcado bate com o relógio do navegador — na aba do dia
- *  OU do dia anterior (turno T6/T1 atravessa a meia-noite: uma mass marcada
- *  pras 00:15 de um turno que começou ontem à noite ainda precisa tocar
- *  depois que o relógio virar o dia). Guarda o que já tocou (por
- *  id+horário+dia) num Set em ref pra não repetir dentro do mesmo minuto. */
+ *  só durante a janela oficial do turno a que aquele horário pertence — o
+ *  T6/T1 do dia 16 tem que tocar das 21h do dia 16 às 5h do dia 17, nunca
+ *  fora disso (antes disso, qualquer horário que batesse com o relógio em
+ *  QUALQUER dia tocava, inclusive dias já passados, até alguém desligar o
+ *  alarme manualmente). Guarda o que já tocou (por id+horário+dia da aba)
+ *  num Set em ref pra não repetir dentro do mesmo minuto. */
 export function useAlarmesDeMass(abas: AbaPlanejamento[]) {
   const jaTocou = useRef(new Set<string>());
 
@@ -73,16 +89,15 @@ export function useAlarmesDeMass(abas: AbaPlanejamento[]) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      const agoraData = new Date();
-      const hoje = dataLocalISO(agoraData);
-      const ontem = dataLocalISO(new Date(agoraData.getTime() - 24 * 60 * 60 * 1000));
-      const agora = agoraHHMM();
+      const agora = new Date();
+      const horaAtual = agoraHHMM(agora);
       for (const aba of abas) {
-        if (aba.data !== hoje && aba.data !== ontem) continue;
         for (const modelo of aba.modelos) {
           for (const item of modelo.itens) {
-            if (item.tipo !== 'mass' || !item.alarmeAtivo || !item.horario || item.horario !== agora) continue;
-            const chave = `${item.id}:${item.horario}:${hoje}`;
+            if (item.tipo !== 'mass' || !item.alarmeAtivo || !item.horario || item.horario !== horaAtual) continue;
+            const { inicio, fim } = janelaDoTurno(turnoDoHorario(item.horario), aba.data);
+            if (agora < inicio || agora >= fim) continue;
+            const chave = `${item.id}:${item.horario}:${aba.data}`;
             if (jaTocou.current.has(chave)) continue;
             jaTocou.current.add(chave);
             tocarRing();
