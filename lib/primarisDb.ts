@@ -303,7 +303,10 @@ export async function buscarResumoPrimaris(
     valor_entrada: number;
   }[];
   const modelsAtivos = models.filter((m) => m.ativa);
-  const metaPorModelo = new Map(modelsAtivos.map((m) => [m.id, m.meta_mensal]));
+  // Todos os modelos, não só os ativos: uma página desativada no meio do mês
+  // já teve vendas contadas em vendidoPorRep antes disso — sem a meta dela
+  // aqui, o % atingida de quem trabalhou nela explode (vendido sem meta).
+  const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
   // direto dele sem precisar de mais um parâmetro.
   const mes = inicio.slice(0, 7);
