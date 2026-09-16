@@ -258,17 +258,20 @@ export type MetasDosTimes = {
  */
 function calcularMetasDosTimes(
   vendas: VendaDeModelo[],
-  models: { id: string; meta_mensal: number }[],
+  models: { id: string; bloco: Bloco; meta_mensal: number }[],
   periodos: Periodo[],
   inicio: string,
   fim: string,
+  entradaDoMesPorModelo: Map<string, number>,
 ): MetasDosTimes {
   const diasDoMes = diasNoMes(inicio.slice(0, 7));
   const porTime = {} as Record<Bloco, MetaBarra>;
   for (const bloco of ['I', 'II'] as Bloco[]) {
-    const vendido = arred(
-      vendas.filter((v) => v.modeloBloco === bloco).reduce((s, v) => s + v.vendidoTotal, 0),
-    );
+    const vendidoDeVendas = vendas.filter((v) => v.modeloBloco === bloco).reduce((s, v) => s + v.vendidoTotal, 0);
+    const vendidoDeEntrada = models
+      .filter((m) => m.bloco === bloco)
+      .reduce((s, m) => s + (entradaDoMesPorModelo.get(m.id) ?? 0), 0);
+    const vendido = arred(vendidoDeVendas + vendidoDeEntrada);
     const meta = arred(
       models.reduce((s, m) => s + metaProrateada(periodos, m.id, m.meta_mensal, inicio, fim, diasDoMes)[bloco], 0),
     );
@@ -359,8 +362,19 @@ export async function buscarResumoPrimaris(
   );
   const geradoPorModelo = new Map(geradosDesdeEntrada);
 
+  // Valor de entrada conta na meta e no % do mês em que o período aberto dela
+  // começou — só nesse mês, senão viraria um bônus permanente todo mês
+  // seguinte (m.valor_entrada não muda depois de cadastrado).
+  const entradaDoMesPorModelo = new Map<string, number>();
+  for (const m of comValorEntrada) {
+    const periodoAberto = periodos.find((p) => p.modeloId === m.id && p.fim === null);
+    if (periodoAberto && periodoAberto.inicio >= inicio && periodoAberto.inicio <= fim) {
+      entradaDoMesPorModelo.set(m.id, m.valor_entrada);
+    }
+  }
+
   const porPagina: ResumoPagina[] = modelsAtivos.map((m) => {
-    const vendido = arred(vendidoPorModelo.get(m.id) ?? 0);
+    const vendido = arred((vendidoPorModelo.get(m.id) ?? 0) + (entradaDoMesPorModelo.get(m.id) ?? 0));
     const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
     return {
       modeloId: m.id,
@@ -376,7 +390,7 @@ export async function buscarResumoPrimaris(
     };
   });
 
-  const { porTime, total } = calcularMetasDosTimes(vendas, models, periodos, inicio, fim);
+  const { porTime, total } = calcularMetasDosTimes(vendas, models, periodos, inicio, fim, entradaDoMesPorModelo);
 
   return { porRep, porPagina, porTime, total };
 }
