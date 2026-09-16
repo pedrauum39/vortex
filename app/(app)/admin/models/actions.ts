@@ -67,7 +67,12 @@ export async function criarModelo(
     .single();
   if (error) throw new Error(error.message);
 
-  await abrirPeriodo(supabase, data.id, bloco, desde || dataBRT());
+  const inicio = desde || dataBRT();
+  await abrirPeriodo(supabase, data.id, bloco, inicio);
+  const { error: erroMeta } = await supabase
+    .from('model_meta_periodos')
+    .insert({ model_id: data.id, meta_mensal: metaMensal || 0, inicio });
+  if (erroMeta) throw new Error(erroMeta.message);
 
   revalidar();
 }
@@ -166,9 +171,55 @@ export async function definirAtivaModelo(id: string, ativa: boolean) {
   revalidar();
 }
 
+/** Fecha o período de meta aberto da modelo, se existir. */
+async function fecharPeriodoDeMeta(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  modelId: string,
+  hoje: string,
+) {
+  const { error } = await supabase
+    .from('model_meta_periodos')
+    .update({ fim: hoje })
+    .eq('model_id', modelId)
+    .is('fim', null);
+  if (error) throw new Error(error.message);
+}
+
+/** Muda a meta mensal registrando o histórico (model_meta_periodos) — um mês
+ *  passado consultado depois continua mostrando a meta que valia NAQUELE mês
+ *  (ex.: 71k em agosto, 61k em setembro), não a atual. A meta é mensal: editar
+ *  no meio do mês (ex.: dia 15) vale pro mês INTEIRO, não só dali pra frente —
+ *  o período novo começa no dia 1 do mês corrente, não hoje. Sem período
+ *  aberto ainda (modelo criada antes desta feature) abre um novo em vez de
+ *  fechar. */
 export async function definirMetaMensal(id: string, metaMensal: number) {
   await exigirAdmin();
   const supabase = await criarClienteServidor();
+  const hoje = dataBRT();
+  const inicioDoMes = `${hoje.slice(0, 7)}-01`;
+
+  const [
+    { data: modelo, error: erroBusca },
+    { data: aberto, error: erroAberto },
+  ] = await Promise.all([
+    supabase.from('models').select('meta_mensal').eq('id', id).single(),
+    supabase.from('model_meta_periodos').select('inicio').eq('model_id', id).is('fim', null).maybeSingle(),
+  ]);
+  if (erroBusca || !modelo) throw new Error('Modelo não encontrada.');
+  if (erroAberto) throw new Error(erroAberto.message);
+
+  if (Number(modelo.meta_mensal) !== metaMensal) {
+    // Período novo começa no dia 1 do mês corrente — a não ser que o período
+    // aberto tenha começado DEPOIS disso (página nova criada esse mês com
+    // "desde" no meio dele), caso em que usa esse início pra não violar
+    // fim >= inicio do período que está sendo fechado.
+    const novoInicio = aberto && aberto.inicio > inicioDoMes ? aberto.inicio : inicioDoMes;
+    await fecharPeriodoDeMeta(supabase, id, novoInicio);
+    const { error: erroInsert } = await supabase
+      .from('model_meta_periodos')
+      .insert({ model_id: id, meta_mensal: metaMensal, inicio: novoInicio });
+    if (erroInsert) throw new Error(erroInsert.message);
+  }
 
   const { error } = await supabase.from('models').update({ meta_mensal: metaMensal }).eq('id', id);
   if (error) throw new Error(error.message);

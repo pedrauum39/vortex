@@ -4,6 +4,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calcularMetas, metaDiariaDaPagina, percentualAtingido, type TurnoParaMeta } from './meta';
+import { metaMensalNaData } from './periodos';
+import { buscarPeriodosDeMeta } from './periodosDb';
 import { deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { somarDias } from './tempo';
@@ -22,7 +24,7 @@ type LinhaShift = {
   turno: Turno;
   bloco: Bloco;
   shift_logs: {
-    shift_log_models: { model_id: string; models: { nome: string; meta_mensal: number } }[];
+    shift_log_models: { model_id: string; models: { nome: string } }[];
     statements: {
       model_id: string;
       net_assinaturas: number;
@@ -119,11 +121,11 @@ export async function buscarMetasDoRep(
   // este período (diaDoStatement), mas sua `data` fica fora da janela crua.
   const inicioBusca = somarDias(inicio, -1);
 
-  const [{ data: shiftsData }, { data: modelsData }] = await Promise.all([
+  const [{ data: shiftsData }, { data: modelsData }, periodosDeMeta] = await Promise.all([
     db
       .from('shifts')
       .select(
-        'id, data, turno, bloco, shift_logs(shift_log_models(model_id, models(nome, meta_mensal)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, shift_logs(shift_log_models(model_id, models(nome)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
@@ -131,6 +133,7 @@ export async function buscarMetasDoRep(
       .lte('data', fim)
       .order('data'),
     db.from('models').select('*').eq('ativa', true).eq('extra', false),
+    buscarPeriodosDeMeta(db),
   ]);
 
   const shifts = ((shiftsData ?? []) as unknown as LinhaShift[]).filter((s) =>
@@ -141,11 +144,20 @@ export async function buscarMetasDoRep(
   // Páginas de cada turno resolvidas primeiro (síncrono), pra depois buscar
   // o vendido de todos os turnos trabalhados em paralelo — sequencial aqui
   // significava um round-trip atrás do outro pra cada turno do mês inteiro.
+  // Turno já trabalhado resolve a meta que valia NO DIA (model_meta_periodos),
+  // não a atual — mês passado com meta diferente da de hoje continua certo.
+  // Turno ainda não trabalhado (fallback do roster) não tem essa data real
+  // pra ancorar, então usa a meta atual mesmo.
   const paginasPorShift = shifts.map((shift) => {
     const log = shift.shift_logs[0];
     const trabalhado = !!log;
+    const dia = diaDoStatement(shift.turno, shift.data);
     const paginas = trabalhado
-      ? log!.shift_log_models.map((m) => ({ id: m.model_id, nome: m.models.nome, meta: m.models.meta_mensal }))
+      ? log!.shift_log_models.map((m) => ({
+          id: m.model_id,
+          nome: m.models.nome,
+          meta: metaMensalNaData(periodosDeMeta, m.model_id, dia),
+        }))
       : roster.filter((m) => m.bloco === shift.bloco).map((m) => ({ id: m.id, nome: m.nome, meta: m.meta_mensal }));
     return { shift, log, trabalhado, paginas };
   });

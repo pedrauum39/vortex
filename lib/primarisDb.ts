@@ -5,8 +5,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
-import { blocoNaData, diasDeCruzamento, metaProrateada, type Periodo } from './periodos';
-import { buscarPeriodos } from './periodosDb';
+import { blocoNaData, diasDeCruzamento, metaMensalEfetiva, metaMensalNaData, metaProrateada, type Periodo, type PeriodoMeta } from './periodos';
+import { buscarPeriodos, buscarPeriodosDeMeta } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { dataBRT, diasNoMes, somarDias } from './tempo';
@@ -44,6 +44,9 @@ export type VendaDeModelo = {
   modeloId: string;
   modeloBloco: Bloco;
   turno: Turno;
+  /** Dia do statement (diaDoStatement) — usado pra resolver a meta mensal que
+   *  valia na época (model_meta_periodos), não a atual. */
+  data: string;
   /** As 5 categorias — o que de fato foi vendido no turno. */
   vendidoTotal: number;
   /** Só as comissionáveis (gorjetas+publicações+mensagens) — base do % de comissão. */
@@ -149,6 +152,7 @@ export async function buscarVendasDaEmpresa(
       modeloId: t.modeloId,
       modeloBloco: bloco,
       turno: t.shift.turno,
+      data: dia,
       vendidoTotal: totalDasLinhas(delta),
       vendidoComissionavel: baseComissao(delta),
     });
@@ -205,6 +209,7 @@ export async function buscarVendasDaEmpresa(
       modeloId: e.model_id,
       modeloBloco: bloco,
       turno: e.turno,
+      data: dia,
       vendidoTotal: totalDasLinhas(delta),
       vendidoComissionavel: baseComissao(delta),
     });
@@ -258,8 +263,9 @@ export type MetasDosTimes = {
  */
 function calcularMetasDosTimes(
   vendas: VendaDeModelo[],
-  models: { id: string; bloco: Bloco; meta_mensal: number }[],
+  models: { id: string; bloco: Bloco }[],
   periodos: Periodo[],
+  periodosDeMeta: PeriodoMeta[],
   inicio: string,
   fim: string,
   entradaDoMesPorModelo: Map<string, number>,
@@ -273,7 +279,10 @@ function calcularMetasDosTimes(
       .reduce((s, m) => s + (entradaDoMesPorModelo.get(m.id) ?? 0), 0);
     const vendido = arred(vendidoDeVendas + vendidoDeEntrada);
     const meta = arred(
-      models.reduce((s, m) => s + metaProrateada(periodos, m.id, m.meta_mensal, inicio, fim, diasDoMes)[bloco], 0),
+      models.reduce((s, m) => {
+        const metaMensal = metaMensalEfetiva(periodosDeMeta, m.id, inicio, fim, diasDoMes);
+        return s + metaProrateada(periodos, m.id, metaMensal, inicio, fim, diasDoMes)[bloco];
+      }, 0),
     );
     porTime[bloco] = { vendido, meta, percentual: percentualAtingido(vendido, meta) };
   }
@@ -289,11 +298,12 @@ export async function buscarResumoPrimaris(
   inicio: string,
   fim: string,
 ): Promise<ResumoPrimaris> {
-  const [vendas, { data: repsData }, { data: modelsData }, periodos] = await Promise.all([
+  const [vendas, { data: repsData }, { data: modelsData }, periodos, periodosDeMeta] = await Promise.all([
     buscarVendasDaEmpresa(db, inicio, fim),
     db.from('reps').select('id, nome_curto, cargo').eq('ativo', true).order('nome_curto'),
-    db.from('models').select('id, nome, bloco, meta_mensal, ativa, valor_entrada').order('bloco').order('nome'),
+    db.from('models').select('id, nome, bloco, ativa, valor_entrada').order('bloco').order('nome'),
     buscarPeriodos(db),
+    buscarPeriodosDeMeta(db),
   ]);
 
   const reps = (repsData ?? []) as { id: string; nome_curto: string; cargo: Cargo }[];
@@ -301,7 +311,6 @@ export async function buscarResumoPrimaris(
     id: string;
     nome: string;
     bloco: Bloco;
-    meta_mensal: number;
     ativa: boolean;
     valor_entrada: number;
   }[];
@@ -313,11 +322,6 @@ export async function buscarResumoPrimaris(
   const modelsDoMes = models.filter((m) =>
     periodos.some((p) => p.modeloId === m.id && diasDeCruzamento(p, inicio, fim) > 0),
   );
-  // Todos os modelos, não só os do mês: uma página que saiu do período bem no
-  // início do mês (sem cruzar [inicio, fim]) ainda pode ter turnos/vendas
-  // atribuídos a ela por buscarVendasDaEmpresa — sem a meta dela aqui, o %
-  // atingida de quem trabalhou nela explode (vendido sem meta).
-  const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
   // direto dele sem precisar de mais um parâmetro.
   const mes = inicio.slice(0, 7);
@@ -332,8 +336,10 @@ export async function buscarResumoPrimaris(
     vendidoPorModelo.set(v.modeloId, (vendidoPorModelo.get(v.modeloId) ?? 0) + v.vendidoTotal);
     // Meta parcial: soma a meta diária de cada modelo nos turnos que ele já
     // trabalhou, mesma conta do dashboard pessoal — dá pra comparar o
-    // ritmo de vendas mesmo antes do mês fechar.
-    const metaDaPagina = metaDiariaDaPagina(metaPorModelo.get(v.modeloId) ?? 0, v.turno, diasDoMes);
+    // ritmo de vendas mesmo antes do mês fechar. Meta mensal resolvida NO DIA
+    // da venda (não a atual) — mês passado com meta diferente da de hoje
+    // continua correto (ex.: Joyce 71k em agosto, 61k em setembro).
+    const metaDaPagina = metaDiariaDaPagina(metaMensalNaData(periodosDeMeta, v.modeloId, v.data), v.turno, diasDoMes);
     metaPorRep.set(v.repId, (metaPorRep.get(v.repId) ?? 0) + metaDaPagina);
   }
 
@@ -383,22 +389,23 @@ export async function buscarResumoPrimaris(
 
   const porPagina: ResumoPagina[] = modelsDoMes.map((m) => {
     const vendido = arred((vendidoPorModelo.get(m.id) ?? 0) + (entradaDoMesPorModelo.get(m.id) ?? 0));
+    const meta = metaMensalEfetiva(periodosDeMeta, m.id, inicio, fim, diasDoMes);
     const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
     return {
       modeloId: m.id,
       nome: m.nome,
       bloco: m.bloco,
       vendido,
-      meta: m.meta_mensal,
-      percentual: percentualAtingido(vendido, m.meta_mensal),
+      meta,
+      percentual: percentualAtingido(vendido, meta),
       projecao,
-      percentualProjetado: projecao === null ? null : percentualAtingido(projecao, m.meta_mensal),
+      percentualProjetado: projecao === null ? null : percentualAtingido(projecao, meta),
       valorEntrada: m.valor_entrada,
       geradoDesdeEntrada: m.valor_entrada > 0 ? (geradoPorModelo.get(m.id) ?? 0) : null,
     };
   });
 
-  const { porTime, total } = calcularMetasDosTimes(vendas, models, periodos, inicio, fim, entradaDoMesPorModelo);
+  const { porTime, total } = calcularMetasDosTimes(vendas, models, periodos, periodosDeMeta, inicio, fim, entradaDoMesPorModelo);
 
   return { porRep, porPagina, porTime, total };
 }

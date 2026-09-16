@@ -66,3 +66,46 @@ export function metaProrateada(
   }
   return porBloco;
 }
+
+// Histórico de meta_mensal ao longo do tempo (model_meta_periodos) — mesma
+// forma de model_bloco_periodos, mas guardando o valor da meta em vez do
+// bloco. Editar a meta em admin/models fecha o período vigente e abre um
+// novo, então um mês passado consultado depois continua vendo a meta que
+// valia NAQUELE mês (ex.: 71k em agosto, 61k em setembro), não a atual.
+export type PeriodoMeta = {
+  modeloId: string;
+  metaMensal: number;
+  inicio: string; // 'YYYY-MM-DD'
+  fim: string | null; // null = período aberto (meta atual)
+};
+
+/** A meta mensal que valia numa data específica, ou 0 se nenhum período cobre. */
+export function metaMensalNaData(periodos: PeriodoMeta[], modeloId: string, data: string): number {
+  const periodo = periodos.find(
+    (p) => p.modeloId === modeloId && p.inicio <= data && (p.fim === null || p.fim > data),
+  );
+  return periodo?.metaMensal ?? 0;
+}
+
+/**
+ * Meta mensal "efetiva" de uma modelo dentro de [inicio, fim]: média
+ * ponderada pelos dias de cada valor vigente no período (se a meta não mudou
+ * dentro do mês, isso é só o valor único de sempre).
+ */
+export function metaMensalEfetiva(
+  periodos: PeriodoMeta[],
+  modeloId: string,
+  inicio: string,
+  fim: string,
+  diasDoMes: number,
+): number {
+  if (diasDoMes <= 0) return 0;
+
+  let soma = 0;
+  for (const periodo of periodos.filter((p) => p.modeloId === modeloId)) {
+    const dias = diasDeCruzamento(periodo, inicio, fim);
+    if (dias === 0) continue;
+    soma += (periodo.metaMensal * dias) / diasDoMes;
+  }
+  return arred(soma);
+}

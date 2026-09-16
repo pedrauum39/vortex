@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { blocoNaData, diasDeCruzamento, metaProrateada, type Periodo } from './periodos';
+import {
+  blocoNaData,
+  diasDeCruzamento,
+  metaMensalEfetiva,
+  metaMensalNaData,
+  metaProrateada,
+  type Periodo,
+  type PeriodoMeta,
+} from './periodos';
 
 const periodosIssy: Periodo[] = [
   { modeloId: 'issy', bloco: 'I', inicio: '2026-07-01', fim: '2026-08-15' },
@@ -105,5 +113,43 @@ describe('metaProrateada', () => {
     expect(resultado.II).toBe(0);
     // Não pode dar a meta cheia do mês (31000) — é o formato exato do bug do Finding 2.
     expect(resultado.I).toBeLessThan(31000);
+  });
+});
+
+const periodosDeMetaJoyce: PeriodoMeta[] = [
+  { modeloId: 'joyce', metaMensal: 71000, inicio: '2026-01-01', fim: '2026-09-01' },
+  { modeloId: 'joyce', metaMensal: 61000, inicio: '2026-09-01', fim: null },
+];
+
+describe('metaMensalNaData', () => {
+  test('data dentro do período fechado antigo devolve o valor antigo', () => {
+    expect(metaMensalNaData(periodosDeMetaJoyce, 'joyce', '2026-08-15')).toBe(71000);
+  });
+
+  test('data dentro do período aberto atual devolve o valor novo', () => {
+    expect(metaMensalNaData(periodosDeMetaJoyce, 'joyce', '2026-09-15')).toBe(61000);
+  });
+
+  test('sem período cobrindo a data devolve zero', () => {
+    expect(metaMensalNaData(periodosDeMetaJoyce, 'joyce', '2025-01-01')).toBe(0);
+  });
+});
+
+describe('metaMensalEfetiva', () => {
+  test('meta que não mudou dentro do mês dá o valor único de sempre', () => {
+    expect(metaMensalEfetiva(periodosDeMetaJoyce, 'joyce', '2026-08-01', '2026-08-31', 31)).toBe(71000);
+  });
+
+  test('meta trocada exatamente no início do mês seguinte não mistura com o mês anterior', () => {
+    expect(metaMensalEfetiva(periodosDeMetaJoyce, 'joyce', '2026-09-01', '2026-09-30', 30)).toBe(61000);
+  });
+
+  test('meta trocada no meio do mês faz média ponderada pelos dias', () => {
+    const periodos: PeriodoMeta[] = [
+      { modeloId: 'x', metaMensal: 30000, inicio: '2026-01-01', fim: '2026-08-16' },
+      { modeloId: 'x', metaMensal: 62000, inicio: '2026-08-16', fim: null },
+    ];
+    const resultado = metaMensalEfetiva(periodos, 'x', '2026-08-01', '2026-08-31', 31);
+    expect(resultado).toBeCloseTo((30000 * 15 + 62000 * 16) / 31, 2);
   });
 });

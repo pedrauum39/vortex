@@ -3,7 +3,7 @@
 // o roster atual. Ver lib/periodos.ts pra lógica pura (blocoNaData etc).
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Periodo } from './periodos';
+import type { Periodo, PeriodoMeta } from './periodos';
 import type { Bloco } from './tipos';
 
 export async function buscarPeriodos(db: SupabaseClient): Promise<Periodo[]> {
@@ -15,4 +15,17 @@ export async function buscarPeriodos(db: SupabaseClient): Promise<Periodo[]> {
     inicio: p.inicio,
     fim: p.fim,
   }));
+}
+
+export async function buscarPeriodosDeMeta(db: SupabaseClient): Promise<PeriodoMeta[]> {
+  const { data, error } = await db.from('model_meta_periodos').select('model_id, meta_mensal, inicio, fim');
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as { model_id: string; meta_mensal: number; inicio: string; fim: string | null }[]).map(
+    (p) => ({
+      modeloId: p.model_id,
+      metaMensal: Number(p.meta_mensal),
+      inicio: p.inicio,
+      fim: p.fim,
+    }),
+  );
 }
