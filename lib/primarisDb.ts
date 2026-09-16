@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
-import { blocoNaData, metaProrateada, type Periodo } from './periodos';
+import { blocoNaData, diasDeCruzamento, metaProrateada, type Periodo } from './periodos';
 import { buscarPeriodos } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
@@ -305,10 +305,18 @@ export async function buscarResumoPrimaris(
     ativa: boolean;
     valor_entrada: number;
   }[];
-  const modelsAtivos = models.filter((m) => m.ativa);
-  // Todos os modelos, não só os ativos: uma página desativada no meio do mês
-  // já teve vendas contadas em vendidoPorRep antes disso — sem a meta dela
-  // aqui, o % atingida de quem trabalhou nela explode (vendido sem meta).
+  // "Por página" precisa das páginas que existiam NAQUELE mês (algum período
+  // de bloco cruzando [inicio, fim]), não das que estão ativas agora — senão
+  // um mês passado mostra modelo que só entrou depois (ex.: Victorya em
+  // agosto) e esconde quem já saiu (ex.: Capri Cavanni, desativada em
+  // setembro mas com o mês inteiro de agosto pra bater a meta dela).
+  const modelsDoMes = models.filter((m) =>
+    periodos.some((p) => p.modeloId === m.id && diasDeCruzamento(p, inicio, fim) > 0),
+  );
+  // Todos os modelos, não só os do mês: uma página que saiu do período bem no
+  // início do mês (sem cruzar [inicio, fim]) ainda pode ter turnos/vendas
+  // atribuídos a ela por buscarVendasDaEmpresa — sem a meta dela aqui, o %
+  // atingida de quem trabalhou nela explode (vendido sem meta).
   const metaPorModelo = new Map(models.map((m) => [m.id, m.meta_mensal]));
   // inicio é sempre o primeiro dia do mês (limitesDoMes) — dá pra tirar o mês
   // direto dele sem precisar de mais um parâmetro.
@@ -348,7 +356,7 @@ export async function buscarResumoPrimaris(
   // valor_entrada > 0 (a imensa maioria não tem) — evita mais uma varredura
   // de vendas por página à toa.
   const hoje = dataBRT();
-  const comValorEntrada = modelsAtivos.filter((m) => m.valor_entrada > 0);
+  const comValorEntrada = modelsDoMes.filter((m) => m.valor_entrada > 0);
   const geradosDesdeEntrada = await Promise.all(
     comValorEntrada.map(async (m) => {
       const periodoAberto = periodos.find((p) => p.modeloId === m.id && p.fim === null);
@@ -373,7 +381,7 @@ export async function buscarResumoPrimaris(
     }
   }
 
-  const porPagina: ResumoPagina[] = modelsAtivos.map((m) => {
+  const porPagina: ResumoPagina[] = modelsDoMes.map((m) => {
     const vendido = arred((vendidoPorModelo.get(m.id) ?? 0) + (entradaDoMesPorModelo.get(m.id) ?? 0));
     const projecao = projecaoDoMes(vendido, diasPassados, diasDoMes);
     return {
