@@ -44,9 +44,28 @@ export function diasDeCruzamento(
   return diferencaDias(de, ate) + 1;
 }
 
+/** Data de início do período mais antigo de uma modelo (bloco ou meta,
+ *  qualquer um dos dois formatos) — usado pra distinguir "modelo nova" (esse
+ *  é o primeiro período dela na vida) de "trocou de time/meta de verdade"
+ *  (já teve período antes). */
+function inicioDaVida<P extends { modeloId: string; inicio: string }>(
+  periodos: P[],
+  modeloId: string,
+): string | null {
+  let menor: string | null = null;
+  for (const p of periodos) {
+    if (p.modeloId !== modeloId) continue;
+    if (menor === null || p.inicio < menor) menor = p.inicio;
+  }
+  return menor;
+}
+
 /**
  * Reparte a meta mensal de uma modelo entre os blocos que ela pertenceu
- * dentro de [inicio, fim], proporcional aos dias em cada um.
+ * dentro de [inicio, fim], proporcional aos dias em cada um — EXCETO no
+ * primeiro período da vida dela (modelo nova): esse conta a meta cheia
+ * desde o dia 1 do mês em que entrou, não proporcional aos dias restantes.
+ * Só uma troca de time de verdade (que fechou um período anterior) reparte.
  */
 export function metaProrateada(
   periodos: Periodo[],
@@ -59,10 +78,17 @@ export function metaProrateada(
   const porBloco: Record<Bloco, number> = { I: 0, II: 0 };
   if (diasDoMes <= 0) return porBloco;
 
+  const primeiroInicio = inicioDaVida(periodos, modeloId);
   for (const periodo of periodos.filter((p) => p.modeloId === modeloId)) {
     const dias = diasDeCruzamento(periodo, inicio, fim);
     if (dias === 0) continue;
-    porBloco[periodo.bloco] = arred(porBloco[periodo.bloco] + (metaMensal * dias) / diasDoMes);
+    // Só conta cheio quando ela entrou NESTE mês consultado (o início do
+    // primeiro período da vida cai dentro de [inicio, fim]) — um período
+    // antigo (de meses atrás) que só fecha no meio DESTE mês é troca de
+    // time de verdade, continua proporcional.
+    const modeloNovaNesteMes = periodo.inicio === primeiroInicio && periodo.inicio >= inicio && periodo.inicio <= fim;
+    const valor = modeloNovaNesteMes ? metaMensal : (metaMensal * dias) / diasDoMes;
+    porBloco[periodo.bloco] = arred(porBloco[periodo.bloco] + valor);
   }
   return porBloco;
 }
@@ -90,7 +116,10 @@ export function metaMensalNaData(periodos: PeriodoMeta[], modeloId: string, data
 /**
  * Meta mensal "efetiva" de uma modelo dentro de [inicio, fim]: média
  * ponderada pelos dias de cada valor vigente no período (se a meta não mudou
- * dentro do mês, isso é só o valor único de sempre).
+ * dentro do mês, isso é só o valor único de sempre) — EXCETO no primeiro
+ * período da vida dela (modelo nova, sem meta_mensal registrada antes):
+ * conta o valor cheio desde o dia 1 do mês em que entrou, mesma regra de
+ * metaProrateada.
  */
 export function metaMensalEfetiva(
   periodos: PeriodoMeta[],
@@ -101,11 +130,13 @@ export function metaMensalEfetiva(
 ): number {
   if (diasDoMes <= 0) return 0;
 
+  const primeiroInicio = inicioDaVida(periodos, modeloId);
   let soma = 0;
   for (const periodo of periodos.filter((p) => p.modeloId === modeloId)) {
     const dias = diasDeCruzamento(periodo, inicio, fim);
     if (dias === 0) continue;
-    soma += (periodo.metaMensal * dias) / diasDoMes;
+    const modeloNovaNesteMes = periodo.inicio === primeiroInicio && periodo.inicio >= inicio && periodo.inicio <= fim;
+    soma += modeloNovaNesteMes ? periodo.metaMensal : (periodo.metaMensal * dias) / diasDoMes;
   }
   return arred(soma);
 }

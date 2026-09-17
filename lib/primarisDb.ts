@@ -222,6 +222,7 @@ export type ResumoPagina = {
   modeloId: string;
   nome: string;
   bloco: Bloco;
+  ativa: boolean;
   vendido: number;
   meta: number;
   percentual: number | null;
@@ -395,6 +396,7 @@ export async function buscarResumoPrimaris(
       modeloId: m.id,
       nome: m.nome,
       bloco: m.bloco,
+      ativa: m.ativa,
       vendido,
       meta,
       percentual: percentualAtingido(vendido, meta),

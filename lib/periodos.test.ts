@@ -114,6 +114,26 @@ describe('metaProrateada', () => {
     // Não pode dar a meta cheia do mês (31000) — é o formato exato do bug do Finding 2.
     expect(resultado.I).toBeLessThan(31000);
   });
+
+  test('modelo nova que entrou no meio do mês conta a meta cheia, não proporcional', () => {
+    // Primeiro período da vida dela, começando dia 16 de agosto — não é
+    // troca de time, é a primeira vez que ela existe no sistema.
+    const periodos: Periodo[] = [{ modeloId: 'natalya', bloco: 'II', inicio: '2026-08-16', fim: null }];
+    const resultado = metaProrateada(periodos, 'natalya', 67000, '2026-08-01', '2026-08-31', 31);
+    expect(resultado).toEqual({ I: 0, II: 67000 });
+  });
+
+  test('troca de time de verdade (período antigo de meses atrás) continua proporcional, mesmo sendo o primeiro período da lista', () => {
+    // O período em I é "o primeiro da vida dela" (começou em janeiro), mas
+    // não começou NESTE mês consultado — é uma troca de time de verdade.
+    const periodos: Periodo[] = [
+      { modeloId: 'issy', bloco: 'I', inicio: '2026-01-01', fim: '2026-08-16' },
+      { modeloId: 'issy', bloco: 'II', inicio: '2026-08-16', fim: null },
+    ];
+    const resultado = metaProrateada(periodos, 'issy', 31000, '2026-08-01', '2026-08-31', 31);
+    expect(resultado.I).toBeCloseTo((31000 * 15) / 31, 2);
+    expect(resultado.II).toBeCloseTo((31000 * 16) / 31, 2);
+  });
 });
 
 const periodosDeMetaJoyce: PeriodoMeta[] = [
@@ -151,5 +171,10 @@ describe('metaMensalEfetiva', () => {
     ];
     const resultado = metaMensalEfetiva(periodos, 'x', '2026-08-01', '2026-08-31', 31);
     expect(resultado).toBeCloseTo((30000 * 15 + 62000 * 16) / 31, 2);
+  });
+
+  test('modelo nova que entrou no meio do mês conta a meta mensal cheia', () => {
+    const periodos: PeriodoMeta[] = [{ modeloId: 'natalya', metaMensal: 67000, inicio: '2026-09-16', fim: null }];
+    expect(metaMensalEfetiva(periodos, 'natalya', '2026-09-01', '2026-09-30', 30)).toBe(67000);
   });
 });

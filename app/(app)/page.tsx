@@ -437,7 +437,7 @@ function MetasDoTime({ resumo }: { resumo: ResumoPrimaris }) {
             <BarraMeta rotulo={bloco === 'I' ? 'Vortex I' : 'Vortex II'} {...resumo.porTime[bloco]} />
             <div className="mt-2 space-y-1 border-l border-borda pl-3">
               {resumo.porPagina
-                .filter((p) => p.bloco === bloco)
+                .filter((p) => p.bloco === bloco && p.ativa)
                 .map((p) => (
                   <div key={p.modeloId}>
                     <LinhaMeta rotulo={p.nome} vendido={p.vendido} meta={p.meta} percentual={p.percentual} />
