@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
-import { blocoNaData, diasDeCruzamento, metaMensalEfetiva, metaMensalNaData, metaProrateada, type Periodo, type PeriodoMeta } from './periodos';
+import { blocoNaData, diasDeCruzamento, inicioDaVida, metaMensalEfetiva, metaMensalNaData, metaProrateada, type Periodo, type PeriodoMeta } from './periodos';
 import { buscarPeriodos, buscarPeriodosDeMeta } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
@@ -230,10 +230,11 @@ export type ResumoPagina = {
   projecao: number | null;
   percentualProjetado: number | null;
   /** Net que ela já tinha antes de entrar pro time (models.valor_entrada) —
-   *  só quando > 0, pra desenhar a barra "entrou com X · time fez Y". */
+   *  só no MÊS em que ela entrou (0 nos demais), pra desenhar a barra
+   *  "entrou com X · time fez Y". */
   valorEntrada: number;
-  /** Soma de tudo já vendido desde que o período atual dela começou (não só
-   *  o mês corrente) — null se valorEntrada é 0 (barra não aparece). */
+  /** Soma de tudo vendido desde que ela entrou até o fim do mês consultado
+   *  (ou hoje) — null fora do mês de entrada (barra não aparece). */
   geradoDesdeEntrada: number | null;
 };
 
@@ -359,34 +360,36 @@ export async function buscarResumoPrimaris(
     })
     .sort((a, b) => b.vendido - a.vendido);
 
-  // Só busca o total gerado desde a entrada pras modelos que realmente têm
-  // valor_entrada > 0 (a imensa maioria não tem) — evita mais uma varredura
-  // de vendas por página à toa.
+  // "Entrou com X" só existe no mês em que a modelo ENTROU — o início do
+  // PRIMEIRO período de bloco dela na vida (não o período aberto: uma troca de
+  // time depois abre um período novo, e isso não é uma entrada). Nos meses
+  // seguintes não aparece barra nem soma no vendido/meta, só o que o time
+  // vendeu naquele mês (m.valor_entrada não muda depois de cadastrado).
+  const entradaDoMesPorModelo = new Map<string, number>();
+  const entradaDesde = new Map<string, string>();
+  for (const m of modelsDoMes) {
+    if (m.valor_entrada <= 0) continue;
+    const primeiroInicio = inicioDaVida(periodos, m.id);
+    if (primeiroInicio !== null && primeiroInicio >= inicio && primeiroInicio <= fim) {
+      entradaDoMesPorModelo.set(m.id, m.valor_entrada);
+      entradaDesde.set(m.id, primeiroInicio);
+    }
+  }
+
+  // Só busca o total gerado desde a entrada pras modelos que entraram NESTE
+  // mês — a imensa maioria não tem, evita uma varredura de vendas à toa.
   const hoje = dataBRT();
-  const comValorEntrada = modelsDoMes.filter((m) => m.valor_entrada > 0);
+  const ate = hoje < fim ? hoje : fim;
   const geradosDesdeEntrada = await Promise.all(
-    comValorEntrada.map(async (m) => {
-      const periodoAberto = periodos.find((p) => p.modeloId === m.id && p.fim === null);
-      if (!periodoAberto) return [m.id, 0] as const;
-      const vendasDesdeEntrada = await buscarVendasDaEmpresa(db, periodoAberto.inicio, hoje);
+    [...entradaDesde].map(async ([modeloId, desde]) => {
+      const vendasDesdeEntrada = await buscarVendasDaEmpresa(db, desde, ate);
       const total = arred(
-        vendasDesdeEntrada.filter((v) => v.modeloId === m.id).reduce((s, v) => s + v.vendidoTotal, 0),
+        vendasDesdeEntrada.filter((v) => v.modeloId === modeloId).reduce((s, v) => s + v.vendidoTotal, 0),
       );
-      return [m.id, total] as const;
+      return [modeloId, total] as const;
     }),
   );
   const geradoPorModelo = new Map(geradosDesdeEntrada);
-
-  // Valor de entrada conta na meta e no % do mês em que o período aberto dela
-  // começou — só nesse mês, senão viraria um bônus permanente todo mês
-  // seguinte (m.valor_entrada não muda depois de cadastrado).
-  const entradaDoMesPorModelo = new Map<string, number>();
-  for (const m of comValorEntrada) {
-    const periodoAberto = periodos.find((p) => p.modeloId === m.id && p.fim === null);
-    if (periodoAberto && periodoAberto.inicio >= inicio && periodoAberto.inicio <= fim) {
-      entradaDoMesPorModelo.set(m.id, m.valor_entrada);
-    }
-  }
 
   const porPagina: ResumoPagina[] = modelsDoMes.map((m) => {
     const vendido = arred((vendidoPorModelo.get(m.id) ?? 0) + (entradaDoMesPorModelo.get(m.id) ?? 0));
@@ -402,8 +405,8 @@ export async function buscarResumoPrimaris(
       percentual: percentualAtingido(vendido, meta),
       projecao,
       percentualProjetado: projecao === null ? null : percentualAtingido(projecao, meta),
-      valorEntrada: m.valor_entrada,
-      geradoDesdeEntrada: m.valor_entrada > 0 ? (geradoPorModelo.get(m.id) ?? 0) : null,
+      valorEntrada: entradaDoMesPorModelo.get(m.id) ?? 0,
+      geradoDesdeEntrada: entradaDoMesPorModelo.has(m.id) ? (geradoPorModelo.get(m.id) ?? 0) : null,
     };
   });
 

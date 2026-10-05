@@ -3,11 +3,27 @@ import {
   blocoNaData,
   diasDeCruzamento,
   metaMensalEfetiva,
+  inicioDaVida,
   metaMensalNaData,
   metaProrateada,
   type Periodo,
   type PeriodoMeta,
 } from './periodos';
+
+describe('inicioDaVida', () => {
+  test('modelo que trocou de time depois de entrar devolve o início do PRIMEIRO período, não do aberto', () => {
+    const periodos: Periodo[] = [
+      { modeloId: 'brett', bloco: 'I', inicio: '2026-09-27', fim: '2026-10-03' },
+      { modeloId: 'brett', bloco: 'II', inicio: '2026-10-03', fim: null },
+      { modeloId: 'outra', bloco: 'I', inicio: '2026-01-01', fim: null },
+    ];
+    expect(inicioDaVida(periodos, 'brett')).toBe('2026-09-27');
+  });
+
+  test('modelo sem período devolve null', () => {
+    expect(inicioDaVida([], 'x')).toBeNull();
+  });
+});
 
 const periodosIssy: Periodo[] = [
   { modeloId: 'issy', bloco: 'I', inicio: '2026-07-01', fim: '2026-08-15' },

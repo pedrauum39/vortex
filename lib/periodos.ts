@@ -48,7 +48,7 @@ export function diasDeCruzamento(
  *  qualquer um dos dois formatos) — usado pra distinguir "modelo nova" (esse
  *  é o primeiro período dela na vida) de "trocou de time/meta de verdade"
  *  (já teve período antes). */
-function inicioDaVida<P extends { modeloId: string; inicio: string }>(
+export function inicioDaVida<P extends { modeloId: string; inicio: string }>(
   periodos: P[],
   modeloId: string,
 ): string | null {
