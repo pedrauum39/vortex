@@ -17,6 +17,7 @@ import { fotoDoRep } from '@/lib/repFoto';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, diaLegivel, diasNoMes, limitesDoMes, mesAtual, somarMeses } from '@/lib/tempo';
 import {
+  BLOCOS,
   HORARIOS,
   ROTULO_CARGO,
   TURNOS,
@@ -26,6 +27,7 @@ import {
   type Funcao,
   type Turno,
 } from '@/lib/tipos';
+import { INICIO_TIME3 } from '@/lib/escala';
 import { CalendarioMes, type DiaDoCalendario } from './calendario-mes';
 import { CartaoInvoice } from './cartao-invoice';
 import { FotoAmpliavel } from './foto-ampliavel';
@@ -82,7 +84,7 @@ async function buscarTurnosVazios(hoje: string): Promise<SlotVazio[]> {
   const vazios: SlotVazio[] = [];
   for (const [data_, linhas] of [...porData].sort(([a], [b]) => a.localeCompare(b))) {
     for (const turno of TURNOS) {
-      for (const bloco of ['I', 'II'] as Bloco[]) {
+      for (const bloco of (data_ >= INICIO_TIME3 ? BLOCOS : ['I', 'II']) as Bloco[]) {
         const preenchido = linhas.some((l) => l.turno === turno && l.bloco === bloco && l.rep_id);
         if (!preenchido) vazios.push({ data: data_, turno, bloco });
       }

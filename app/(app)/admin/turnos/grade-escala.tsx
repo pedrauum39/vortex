@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import { diaLegivel } from '@/lib/tempo';
-import { TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep, type Turno } from '@/lib/tipos';
+import { INICIO_TIME3 } from '@/lib/escala';
+import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep, type Turno } from '@/lib/tipos';
 import { salvarGrade } from './actions';
 
 type Valores = Record<string, string | null>;
@@ -98,7 +99,7 @@ export function GradeEscala({
             </tr>
           </thead>
           <tbody>
-            {(['I', 'II'] as Bloco[]).map((bloco) => (
+            {(dias[dias.length - 1] >= INICIO_TIME3 ? BLOCOS : (['I', 'II'] as Bloco[])).map((bloco) => (
               <BlocoDaGrade
                 key={bloco}
                 bloco={bloco}
@@ -141,7 +142,7 @@ function BlocoDaGrade({
     <>
       <tr className="border-b border-borda bg-superficie-alta">
         <td colSpan={1 + dias.length} className="px-4 py-2 text-xs font-medium tracking-wide text-accent">
-          {bloco === 'I' ? 'TIME 1 · Vortex I' : 'TIME 2 · Vortex II'}
+          TIME {BLOCOS.indexOf(bloco) + 1} · Vortex {bloco}
         </td>
       </tr>
       {TURNOS.map((turno) => (

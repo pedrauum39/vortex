@@ -15,7 +15,7 @@ const dinheiro = (valor: number) =>
 
 const percentual = (valor: number | null) => (valor === null ? '—' : `${valor.toFixed(1)}%`);
 
-const NOME_TIME: Record<Bloco, string> = { I: 'Time 1 · Vortex I', II: 'Time 2 · Vortex II' };
+const NOME_TIME: Record<Bloco, string> = { I: 'Time 1 · Vortex I', II: 'Time 2 · Vortex II', III: 'Time 3 · Vortex III' };
 
 // Sem isto, o Next serve do cache do navegador uma versão antiga da mesma
 // URL — um mês que ainda não tinha venda alguma continua aparecendo vazio

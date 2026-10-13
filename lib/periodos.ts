@@ -75,7 +75,7 @@ export function metaProrateada(
   fim: string,
   diasDoMes: number,
 ): Record<Bloco, number> {
-  const porBloco: Record<Bloco, number> = { I: 0, II: 0 };
+  const porBloco: Record<Bloco, number> = { I: 0, II: 0, III: 0 };
   if (diasDoMes <= 0) return porBloco;
 
   const primeiroInicio = inicioDaVida(periodos, modeloId);

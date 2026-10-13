@@ -61,6 +61,7 @@ export function FormularioTurno({ reps, inicio }: { reps: Rep[]; inicio: string 
           <select value={bloco} onChange={(e) => setBloco(e.target.value as Bloco)} className={campo}>
             <option value="I">I (Time 1)</option>
             <option value="II">II (Time 2)</option>
+            <option value="III">III (Time 3)</option>
           </select>
         </label>
 

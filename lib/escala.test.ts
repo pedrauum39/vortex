@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { gerarEscala, mesclarOverrides, type SlotEscala } from './escala';
+import { INICIO_TIME3, fase, gerarEscala, mesclarOverrides, type SlotEscala } from './escala';
 import type { Papel, Turno } from './tipos';
 
 // Papéis por turno, conforme a tabela de project.md.
 const NOMES: Record<Turno, Record<Papel, string>> = {
-  T2T3: { A: 'Carolinne P.', B: 'Léo Grimaldi', C: 'Oliver Melo' },
-  T4T5: { A: 'Gabriela Storini', B: 'Ignacio Canelo', C: 'Carlos de Lucca' },
-  T6T1: { A: 'Pedro Ribeiro', B: 'Natasha Tem Tem', C: 'Diogo Ciesielski' },
+  T2T3: { A: 'Carolinne P.', B: 'Léo Grimaldi', C: 'Oliver Melo', D: 'Secundus 3 T2T3', E: 'Tertius 2 T2T3' },
+  T4T5: { A: 'Gabriela Storini', B: 'Ignacio Canelo', C: 'Carlos de Lucca', D: 'Secundus 3 T4T5', E: 'Tertius 2 T4T5' },
+  T6T1: { A: 'Pedro Ribeiro', B: 'Natasha Tem Tem', C: 'Diogo Ciesielski', D: 'Secundus 3 T6T1', E: 'Tertius 2 T6T1' },
 };
 
 type Celulas = { I: string; assist: string | null; II: string };
@@ -109,6 +109,92 @@ describe('gerarEscala', () => {
     for (const slot of gerarEscala('2026-08-10', '2026-10-04')) {
       if (slot.funcao === 'assist') expect(slot.papel).toBe('C');
     }
+  });
+});
+
+describe('Time 3', () => {
+  const de = INICIO_TIME3;
+  const ate = '2026-12-13'; // 8 semanas
+  const semTime3 = (slots: SlotEscala[]) => slots.filter((s) => s.papel !== 'D' && s.papel !== 'E');
+
+  test('não existe antes do INICIO_TIME3', () => {
+    const antes = gerarEscala('2026-08-10', '2026-10-18');
+    expect(antes.some((s) => s.bloco === 'III' || s.papel === 'D' || s.papel === 'E')).toBe(false);
+  });
+
+  test('não mexe em nenhum slot de A, B e C', () => {
+    // A regra de I/II como era antes do Time 3, congelada aqui.
+    const FOLGA_ANTIGA = {
+      T2T3: { A: 1, B: 0, C: 2 },
+      T4T5: { A: 0, B: 3, C: 2 },
+      T6T1: { A: 3, B: 0, C: 2 },
+    } as const;
+    const esperado: string[] = [];
+    for (const data of [...new Set(gerarEscala(de, ate).map((s) => s.data))]) {
+      const f = fase(data);
+      for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
+        const fo = FOLGA_ANTIGA[turno];
+        const por = (bloco: string, funcao: string, papel: string) =>
+          esperado.push(`${data}|${turno}|${bloco}|${funcao}|${papel}`);
+        if (f === fo.A) {
+          por('I', 'regular', 'B');
+          por('II', 'regular', 'C');
+        } else if (f === fo.B) {
+          por('I', 'regular', 'A');
+          por('II', 'regular', 'C');
+        } else if (f === fo.C) {
+          por('I', 'regular', 'A');
+          por('II', 'regular', 'B');
+        } else {
+          por('I', 'regular', 'A');
+          por('I', 'assist', 'C');
+          por('II', 'regular', 'B');
+        }
+      }
+    }
+    const obtido = semTime3(gerarEscala(de, ate)).map(
+      (s) => `${s.data}|${s.turno}|${s.bloco}|${s.funcao}|${s.papel}`,
+    );
+    expect(obtido).toEqual(esperado);
+  });
+
+  test('Vortex III tem exatamente um regular todo dia, em todo turno', () => {
+    const slots = gerarEscala(de, ate);
+    const dias = [...new Set(slots.map((s) => s.data))];
+    for (const dia of dias) {
+      for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
+        const doIII = slots.filter((s) => s.data === dia && s.turno === turno && s.bloco === 'III');
+        expect(doIII).toHaveLength(1);
+        expect(doIII[0].funcao).toBe('regular');
+      }
+    }
+  });
+
+  test('D e E ficam em WWW. e nunca em dois lugares no mesmo dia', () => {
+    const slots = gerarEscala(de, ate);
+    const dias = [...new Set(slots.map((s) => s.data))].sort();
+    for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
+      for (const papel of ['D', 'E'] as Papel[]) {
+        const padrao = dias
+          .map((dia) => {
+            const n = slots.filter((s) => s.data === dia && s.turno === turno && s.papel === papel).length;
+            expect(n).toBeLessThanOrEqual(1);
+            return n ? 'W' : '.';
+          })
+          .join('');
+        expect(padrao).toMatch(/^(WWW\.|WW\.W|W\.WW|\.WWW)+$/);
+      }
+    }
+  });
+
+  test('Assistant continua só com tertius (C ou E) e um por slot', () => {
+    const slots = gerarEscala(de, ate);
+    for (const s of slots.filter((s) => s.funcao === 'assist')) {
+      expect(['C', 'E']).toContain(s.papel);
+      expect(s.bloco).toBe('I');
+    }
+    const chaves = slots.map((s) => `${s.data}|${s.turno}|${s.bloco}|${s.funcao}`);
+    expect(new Set(chaves).size).toBe(chaves.length);
   });
 });
 

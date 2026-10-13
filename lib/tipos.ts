@@ -3,7 +3,7 @@
 import type { LinhasNet } from './statement';
 
 export type Turno = 'T2T3' | 'T4T5' | 'T6T1';
-export type Papel = 'A' | 'B' | 'C';
+export type Papel = 'A' | 'B' | 'C' | 'D' | 'E';
 
 /**
  * Cargo é o que define o percentual de comissão, e é independente do `papel`:
@@ -20,7 +20,8 @@ export const ROTULO_CARGO: Record<Cargo, string> = {
 };
 
 export type Role = 'rep' | 'admin';
-export type Bloco = 'I' | 'II';
+export type Bloco = 'I' | 'II' | 'III';
+export const BLOCOS: Bloco[] = ['I', 'II', 'III'];
 export type Funcao = 'regular' | 'assist';
 export type Origem = 'gerado' | 'manual';
 

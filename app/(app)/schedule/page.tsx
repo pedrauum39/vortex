@@ -12,7 +12,8 @@ import {
   somarDias,
   somarMeses,
 } from '@/lib/tempo';
-import { TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
+import { INICIO_TIME3 } from '@/lib/escala';
+import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
 import { type DiaDoCalendario } from '../calendario-mes';
 import { BotaoGerar } from './botao-gerar';
 import { MeusTurnos, type MeuTurno } from './meus-turnos';
@@ -242,7 +243,7 @@ async function AbaTime({
           </tr>
         </thead>
         <tbody>
-          {(['I', 'II'] as Bloco[]).map((bloco) => (
+          {(fim >= INICIO_TIME3 ? BLOCOS : (['I', 'II'] as Bloco[])).map((bloco) => (
             <BlocoDeLinhas key={bloco} bloco={bloco} semana={dias} busca={busca} meuNome={meuNome} hoje={hoje} />
           ))}
         </tbody>
@@ -268,7 +269,7 @@ function BlocoDeLinhas({
     <>
       <tr className="border-b border-borda bg-superficie-alta">
         <td colSpan={8} className="px-4 py-2.5 text-left text-sm font-medium tracking-wide text-accent">
-          {bloco === 'I' ? 'TIME 1 · Vortex I' : 'TIME 2 · Vortex II'}
+          TIME {BLOCOS.indexOf(bloco) + 1} · Vortex {bloco}
         </td>
       </tr>
       {TURNOS.map((turno) => (

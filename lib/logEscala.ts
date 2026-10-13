@@ -3,7 +3,7 @@
 // bloco antes de chamar aqui.
 
 import { dataBRT } from './tempo';
-import { ROTULO_CARGO, rotuloTurno, TURNOS, type Bloco, type Cargo, type Funcao, type Turno } from './tipos';
+import { BLOCOS, ROTULO_CARGO, rotuloTurno, TURNOS, type Bloco, type Cargo, type Funcao, type Turno } from './tipos';
 
 export type EntradaLog = {
   id: string;
@@ -34,7 +34,7 @@ export type TurnoDiaLog = { turno: Turno; data: string; times: TimeLog[] };
 export type GrupoLog = { diaMudanca: string; alteradoPor: string | null; turnos: TurnoDiaLog[] };
 
 const tituloDoTime = (e: EntradaLog): string =>
-  e.modelosDoBloco.length > 0 ? e.modelosDoBloco.join(' + ') : e.bloco === 'I' ? 'Time 1' : 'Time 2';
+  e.modelosDoBloco.length > 0 ? e.modelosDoBloco.join(' + ') : `Time ${BLOCOS.indexOf(e.bloco) + 1}`;
 
 /** Assistant mostra "(Assistant)" no lugar do cargo; regular mostra o cargo. */
 const qualificador = (e: EntradaLog, cargo: Cargo | null): string | null =>

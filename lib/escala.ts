@@ -28,11 +28,20 @@ export type Override = {
 /** Dia em que o ciclo de 4 fases começa. Ver project.md. */
 export const ANCORA = '2026-08-10';
 
-/** Fase em que cada papel folga, por turno. O tertius folga na fase 2 nos três. */
+/** Primeiro dia com o Time 3 (Vortex III) na escala. Antes disso, só I e II. */
+export const INICIO_TIME3 = '2026-10-19';
+
+/**
+ * Fase em que cada papel folga, por turno. O tertius folga na fase 2 nos três.
+ *
+ * Time 3 entra por cima da escala de I/II sem mexer nela: D (titular do
+ * Vortex III) folga na fase em que ninguém de A/B/C folga, e E (2º tertius)
+ * folga junto com o C.
+ */
 const FOLGA: Record<Turno, Record<Papel, number>> = {
-  T2T3: { A: 1, B: 0, C: 2 },
-  T4T5: { A: 0, B: 3, C: 2 },
-  T6T1: { A: 3, B: 0, C: 2 },
+  T2T3: { A: 1, B: 0, C: 2, D: 3, E: 2 },
+  T4T5: { A: 0, B: 3, C: 2, D: 1, E: 2 },
+  T6T1: { A: 3, B: 0, C: 2, D: 1, E: 2 },
 };
 
 // Aritmética de datas em dias inteiros de UTC: 'YYYY-MM-DD' entra e sai sem
@@ -76,6 +85,17 @@ export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
         por('I', 'regular', 'A');
         por('I', 'assist', 'C');
         por('II', 'regular', 'B');
+      }
+
+      // Time 3: D no Vortex III; na folga do D, o E cobre. Nas folgas de A ou
+      // B o Assistant do Vortex I está livre, e o E vai pra lá.
+      if (data >= INICIO_TIME3) {
+        if (f === folga.D) {
+          por('III', 'regular', 'E');
+        } else {
+          por('III', 'regular', 'D');
+          if (f === folga.A || f === folga.B) por('I', 'assist', 'E');
+        }
       }
     }
   }

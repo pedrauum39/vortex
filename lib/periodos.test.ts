@@ -101,7 +101,7 @@ describe('metaProrateada', () => {
   test('modelo que ficou o mês inteiro no mesmo bloco dá a meta cheia nele', () => {
     const periodos: Periodo[] = [{ modeloId: 'capri', bloco: 'II', inicio: '2026-01-01', fim: null }];
     const resultado = metaProrateada(periodos, 'capri', 31000, '2026-08-01', '2026-08-31', 31);
-    expect(resultado).toEqual({ I: 0, II: 31000 });
+    expect(resultado).toEqual({ I: 0, II: 31000, III: 0 });
   });
 
   test('modelo que trocou de bloco no meio do mês reparte proporcional', () => {
@@ -118,7 +118,7 @@ describe('metaProrateada', () => {
 
   test('modelo sem período cruzando o mês dá meta zero nos dois blocos', () => {
     const periodos: Periodo[] = [{ modeloId: 'x', bloco: 'I', inicio: '2026-01-01', fim: '2026-03-01' }];
-    expect(metaProrateada(periodos, 'x', 10000, '2026-08-01', '2026-08-31', 31)).toEqual({ I: 0, II: 0 });
+    expect(metaProrateada(periodos, 'x', 10000, '2026-08-01', '2026-08-31', 31)).toEqual({ I: 0, II: 0, III: 0 });
   });
 
   test('modelo desativada no meio do mês sem reabertura para de contar meta no fechamento (regressão do bug de período nunca fechado)', () => {
@@ -136,7 +136,7 @@ describe('metaProrateada', () => {
     // troca de time, é a primeira vez que ela existe no sistema.
     const periodos: Periodo[] = [{ modeloId: 'natalya', bloco: 'II', inicio: '2026-08-16', fim: null }];
     const resultado = metaProrateada(periodos, 'natalya', 67000, '2026-08-01', '2026-08-31', 31);
-    expect(resultado).toEqual({ I: 0, II: 67000 });
+    expect(resultado).toEqual({ I: 0, II: 67000, III: 0 });
   });
 
   test('troca de time de verdade (período antigo de meses atrás) continua proporcional, mesmo sendo o primeiro período da lista', () => {
