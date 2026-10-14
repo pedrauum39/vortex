@@ -114,12 +114,20 @@ describe('gerarEscala', () => {
 
 describe('Time 3', () => {
   const de = INICIO_TIME3;
+  // O dia do início só tem T4/T5 e T6/T1 — os testes de "todo dia, todo
+  // turno" e do padrão WWW. começam no primeiro dia inteiro.
+  const deInteiro = '2026-10-15';
   const ate = '2026-12-13'; // 8 semanas
   const semTime3 = (slots: SlotEscala[]) => slots.filter((s) => s.papel !== 'D' && s.papel !== 'E');
 
   test('não existe antes do INICIO_TIME3', () => {
-    const antes = gerarEscala('2026-08-10', '2026-10-18');
+    const antes = gerarEscala('2026-08-10', '2026-10-13');
     expect(antes.some((s) => s.bloco === 'III' || s.papel === 'D' || s.papel === 'E')).toBe(false);
+  });
+
+  test('no dia do início, entra a partir do T4/T5', () => {
+    const dia = gerarEscala(INICIO_TIME3, INICIO_TIME3).filter((s) => s.bloco === 'III');
+    expect(dia.map((s) => s.turno).sort()).toEqual(['T4T5', 'T6T1']);
   });
 
   test('não mexe em nenhum slot de A, B e C', () => {
@@ -159,7 +167,7 @@ describe('Time 3', () => {
   });
 
   test('Vortex III tem exatamente um regular todo dia, em todo turno', () => {
-    const slots = gerarEscala(de, ate);
+    const slots = gerarEscala(deInteiro, ate);
     const dias = [...new Set(slots.map((s) => s.data))];
     for (const dia of dias) {
       for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
@@ -171,7 +179,7 @@ describe('Time 3', () => {
   });
 
   test('D e E ficam em WWW. e nunca em dois lugares no mesmo dia', () => {
-    const slots = gerarEscala(de, ate);
+    const slots = gerarEscala(deInteiro, ate);
     const dias = [...new Set(slots.map((s) => s.data))].sort();
     for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
       for (const papel of ['D', 'E'] as Papel[]) {

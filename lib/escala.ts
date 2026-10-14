@@ -29,7 +29,15 @@ export type Override = {
 export const ANCORA = '2026-08-10';
 
 /** Primeiro dia com o Time 3 (Vortex III) na escala. Antes disso, só I e II. */
-export const INICIO_TIME3 = '2026-10-19';
+export const INICIO_TIME3 = '2026-10-14';
+/** No dia do início, o Time 3 entra a partir deste turno (inclusive). */
+const PRIMEIRO_TURNO_TIME3: Turno = 'T4T5';
+
+/** O Time 3 já existe neste turno? */
+export function time3Ativo(data: string, turno: Turno): boolean {
+  if (data !== INICIO_TIME3) return data > INICIO_TIME3;
+  return TURNOS.indexOf(turno) >= TURNOS.indexOf(PRIMEIRO_TURNO_TIME3);
+}
 
 /**
  * Fase em que cada papel folga, por turno. O tertius folga na fase 2 nos três.
@@ -89,7 +97,7 @@ export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
 
       // Time 3: D no Vortex III; na folga do D, o E cobre. Nas folgas de A ou
       // B o Assistant do Vortex I está livre, e o E vai pra lá.
-      if (data >= INICIO_TIME3) {
+      if (time3Ativo(data, turno)) {
         if (f === folga.D) {
           por('III', 'regular', 'E');
         } else {
