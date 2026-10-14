@@ -10,6 +10,7 @@ import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
 import type { Bloco, Funcao, Metade, Model, Rep, Turno } from '@/lib/tipos';
 import { precisaAtencao } from '@/lib/turnoAberto';
 import { buscarTurnosExtraAdmin } from '@/lib/turnosExtraDb';
+import { FormularioFiller, type LeituraFiller } from './formulario-filler';
 import { FormularioTurno } from './formulario-turno';
 import { GradeEscala } from './grade-escala';
 import { ListaTurnos } from './lista-turnos';
@@ -44,6 +45,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     { data: modelsData },
     periodos,
     { data: alteracoesData },
+    { data: fillersData },
   ] = await Promise.all([
     supabase
       .from('shifts')
@@ -69,11 +71,41 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       .gte('data', inicio)
       .lte('data', fim)
       .order('criado_em', { ascending: false }),
+    supabase
+      .from('leituras_filler')
+      .select('id, data, turno, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, models(nome)')
+      .gte('data', somarDias(inicio, -1))
+      .lte('data', fim)
+      .order('data'),
   ]);
 
   const shifts = (shiftsData ?? []) as unknown as LinhaShift[];
   const reps = (repsData ?? []) as Rep[];
   const models = (modelsData ?? []) as Model[];
+  const leiturasFiller: LeituraFiller[] = (
+    (fillersData ?? []) as unknown as {
+      id: string;
+      data: string;
+      turno: Turno;
+      net_assinaturas: number;
+      net_gorjetas: number;
+      net_publicacoes: number;
+      net_mensagens: number;
+      net_indicacoes: number;
+      models: { nome: string } | null;
+    }[]
+  ).map((f) => ({
+    id: f.id,
+    data: f.data,
+    turno: f.turno,
+    modeloNome: f.models?.nome ?? '?',
+    total:
+      Number(f.net_assinaturas) +
+      Number(f.net_gorjetas) +
+      Number(f.net_publicacoes) +
+      Number(f.net_mensagens) +
+      Number(f.net_indicacoes),
+  }));
 
   type AlteracaoRow = {
     id: string;
@@ -234,6 +266,10 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       <LogAlteracoes entradas={entradasLog} />
 
       {podeEditar && <FormularioTurno reps={reps} inicio={inicio} />}
+
+      {podeEditar && (
+        <FormularioFiller models={models.filter((m) => m.ativa)} inicio={inicio} leituras={leiturasFiller} />
+      )}
 
       <ListaTurnos
         emAtencao={emAtencao}

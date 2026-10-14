@@ -50,25 +50,43 @@ export async function buscarAnterior(
   const logIds = (shiftsAnteriores ?? []).flatMap((s) =>
     (s.shift_logs as { id: string }[]).map((l) => l.id),
   );
-  if (logIds.length === 0) return { tipo: 'pendente' };
 
-  const { data: st } = await db
-    .from('statements')
-    .select('net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes')
-    .in('shift_log_id', logIds)
-    .eq('model_id', modeloId)
-    .maybeSingle();
+  const { data: st } =
+    logIds.length === 0
+      ? { data: null }
+      : await db
+          .from('statements')
+          .select('net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes')
+          .in('shift_log_id', logIds)
+          .eq('model_id', modeloId)
+          .maybeSingle();
 
-  if (!st) return { tipo: 'pendente' };
+  // Sem statement de verdade: pode ser modelo nova, com o print do turno
+  // anterior lançado como leitura filler (não é venda de ninguém).
+  const linha =
+    st ??
+    (metade === 2
+      ? null
+      : (
+          await db
+            .from('leituras_filler')
+            .select('net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes')
+            .eq('data', anterior.data)
+            .eq('turno', anterior.turno)
+            .eq('model_id', modeloId)
+            .maybeSingle()
+        ).data);
+
+  if (!linha) return { tipo: 'pendente' };
 
   return {
     tipo: 'ok',
     linhas: {
-      assinaturas: Number(st.net_assinaturas),
-      gorjetas: Number(st.net_gorjetas),
-      publicacoes: Number(st.net_publicacoes),
-      mensagens: Number(st.net_mensagens),
-      indicacoes: Number(st.net_indicacoes),
+      assinaturas: Number(linha.net_assinaturas),
+      gorjetas: Number(linha.net_gorjetas),
+      publicacoes: Number(linha.net_publicacoes),
+      mensagens: Number(linha.net_mensagens),
+      indicacoes: Number(linha.net_indicacoes),
     },
   };
 }

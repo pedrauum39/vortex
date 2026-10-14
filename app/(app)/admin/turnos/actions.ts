@@ -507,3 +507,50 @@ export async function apagarTurnoExtraAdmin(id: string) {
 
   revalidar();
 }
+
+/**
+ * Leitura filler: o print de uma modelo num turno que ninguém do time
+ * trabalhou (modelo nova). Só base pro desconto do turno seguinte — ver
+ * buscarAnterior() e supabase/migrations/0036_leituras_filler.sql.
+ */
+export async function lancarLeituraFiller(dados: {
+  modeloId: string;
+  data: string;
+  turno: Turno;
+  assinaturas: number;
+  gorjetas: number;
+  publicacoes: number;
+  mensagens: number;
+  indicacoes: number;
+}) {
+  const admin = await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('leituras_filler').upsert(
+    {
+      model_id: dados.modeloId,
+      data: dados.data,
+      turno: dados.turno,
+      net_assinaturas: dados.assinaturas,
+      net_gorjetas: dados.gorjetas,
+      net_publicacoes: dados.publicacoes,
+      net_mensagens: dados.mensagens,
+      net_indicacoes: dados.indicacoes,
+      criado_por: admin.id,
+    },
+    { onConflict: 'model_id,data,turno' },
+  );
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
+
+export async function apagarLeituraFiller(id: string) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const { error } = await supabase.from('leituras_filler').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidar();
+}
