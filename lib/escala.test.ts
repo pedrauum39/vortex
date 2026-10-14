@@ -113,7 +113,6 @@ describe('gerarEscala', () => {
 });
 
 describe('Time 3', () => {
-  const de = INICIO_TIME3;
   // O dia do início só tem T4/T5 e T6/T1 — os testes de "todo dia, todo
   // turno" e do padrão WWW. começam no primeiro dia inteiro.
   const deInteiro = '2026-10-15';
@@ -152,68 +151,50 @@ describe('Time 3', () => {
     expect(obtido).toEqual(esperado);
   });
 
-  test('os dois tertius folgam juntos e fazem o mesmo número de solos a cada 2 ciclos', () => {
-    // 8 dias = 2 ciclos inteiros, começando no início de um ciclo par.
-    const slots = gerarEscala('2026-10-21', '2026-10-28');
-    for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
-      const doTurno = slots.filter((s) => s.turno === turno);
-      const conta = (papel: Papel, funcao: 'regular' | 'assist') =>
-        doTurno.filter((s) => s.papel === papel && s.funcao === funcao).length;
-      expect(conta('C', 'regular')).toBe(3);
-      expect(conta('E', 'regular')).toBe(3);
-      expect(conta('C', 'assist')).toBe(3);
-      expect(conta('E', 'assist')).toBe(3);
-
-      const dias = (papel: Papel) => new Set(doTurno.filter((s) => s.papel === papel).map((s) => s.data));
-      expect([...dias('C')].sort()).toEqual([...dias('E')].sort());
-    }
-  });
+  // Quem trabalha em cada turno com o Time 3 (papéis usados por turno).
+  const PAPEIS: Record<Turno, Papel[]> = {
+    T2T3: ['A', 'B', 'C', 'E'],
+    T4T5: ['A', 'B', 'C', 'D'],
+    T6T1: ['A', 'B', 'D', 'E'],
+  };
 
   test('na folga de um titular, o de baixo sobe e o tertius entra no Vortex III', () => {
-    for (const s of gerarEscala(deInteiro, ate)) {
-      if (s.funcao !== 'regular') continue;
-      if (s.papel === 'C' || s.papel === 'E') expect(s.bloco).toBe('III');
-      if (s.papel === 'D') expect(['II', 'III']).toContain(s.bloco);
+    const slots = gerarEscala(deInteiro, ate);
+    for (const s of slots) {
+      if (s.turno === 'T2T3' && s.papel === 'C') expect(s.bloco).toBe('III');
+      if (s.turno !== 'T2T3' && (s.papel === 'C' || s.papel === 'E')) expect(s.bloco).toBe('III');
+      if (s.turno !== 'T2T3' && s.papel === 'D') expect(['II', 'III']).toContain(s.bloco);
     }
   });
 
-  test('Vortex III tem exatamente um regular todo dia, em todo turno', () => {
+  test('Vortex I, II e III têm exatamente um regular todo dia, sem Assistant', () => {
     const slots = gerarEscala(deInteiro, ate);
+    expect(slots.some((s) => s.funcao === 'assist')).toBe(false);
     const dias = [...new Set(slots.map((s) => s.data))];
     for (const dia of dias) {
       for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
-        const doIII = slots.filter((s) => s.data === dia && s.turno === turno && s.bloco === 'III');
-        expect(doIII).toHaveLength(1);
-        expect(doIII[0].funcao).toBe('regular');
+        const blocos = slots.filter((s) => s.data === dia && s.turno === turno).map((s) => s.bloco);
+        expect(blocos.sort()).toEqual(['I', 'II', 'III']);
       }
     }
   });
 
-  test('C, D e E ficam em WWW. e nunca em dois lugares no mesmo dia', () => {
+  test('todo dia folga exatamente um por turno, cada um em WWW.', () => {
     const slots = gerarEscala(deInteiro, ate);
     const dias = [...new Set(slots.map((s) => s.data))].sort();
     for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
-      for (const papel of ['C', 'D', 'E'] as Papel[]) {
+      for (const dia of dias) {
+        const trabalham = slots.filter((s) => s.data === dia && s.turno === turno).map((s) => s.papel);
+        expect(new Set(trabalham).size).toBe(3);
+        expect(PAPEIS[turno].filter((p) => !trabalham.includes(p))).toHaveLength(1);
+      }
+      for (const papel of PAPEIS[turno]) {
         const padrao = dias
-          .map((dia) => {
-            const n = slots.filter((s) => s.data === dia && s.turno === turno && s.papel === papel).length;
-            expect(n).toBeLessThanOrEqual(1);
-            return n ? 'W' : '.';
-          })
+          .map((dia) => (slots.some((s) => s.data === dia && s.turno === turno && s.papel === papel) ? 'W' : '.'))
           .join('');
         expect(padrao).toMatch(/^(WWW\.|WW\.W|W\.WW|\.WWW)+$/);
       }
     }
-  });
-
-  test('Assistant continua só com tertius (C ou E) e um por slot', () => {
-    const slots = gerarEscala(de, ate);
-    for (const s of slots.filter((s) => s.funcao === 'assist')) {
-      expect(['C', 'E']).toContain(s.papel);
-      expect(s.bloco).toBe('I');
-    }
-    const chaves = slots.map((s) => `${s.data}|${s.turno}|${s.bloco}|${s.funcao}`);
-    expect(new Set(chaves).size).toBe(chaves.length);
   });
 });
 

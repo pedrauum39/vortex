@@ -50,21 +50,23 @@ const FOLGA_DOIS_TIMES: Record<Turno, { A: number; B: number; C: number }> = {
 };
 
 /**
- * Com o Time 3: A, B e D são os titulares do Vortex I, II e III, cada um com
- * a sua fase de folga; C e E são os dois tertius do turno e folgam juntos
- * (`tertius`), na fase que sobra.
+ * Com o Time 3: 4 reps por turno pra 3 vagas (Vortex I, II e III). Cada um
+ * folga numa fase diferente, então todo dia exatamente um folga e não sobra
+ * ninguém pra Assistant.
  *
- * No T4/T5 e no T6/T1, quem era tertius (Carlos/Diogo) virou o titular D,
- * mantendo a folga da fase 2 — os tertius passaram pra fase 1.
+ * `III` é quem fica no Vortex III e sobe pro II na folga de A ou B; `cobre` é
+ * o tertius que entra no Vortex III na folga de qualquer titular. No T2/T3 o
+ * Time 3 ainda não tem secundus, então a Leticia (E) fica no III e o Oliver
+ * (C) cobre.
  */
-const FOLGA_TRES_TIMES: Record<Turno, { A: number; B: number; D: number; tertius: number }> = {
-  T2T3: { A: 1, B: 0, D: 3, tertius: 2 },
-  T4T5: { A: 0, B: 3, D: 2, tertius: 1 },
-  T6T1: { A: 3, B: 0, D: 2, tertius: 1 },
+const TRES_TIMES: Record<
+  Turno,
+  { folgaA: number; folgaB: number; III: Papel; folgaIII: number; cobre: Papel; folgaCobre: number }
+> = {
+  T2T3: { folgaA: 1, folgaB: 0, III: 'E', folgaIII: 3, cobre: 'C', folgaCobre: 2 },
+  T4T5: { folgaA: 0, folgaB: 3, III: 'D', folgaIII: 2, cobre: 'C', folgaCobre: 1 },
+  T6T1: { folgaA: 3, folgaB: 0, III: 'D', folgaIII: 2, cobre: 'E', folgaCobre: 1 },
 };
-
-/** A partir daqui, os dois tertius revezam a cada ciclo quem cobre e quem fica de Assistant. */
-export const INICIO_ALTERNANCIA = '2026-10-15';
 
 // Aritmética de datas em dias inteiros de UTC: 'YYYY-MM-DD' entra e sai sem
 // passar por fuso nenhum.
@@ -79,11 +81,6 @@ function emData(dias: number): string {
 
 export function fase(data: string): number {
   return (((emDias(data) - emDias(ANCORA)) % 4) + 4) % 4;
-}
-
-/** Número do ciclo de 4 dias desde a âncora. */
-function ciclo(data: string): number {
-  return Math.floor((emDias(data) - emDias(ANCORA)) / 4);
 }
 
 export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
@@ -118,37 +115,25 @@ export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
       }
 
       // Três times. Na folga de um titular, quem está embaixo sobe um time
-      // (o do II vai pro I, o do III vai pro II) e o tertius entra sempre no
-      // Vortex III. Cada ciclo tem 3 folgas de titular pra cobrir e 3
-      // Assistants sobrando, divididos entre os 2 tertius: um cobre as folgas
-      // de A e B (2 solos) e fica de Assistant na do D; o outro faz o
-      // contrário (1 solo, 2 Assistants). A cada ciclo eles trocam, então os
-      // dois fazem o mesmo número de solos.
-      const folga = FOLGA_TRES_TIMES[turno];
-      const troca = data >= INICIO_ALTERNANCIA && ciclo(data) % 2 === 1;
-      const x: Papel = troca ? 'E' : 'C';
-      const y: Papel = troca ? 'C' : 'E';
-
-      if (f === folga.A) {
+      // (o do II vai pro I, o do III vai pro II) e o tertius entra no III.
+      const t = TRES_TIMES[turno];
+      if (f === t.folgaA) {
         por('I', 'regular', 'B');
-        por('I', 'assist', y);
-        por('II', 'regular', 'D');
-        por('III', 'regular', x);
-      } else if (f === folga.B) {
+        por('II', 'regular', t.III);
+        por('III', 'regular', t.cobre);
+      } else if (f === t.folgaB) {
         por('I', 'regular', 'A');
-        por('I', 'assist', y);
-        por('II', 'regular', 'D');
-        por('III', 'regular', x);
-      } else if (f === folga.D) {
+        por('II', 'regular', t.III);
+        por('III', 'regular', t.cobre);
+      } else if (f === t.folgaIII) {
         por('I', 'regular', 'A');
-        por('I', 'assist', x);
         por('II', 'regular', 'B');
-        por('III', 'regular', y);
+        por('III', 'regular', t.cobre);
       } else {
-        // Folga dos dois tertius: os três titulares, sem Assistant.
+        // Folga do tertius: os três titulares.
         por('I', 'regular', 'A');
         por('II', 'regular', 'B');
-        por('III', 'regular', 'D');
+        por('III', 'regular', t.III);
       }
     }
   }
