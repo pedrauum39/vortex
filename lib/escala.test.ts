@@ -118,7 +118,6 @@ describe('Time 3', () => {
   // turno" e do padrão WWW. começam no primeiro dia inteiro.
   const deInteiro = '2026-10-15';
   const ate = '2026-12-13'; // 8 semanas
-  const semTime3 = (slots: SlotEscala[]) => slots.filter((s) => s.papel !== 'D' && s.papel !== 'E');
 
   test('não existe antes do INICIO_TIME3', () => {
     const antes = gerarEscala('2026-08-10', '2026-10-13');
@@ -130,40 +129,52 @@ describe('Time 3', () => {
     expect(dia.map((s) => s.turno).sort()).toEqual(['T4T5', 'T6T1']);
   });
 
-  test('não mexe em nenhum slot de A, B e C', () => {
-    // A regra de I/II como era antes do Time 3, congelada aqui.
+  test('os titulares do Vortex I e II (A e B) continuam como eram', () => {
+    // A regra de I/II antes do Time 3, congelada aqui — só A e B.
     const FOLGA_ANTIGA = {
-      T2T3: { A: 1, B: 0, C: 2 },
-      T4T5: { A: 0, B: 3, C: 2 },
-      T6T1: { A: 3, B: 0, C: 2 },
+      T2T3: { A: 1, B: 0 },
+      T4T5: { A: 0, B: 3 },
+      T6T1: { A: 3, B: 0 },
     } as const;
     const esperado: string[] = [];
-    for (const data of [...new Set(gerarEscala(de, ate).map((s) => s.data))]) {
+    for (const data of [...new Set(gerarEscala(deInteiro, ate).map((s) => s.data))]) {
       const f = fase(data);
       for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
         const fo = FOLGA_ANTIGA[turno];
-        const por = (bloco: string, funcao: string, papel: string) =>
-          esperado.push(`${data}|${turno}|${bloco}|${funcao}|${papel}`);
-        if (f === fo.A) {
-          por('I', 'regular', 'B');
-          por('II', 'regular', 'C');
-        } else if (f === fo.B) {
-          por('I', 'regular', 'A');
-          por('II', 'regular', 'C');
-        } else if (f === fo.C) {
-          por('I', 'regular', 'A');
-          por('II', 'regular', 'B');
-        } else {
-          por('I', 'regular', 'A');
-          por('I', 'assist', 'C');
-          por('II', 'regular', 'B');
-        }
+        if (f === fo.A) esperado.push(`${data}|${turno}|I|B`);
+        else if (f === fo.B) esperado.push(`${data}|${turno}|I|A`);
+        else esperado.push(`${data}|${turno}|I|A`, `${data}|${turno}|II|B`);
       }
     }
-    const obtido = semTime3(gerarEscala(de, ate)).map(
-      (s) => `${s.data}|${s.turno}|${s.bloco}|${s.funcao}|${s.papel}`,
-    );
+    const obtido = gerarEscala(deInteiro, ate)
+      .filter((s) => s.papel === 'A' || s.papel === 'B')
+      .map((s) => `${s.data}|${s.turno}|${s.bloco}|${s.papel}`);
     expect(obtido).toEqual(esperado);
+  });
+
+  test('os dois tertius folgam juntos e fazem o mesmo número de solos a cada 2 ciclos', () => {
+    // 8 dias = 2 ciclos inteiros, começando no início de um ciclo par.
+    const slots = gerarEscala('2026-10-21', '2026-10-28');
+    for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
+      const doTurno = slots.filter((s) => s.turno === turno);
+      const conta = (papel: Papel, funcao: 'regular' | 'assist') =>
+        doTurno.filter((s) => s.papel === papel && s.funcao === funcao).length;
+      expect(conta('C', 'regular')).toBe(3);
+      expect(conta('E', 'regular')).toBe(3);
+      expect(conta('C', 'assist')).toBe(3);
+      expect(conta('E', 'assist')).toBe(3);
+
+      const dias = (papel: Papel) => new Set(doTurno.filter((s) => s.papel === papel).map((s) => s.data));
+      expect([...dias('C')].sort()).toEqual([...dias('E')].sort());
+    }
+  });
+
+  test('na folga de um titular, o de baixo sobe e o tertius entra no Vortex III', () => {
+    for (const s of gerarEscala(deInteiro, ate)) {
+      if (s.funcao !== 'regular') continue;
+      if (s.papel === 'C' || s.papel === 'E') expect(s.bloco).toBe('III');
+      if (s.papel === 'D') expect(['II', 'III']).toContain(s.bloco);
+    }
   });
 
   test('Vortex III tem exatamente um regular todo dia, em todo turno', () => {
@@ -178,11 +189,11 @@ describe('Time 3', () => {
     }
   });
 
-  test('D e E ficam em WWW. e nunca em dois lugares no mesmo dia', () => {
+  test('C, D e E ficam em WWW. e nunca em dois lugares no mesmo dia', () => {
     const slots = gerarEscala(deInteiro, ate);
     const dias = [...new Set(slots.map((s) => s.data))].sort();
     for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
-      for (const papel of ['D', 'E'] as Papel[]) {
+      for (const papel of ['C', 'D', 'E'] as Papel[]) {
         const padrao = dias
           .map((dia) => {
             const n = slots.filter((s) => s.data === dia && s.turno === turno && s.papel === papel).length;

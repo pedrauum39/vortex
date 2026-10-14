@@ -40,17 +40,31 @@ export function time3Ativo(data: string, turno: Turno): boolean {
 }
 
 /**
- * Fase em que cada papel folga, por turno. O tertius folga na fase 2 nos três.
- *
- * Time 3 entra por cima da escala de I/II sem mexer nela: D (titular do
- * Vortex III) folga na fase em que ninguém de A/B/C folga, e E (2º tertius)
- * folga junto com o C.
+ * Antes do Time 3: fase em que cada papel folga, por turno. O tertius (C)
+ * folga na fase 2 nos três.
  */
-const FOLGA: Record<Turno, Record<Papel, number>> = {
-  T2T3: { A: 1, B: 0, C: 2, D: 3, E: 2 },
-  T4T5: { A: 0, B: 3, C: 2, D: 1, E: 2 },
-  T6T1: { A: 3, B: 0, C: 2, D: 1, E: 2 },
+const FOLGA_DOIS_TIMES: Record<Turno, { A: number; B: number; C: number }> = {
+  T2T3: { A: 1, B: 0, C: 2 },
+  T4T5: { A: 0, B: 3, C: 2 },
+  T6T1: { A: 3, B: 0, C: 2 },
 };
+
+/**
+ * Com o Time 3: A, B e D são os titulares do Vortex I, II e III, cada um com
+ * a sua fase de folga; C e E são os dois tertius do turno e folgam juntos
+ * (`tertius`), na fase que sobra.
+ *
+ * No T4/T5 e no T6/T1, quem era tertius (Carlos/Diogo) virou o titular D,
+ * mantendo a folga da fase 2 — os tertius passaram pra fase 1.
+ */
+const FOLGA_TRES_TIMES: Record<Turno, { A: number; B: number; D: number; tertius: number }> = {
+  T2T3: { A: 1, B: 0, D: 3, tertius: 2 },
+  T4T5: { A: 0, B: 3, D: 2, tertius: 1 },
+  T6T1: { A: 3, B: 0, D: 2, tertius: 1 },
+};
+
+/** A partir daqui, os dois tertius revezam a cada ciclo quem cobre e quem fica de Assistant. */
+export const INICIO_ALTERNANCIA = '2026-10-15';
 
 // Aritmética de datas em dias inteiros de UTC: 'YYYY-MM-DD' entra e sai sem
 // passar por fuso nenhum.
@@ -67,6 +81,11 @@ export function fase(data: string): number {
   return (((emDias(data) - emDias(ANCORA)) % 4) + 4) % 4;
 }
 
+/** Número do ciclo de 4 dias desde a âncora. */
+function ciclo(data: string): number {
+  return Math.floor((emDias(data) - emDias(ANCORA)) / 4);
+}
+
 export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
   const slots: SlotEscala[] = [];
 
@@ -75,35 +94,61 @@ export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
     const f = fase(data);
 
     for (const turno of TURNOS) {
-      const folga = FOLGA[turno];
       const por = (bloco: Bloco, funcao: Funcao, papel: Papel) =>
         slots.push({ data, turno, bloco, funcao, papel, origem: 'gerado' });
 
-      if (f === folga.A) {
-        por('I', 'regular', 'B');
-        por('II', 'regular', 'C');
-      } else if (f === folga.B) {
-        por('I', 'regular', 'A');
-        por('II', 'regular', 'C');
-      } else if (f === folga.C) {
-        por('I', 'regular', 'A');
-        por('II', 'regular', 'B');
-      } else {
-        // Ninguém folga: o tertius vai para o campo Assistant.
-        por('I', 'regular', 'A');
-        por('I', 'assist', 'C');
-        por('II', 'regular', 'B');
+      if (!time3Ativo(data, turno)) {
+        const folga = FOLGA_DOIS_TIMES[turno];
+        if (f === folga.A) {
+          por('I', 'regular', 'B');
+          por('II', 'regular', 'C');
+        } else if (f === folga.B) {
+          por('I', 'regular', 'A');
+          por('II', 'regular', 'C');
+        } else if (f === folga.C) {
+          por('I', 'regular', 'A');
+          por('II', 'regular', 'B');
+        } else {
+          // Ninguém folga: o tertius vai para o campo Assistant.
+          por('I', 'regular', 'A');
+          por('I', 'assist', 'C');
+          por('II', 'regular', 'B');
+        }
+        continue;
       }
 
-      // Time 3: D no Vortex III; na folga do D, o E cobre. Nas folgas de A ou
-      // B o Assistant do Vortex I está livre, e o E vai pra lá.
-      if (time3Ativo(data, turno)) {
-        if (f === folga.D) {
-          por('III', 'regular', 'E');
-        } else {
-          por('III', 'regular', 'D');
-          if (f === folga.A || f === folga.B) por('I', 'assist', 'E');
-        }
+      // Três times. Na folga de um titular, quem está embaixo sobe um time
+      // (o do II vai pro I, o do III vai pro II) e o tertius entra sempre no
+      // Vortex III. Cada ciclo tem 3 folgas de titular pra cobrir e 3
+      // Assistants sobrando, divididos entre os 2 tertius: um cobre as folgas
+      // de A e B (2 solos) e fica de Assistant na do D; o outro faz o
+      // contrário (1 solo, 2 Assistants). A cada ciclo eles trocam, então os
+      // dois fazem o mesmo número de solos.
+      const folga = FOLGA_TRES_TIMES[turno];
+      const troca = data >= INICIO_ALTERNANCIA && ciclo(data) % 2 === 1;
+      const x: Papel = troca ? 'E' : 'C';
+      const y: Papel = troca ? 'C' : 'E';
+
+      if (f === folga.A) {
+        por('I', 'regular', 'B');
+        por('I', 'assist', y);
+        por('II', 'regular', 'D');
+        por('III', 'regular', x);
+      } else if (f === folga.B) {
+        por('I', 'regular', 'A');
+        por('I', 'assist', y);
+        por('II', 'regular', 'D');
+        por('III', 'regular', x);
+      } else if (f === folga.D) {
+        por('I', 'regular', 'A');
+        por('I', 'assist', x);
+        por('II', 'regular', 'B');
+        por('III', 'regular', y);
+      } else {
+        // Folga dos dois tertius: os três titulares, sem Assistant.
+        por('I', 'regular', 'A');
+        por('II', 'regular', 'B');
+        por('III', 'regular', 'D');
       }
     }
   }
