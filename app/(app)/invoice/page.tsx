@@ -136,7 +136,7 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
               {linhas.map((l) => (
                 <tr key={`${l.data}-${l.turno}-${l.bloco}-${l.funcao}`} className="border-b border-borda last:border-0">
                   <td className="px-4 py-3">{diaLegivel(l.data)}</td>
-                  <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                  <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno, l.metade)}</td>
                   <td className="px-3 py-3">
                     {l.funcao === 'assist' ? (
                       <span className="rounded-md bg-accent-fraco px-2 py-0.5 text-xs text-accent">

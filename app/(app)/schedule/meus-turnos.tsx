@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { diaLegivel } from '@/lib/tempo';
-import { rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
+import { rotuloTurno, type Bloco, type Metade, type Turno } from '@/lib/tipos';
 import { CalendarioMes, type DiaDoCalendario } from '../calendario-mes';
 import { BotaoGerar } from './botao-gerar';
 
@@ -11,6 +11,7 @@ export type MeuTurno = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   funcao: 'regular' | 'assist';
   origem: 'gerado' | 'manual';
   shift_logs: {
@@ -65,7 +66,7 @@ export function MeusTurnos({
                 <span className={t.data === hoje ? 'font-medium text-accent' : ''}>
                   {diaLegivel(t.data)}
                 </span>
-                <span className="text-texto-fraco">{rotuloTurno(t.turno)}</span>
+                <span className="text-texto-fraco">{rotuloTurno(t.turno, t.metade)}</span>
                 <span className="text-accent">
                   {modelos || rosterPorBloco[t.bloco] || `Bloco ${t.bloco}`}
                 </span>

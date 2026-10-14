@@ -9,7 +9,7 @@ import { buscarPeriodosDeMeta } from './periodosDb';
 import { deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { somarDias } from './tempo';
-import type { Bloco, Model, Turno } from './tipos';
+import type { Bloco, Metade, Model, Turno } from './tipos';
 
 /** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
  * — um T6T1 datado 31/07 pertence a agosto, não julho. */
@@ -23,6 +23,7 @@ type LinhaShift = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   shift_logs: {
     shift_log_models: { model_id: string; models: { nome: string } }[];
     statements: {
@@ -42,6 +43,7 @@ export type LinhaMetaTurno = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   paginas: string[];
   /** true quando as páginas mostradas são o roster do time, não a modelo real trabalhada. */
   planejado: boolean;
@@ -71,11 +73,12 @@ async function vendidoDoTurno(
   db: SupabaseClient,
   turno: Turno,
   data: string,
+  metade: Metade,
   modelos: { id: string }[],
   statements: LinhaShift['shift_logs'][number]['statements'],
 ): Promise<{ vendido: number; pendente: boolean; porPagina: { id: string; vendido: number }[] }> {
   const anteriores = await Promise.all(
-    modelos.map(({ id: modeloId }) => buscarAnterior(db, turno, data, modeloId)),
+    modelos.map(({ id: modeloId }) => buscarAnterior(db, turno, data, modeloId, metade)),
   );
 
   let vendido = 0;
@@ -125,7 +128,7 @@ export async function buscarMetasDoRep(
     db
       .from('shifts')
       .select(
-        'id, data, turno, bloco, shift_logs(shift_log_models(model_id, models(nome)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, metade, shift_logs(shift_log_models(model_id, models(nome)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
@@ -165,7 +168,7 @@ export async function buscarMetasDoRep(
   const vendidos = await Promise.all(
     paginasPorShift.map(({ shift, log, trabalhado, paginas }) =>
       trabalhado
-        ? vendidoDoTurno(db, shift.turno, shift.data, paginas, log!.statements)
+        ? vendidoDoTurno(db, shift.turno, shift.data, shift.metade, paginas, log!.statements)
         : Promise.resolve({ vendido: 0, pendente: false, porPagina: [] as { id: string; vendido: number }[] }),
     ),
   );
@@ -177,6 +180,7 @@ export async function buscarMetasDoRep(
   paginasPorShift.forEach(({ shift, trabalhado, paginas }, i) => {
     turnosParaMeta.push({
       turno: shift.turno,
+      metade: shift.metade,
       metasDasPaginas: paginas.map((p) => p.meta),
       trabalhado,
     });
@@ -186,7 +190,7 @@ export async function buscarMetasDoRep(
     totalVendido += vendido;
 
     const metaDoTurno = paginas.reduce(
-      (soma, p) => soma + metaDiariaDaPagina(p.meta, shift.turno, diasDoMes),
+      (soma, p) => soma + metaDiariaDaPagina(p.meta, shift.turno, diasDoMes, shift.metade),
       0,
     );
 
@@ -195,7 +199,7 @@ export async function buscarMetasDoRep(
       return {
         nome: pagina?.nome ?? '',
         vendido: p.vendido,
-        meta: metaDiariaDaPagina(pagina?.meta ?? 0, shift.turno, diasDoMes),
+        meta: metaDiariaDaPagina(pagina?.meta ?? 0, shift.turno, diasDoMes, shift.metade),
       };
     });
 
@@ -203,6 +207,7 @@ export async function buscarMetasDoRep(
       data: shift.data,
       turno: shift.turno,
       bloco: shift.bloco,
+      metade: shift.metade,
       paginas: paginas.map((p) => p.nome),
       planejado: !trabalhado,
       metaDoTurno,
@@ -283,7 +288,7 @@ export async function buscarRecordeDoRep(db: SupabaseClient, repId: string): Pro
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, shift_logs(shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, metade, shift_logs(shift_log_models(model_id), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
     )
     .eq('rep_id', repId)
     .eq('funcao', 'regular')
@@ -299,7 +304,7 @@ export async function buscarRecordeDoRep(db: SupabaseClient, repId: string): Pro
     shifts.map((shift) => {
       const log = shift.shift_logs[0];
       const modelos = log.shift_log_models.map((m) => ({ id: m.model_id }));
-      return vendidoDoTurno(db, shift.turno, shift.data, modelos, log.statements);
+      return vendidoDoTurno(db, shift.turno, shift.data, shift.metade, modelos, log.statements);
     }),
   );
 
@@ -320,6 +325,7 @@ type LinhaRegularResumo = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   shift_logs: { resumo: string | null }[];
 };
 
@@ -327,6 +333,7 @@ type LinhaAssistResumo = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   reps: { nome_curto: string } | null;
 };
 
@@ -347,14 +354,14 @@ export async function buscarResumosDoRep(
   const [{ data: regularData }, { data: assistData }] = await Promise.all([
     db
       .from('shifts')
-      .select('data, turno, bloco, shift_logs(resumo)')
+      .select('data, turno, bloco, metade, shift_logs(resumo)')
       .eq('rep_id', repId)
       .eq('funcao', 'regular')
       .gte('data', inicioBusca)
       .lte('data', fim),
     db
       .from('shifts')
-      .select('data, turno, bloco, reps(nome_curto)')
+      .select('data, turno, bloco, metade, reps(nome_curto)')
       .eq('funcao', 'assist')
       .gte('data', inicioBusca)
       .lte('data', fim),
@@ -362,14 +369,14 @@ export async function buscarResumosDoRep(
 
   const assistPorSlot = new Map<string, string>();
   for (const a of (assistData ?? []) as unknown as LinhaAssistResumo[]) {
-    if (a.reps?.nome_curto) assistPorSlot.set(`${a.data}|${a.turno}|${a.bloco}`, a.reps.nome_curto);
+    if (a.reps?.nome_curto) assistPorSlot.set(`${a.data}|${a.turno}|${a.bloco}|${a.metade}`, a.reps.nome_curto);
   }
 
   const mapa = new Map<string, ResumoDoTurno>();
   for (const r of (regularData ?? []) as unknown as LinhaRegularResumo[]) {
-    mapa.set(`${r.data}|${r.turno}`, {
+    mapa.set(`${r.data}|${r.turno}|${r.metade}`, {
       resumo: r.shift_logs[0]?.resumo ?? null,
-      assistNome: assistPorSlot.get(`${r.data}|${r.turno}|${r.bloco}`) ?? null,
+      assistNome: assistPorSlot.get(`${r.data}|${r.turno}|${r.bloco}|${r.metade}`) ?? null,
     });
   }
 

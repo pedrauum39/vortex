@@ -11,7 +11,7 @@ import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
 import type { ModeloTrabalhada, SlotResolvido } from '@/lib/invoice';
 import { somarDias } from '@/lib/tempo';
-import type { Bloco, Cargo, Turno } from '@/lib/tipos';
+import type { Bloco, Cargo, Metade, Turno } from '@/lib/tipos';
 
 /** T6T1 cruza a meia-noite e conta pro dia seguinte no statement (diaDoStatement)
  * — um T6T1 datado 31/07 pertence a agosto, não julho. Sem isto ele some do
@@ -35,6 +35,7 @@ type LinhaShift = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   shift_logs: {
     clock_in_at: string;
     clock_out_at: string | null;
@@ -59,19 +60,20 @@ type LinhaSiblingRegular = {
 const CAMPOS_STATEMENTS =
   'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes)';
 
-const CAMPOS = `id, data, turno, bloco, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`;
+const CAMPOS = `id, data, turno, bloco, metade, shift_logs(clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id), ${CAMPOS_STATEMENTS})`;
 
 async function montarModelos(
   db: ReturnType<typeof criarClienteAdmin>,
   turno: Turno,
   data: string,
+  metade: Metade,
   log: LinhaShift['shift_logs'][number],
 ): Promise<ModeloTrabalhada[]> {
   const modelos: ModeloTrabalhada[] = [];
 
   for (const { model_id } of log.shift_log_models) {
     const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
-    const anterior = await buscarAnterior(db, turno, data, model_id);
+    const anterior = await buscarAnterior(db, turno, data, model_id, metade);
 
     modelos.push({
       modeloId: model_id,
@@ -139,6 +141,7 @@ export async function buscarSlotsDoRep(
       .eq('data', shift.data)
       .eq('turno', shift.turno)
       .eq('bloco', shift.bloco)
+      .eq('metade', shift.metade)
       .eq('funcao', 'assist');
     const sibling = (siblingRows as unknown as LinhaSiblingRegular[] | null)?.[0];
     const assistLog = sibling?.shift_logs[0];
@@ -147,6 +150,7 @@ export async function buscarSlotsDoRep(
       data: shift.data,
       turno: shift.turno,
       bloco: shift.bloco,
+      metade: shift.metade,
       regular: {
         repId,
         cargo,
@@ -154,7 +158,7 @@ export async function buscarSlotsDoRep(
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
         saiuAntes: log.saiu_antes,
-        modelos: await montarModelos(db, shift.turno, shift.data, log),
+        modelos: await montarModelos(db, shift.turno, shift.data, shift.metade, log),
       },
       assist:
         sibling?.rep_id && assistLog
@@ -184,6 +188,7 @@ export async function buscarSlotsDoRep(
       .eq('data', shift.data)
       .eq('turno', shift.turno)
       .eq('bloco', shift.bloco)
+      .eq('metade', shift.metade)
       .eq('funcao', 'regular');
     const sibling = (siblingRows as unknown as LinhaSiblingRegular[] | null)?.[0];
     const regularLog = sibling?.shift_logs[0];
@@ -193,6 +198,7 @@ export async function buscarSlotsDoRep(
       data: shift.data,
       turno: shift.turno,
       bloco: shift.bloco,
+      metade: shift.metade,
       regular: {
         repId: sibling.rep_id,
         cargo: sibling.reps?.cargo ?? 'tertius',
@@ -200,7 +206,7 @@ export async function buscarSlotsDoRep(
         clockIn: new Date(regularLog.clock_in_at),
         clockOut: regularLog.clock_out_at ? new Date(regularLog.clock_out_at) : null,
         saiuAntes: regularLog.saiu_antes,
-        modelos: await montarModelos(db, shift.turno, shift.data, regularLog),
+        modelos: await montarModelos(db, shift.turno, shift.data, shift.metade, regularLog),
       },
       assist: {
         repId,

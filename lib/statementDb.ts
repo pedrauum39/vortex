@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { turnoAnterior, type LinhasNet } from './statement';
-import type { Turno } from './tipos';
+import type { Metade, Turno } from './tipos';
 
 /**
  * `primeiro` abre o dia e vale o statement inteiro. `pendente` é o turno
@@ -21,15 +21,21 @@ export type Anterior =
  * As linhas net do statement da MESMA modelo no turno anterior da cadeia.
  * Espera um cliente que atravesse o RLS (admin) — o turno anterior pode ser de
  * outro rep, e o que volta são só os valores acumulados do print dele.
+ *
+ * Turno dividido: a 2ª metade desconta o print da troca (1ª metade do mesmo
+ * turno); a 1ª metade desconta o turno anterior normalmente; e o turno
+ * seguinte a um dividido desconta a 2ª metade dele, nunca a 1ª.
  */
 export async function buscarAnterior(
   db: SupabaseClient,
   turno: Turno,
   data: string,
   modeloId: string,
+  metade: Metade = 0,
 ): Promise<Anterior> {
-  const anterior = turnoAnterior(turno, data);
+  const anterior = metade === 2 ? { turno, data } : turnoAnterior(turno, data);
   if (!anterior) return { tipo: 'primeiro' };
+  const metadesAnteriores = metade === 2 ? [1] : [0, 2];
 
   // Os turnos 'regular' do dia anterior — pode ter mais de um bloco; o que
   // importa é qual shift_log tem statement para ESTA modelo.
@@ -38,7 +44,8 @@ export async function buscarAnterior(
     .select('shift_logs(id)')
     .eq('data', anterior.data)
     .eq('turno', anterior.turno)
-    .eq('funcao', 'regular');
+    .eq('funcao', 'regular')
+    .in('metade', metadesAnteriores);
 
   const logIds = (shiftsAnteriores ?? []).flatMap((s) =>
     (s.shift_logs as { id: string }[]).map((l) => l.id),

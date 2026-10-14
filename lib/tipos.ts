@@ -27,8 +27,16 @@ export type Origem = 'gerado' | 'manual';
 
 export const TURNOS: Turno[] = ['T2T3', 'T4T5', 'T6T1'];
 
-/** 'T2T3' → 'T2/T3', como aparece na planilha. */
-export const rotuloTurno = (turno: Turno) => `${turno.slice(0, 2)}/${turno.slice(2)}`;
+/**
+ * 0 = turno inteiro (8h). 1/2 = primeira/segunda metade (4h) de um turno
+ * dividido no admin — quando alguém sai no meio e outro assume. Cada metade
+ * tem o próprio ponto e o próprio print; a troca é sempre no meio do turno.
+ */
+export type Metade = 0 | 1 | 2;
+
+/** 'T2T3' → 'T2/T3', como aparece na planilha. Com metade: 1 → 'T2', 2 → 'T3'. */
+export const rotuloTurno = (turno: Turno, metade: Metade = 0) =>
+  metade === 1 ? turno.slice(0, 2) : metade === 2 ? turno.slice(2) : `${turno.slice(0, 2)}/${turno.slice(2)}`;
 
 /** Horários de cada turno em BRT, como definidos no template oficial. */
 export const HORARIOS: Record<Turno, { inicio: string; fim: string }> = {
@@ -88,6 +96,7 @@ export type Shift = {
   data: string; // 'YYYY-MM-DD'
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   rep_id: string | null;
   model_id: string | null;
   funcao: Funcao;

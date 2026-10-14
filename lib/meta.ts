@@ -6,7 +6,7 @@
 // futuros) — é o alvo fixo do mês. Meta parcial soma só os turnos que ele
 // já trabalhou, pra medir o ritmo antes do mês fechar.
 
-import type { Turno } from './tipos';
+import type { Metade, Turno } from './tipos';
 
 export const PERCENTUAL_META_TURNO: Record<Turno, number> = {
   T6T1: 0.42,
@@ -16,14 +16,22 @@ export const PERCENTUAL_META_TURNO: Record<Turno, number> = {
 
 const arred = (valor: number) => Math.round(valor * 100) / 100;
 
-/** Meta diária de UMA página, pro turno dado, num mês com `diasDoMes` dias. */
-export function metaDiariaDaPagina(metaMensal: number, turno: Turno, diasDoMes: number): number {
+/** Meta diária de UMA página, pro turno dado, num mês com `diasDoMes` dias.
+ * Metade de um turno dividido fica com metade da meta do turno. */
+export function metaDiariaDaPagina(
+  metaMensal: number,
+  turno: Turno,
+  diasDoMes: number,
+  metade: Metade = 0,
+): number {
   if (diasDoMes <= 0) return 0;
-  return arred((metaMensal * PERCENTUAL_META_TURNO[turno]) / diasDoMes);
+  const fracao = metade === 0 ? 1 : 0.5;
+  return arred((metaMensal * PERCENTUAL_META_TURNO[turno] * fracao) / diasDoMes);
 }
 
 export type TurnoParaMeta = {
   turno: Turno;
+  metade?: Metade;
   /** Meta mensal de cada página que conta pro turno: real (shift_log_models)
    * se já foi trabalhado, roster do time se ainda não. */
   metasDasPaginas: number[];
@@ -44,7 +52,7 @@ export function calcularMetas(turnos: TurnoParaMeta[], diasDoMes: number): Metas
 
   for (const t of turnos) {
     const metaDoTurno = t.metasDasPaginas.reduce(
-      (soma, meta) => soma + metaDiariaDaPagina(meta, t.turno, diasDoMes),
+      (soma, meta) => soma + metaDiariaDaPagina(meta, t.turno, diasDoMes, t.metade),
       0,
     );
     metaTotal += metaDoTurno;

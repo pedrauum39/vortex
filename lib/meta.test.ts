@@ -14,6 +14,14 @@ describe('metaDiariaDaPagina', () => {
   });
 });
 
+describe('metaDiariaDaPagina numa metade', () => {
+  test('metade de turno dividido fica com metade da meta', () => {
+    expect(metaDiariaDaPagina(31000, 'T6T1', 31, 1)).toBe(210);
+    expect(metaDiariaDaPagina(31000, 'T6T1', 31, 2)).toBe(210);
+    expect(metaDiariaDaPagina(31000, 'T6T1', 31)).toBe(420);
+  });
+});
+
 describe('calcularMetas', () => {
   test('meta total soma o mês inteiro agendado, parcial só os turnos trabalhados', () => {
     const turnos = [

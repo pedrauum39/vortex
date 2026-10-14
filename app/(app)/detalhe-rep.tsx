@@ -109,7 +109,7 @@ export async function DetalheRep({
                 return (
                   <tr key={`${l.data}-${l.turno}`} className="border-b border-borda last:border-0">
                     <td className="px-4 py-2.5">{diaLegivel(l.data)}</td>
-                    <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                    <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(l.turno, l.metade)}</td>
                     <td className="px-3 py-2.5">
                       {l.paginas.join(', ') || <span className="text-texto-fraco">—</span>}
                       {l.planejado && <span className="ml-2 text-xs text-texto-fraco">(planejado)</span>}

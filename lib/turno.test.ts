@@ -171,3 +171,29 @@ describe('horasDoTurno', () => {
     expect(h).toBe(0);
   });
 });
+
+describe('metades de um turno dividido', () => {
+  test('T6 vai das 21:00 à 01:00 e T1 da 01:00 às 05:00, atravessando a meia-noite', () => {
+    const t6 = janelaDoTurno('T6T1', '2026-08-10', 1);
+    const t1 = janelaDoTurno('T6T1', '2026-08-10', 2);
+    expect(t6.inicio.toISOString()).toBe('2026-08-11T00:00:00.000Z'); // 21:00 BRT de 10/08
+    expect(t6.fim.toISOString()).toBe('2026-08-11T04:00:00.000Z'); //    01:00 BRT de 11/08
+    expect(t1.inicio.toISOString()).toBe('2026-08-11T04:00:00.000Z');
+    expect(t1.fim.toISOString()).toBe('2026-08-11T08:00:00.000Z'); //    05:00 BRT de 11/08
+  });
+
+  test('T3 começa às 09:00', () => {
+    expect(janelaDoTurno('T2T3', '2026-08-10', 2).inicio.toISOString()).toBe('2026-08-10T12:00:00.000Z');
+  });
+
+  test('metade fechada sem "saiu antes" paga 4h', () => {
+    const entrada = brtParaUtc(2026, 8, 11, 1, 0);
+    const saida = brtParaUtc(2026, 8, 11, 6, 0);
+    expect(horasDoTurno('T6T1', '2026-08-10', entrada, saida, false, saida, 2)).toBe(4);
+  });
+
+  test('o ponto da segunda metade só abre 15 min antes dela', () => {
+    expect(podeIniciar('T2T3', '2026-08-10', brtParaUtc(2026, 8, 10, 8, 0), 2)).toBe(false);
+    expect(podeIniciar('T2T3', '2026-08-10', brtParaUtc(2026, 8, 10, 8, 45), 2)).toBe(true);
+  });
+});

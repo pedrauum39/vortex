@@ -3,7 +3,7 @@
 // ontem. É o caso que erra em silêncio se ficar espalhado pelas telas.
 
 import { brtParaUtc, dataBRT, relogioBRT, somarDias } from './tempo';
-import { HORARIOS, type Turno } from './tipos';
+import { HORARIOS, type Metade, type Turno } from './tipos';
 
 const paraHoraMinuto = (hhmm: string) => hhmm.split(':').map(Number);
 
@@ -29,8 +29,13 @@ export const MINUTOS_DE_ANTECEDENCIA = 15;
  * que esquece de bater ponto durante o turno nunca mais conseguiria registrar
  * aquele turno.
  */
-export function podeIniciar(turno: Turno, data: string, agora: Date = new Date()): boolean {
-  const { inicio } = janelaDoTurno(turno, data);
+export function podeIniciar(
+  turno: Turno,
+  data: string,
+  agora: Date = new Date(),
+  metade: Metade = 0,
+): boolean {
+  const { inicio } = janelaDoTurno(turno, data, metade);
   const abre = inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000;
 
   return agora.getTime() >= abre;
@@ -41,7 +46,7 @@ export function podeIniciar(turno: Turno, data: string, agora: Date = new Date()
  * não começa a contar antes da hora, e sair atrasado não conta depois do fim.
  * Turno em andamento (sem saída) conta até agora.
  *
- * Turno FECHADO sem marcar "saiu antes" sempre paga a janela inteira (8h),
+ * Turno FECHADO sem marcar "saiu antes" sempre paga a janela inteira (8h, ou 4h numa metade),
  * não importa a que horas bateu saída — só quem marcou a caixa tem a hora
  * de fato reduzida pela saída antecipada.
  */
@@ -52,8 +57,9 @@ export function horasDoTurno(
   saida: Date | null,
   saiuAntes: boolean,
   agora: Date = new Date(),
+  metade: Metade = 0,
 ): number {
-  const { inicio, fim } = janelaDoTurno(turno, data);
+  const { inicio, fim } = janelaDoTurno(turno, data, metade);
 
   if (saida && !saiuAntes) {
     return Math.max(0, Math.round(((fim.getTime() - inicio.getTime()) / 3_600_000) * 100) / 100);
@@ -65,8 +71,16 @@ export function horasDoTurno(
   return Math.max(0, Math.round(((ate - de) / 3_600_000) * 100) / 100);
 }
 
-/** Início e fim previstos de um turno, como instantes UTC. */
-export function janelaDoTurno(turno: Turno, data: string): { inicio: Date; fim: Date } {
+/** Início e fim previstos de um turno, como instantes UTC. Metade 1/2 = as 4h
+ * de cima/de baixo da janela de 8h. */
+export function janelaDoTurno(turno: Turno, data: string, metade: Metade = 0): { inicio: Date; fim: Date } {
+  const inteiro = janelaInteira(turno, data);
+  if (metade === 0) return inteiro;
+  const meio = new Date((inteiro.inicio.getTime() + inteiro.fim.getTime()) / 2);
+  return metade === 1 ? { inicio: inteiro.inicio, fim: meio } : { inicio: meio, fim: inteiro.fim };
+}
+
+function janelaInteira(turno: Turno, data: string): { inicio: Date; fim: Date } {
   const [ano, mes, dia] = data.split('-').map(Number);
   const [horaInicio, minutoInicio] = paraHoraMinuto(HORARIOS[turno].inicio);
   const [horaFim, minutoFim] = paraHoraMinuto(HORARIOS[turno].fim);

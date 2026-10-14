@@ -7,7 +7,7 @@ import { buscarPeriodos } from '@/lib/periodosDb';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT, segundaDaSemana, somarDias } from '@/lib/tempo';
-import type { Bloco, Funcao, Model, Rep, Turno } from '@/lib/tipos';
+import type { Bloco, Funcao, Metade, Model, Rep, Turno } from '@/lib/tipos';
 import { precisaAtencao } from '@/lib/turnoAberto';
 import { buscarTurnosExtraAdmin } from '@/lib/turnosExtraDb';
 import { FormularioTurno } from './formulario-turno';
@@ -48,7 +48,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+        'id, data, turno, bloco, metade, funcao, rep_id, origem, reps(nome_curto, cargo, valor_hora), shift_logs(id, rep_id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), statements(id, model_id, net_total, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
       )
       .gte('data', inicio)
       .lte('data', fim)
@@ -65,7 +65,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     buscarPeriodos(supabase),
     supabase
       .from('escala_alteracoes')
-      .select('id, data, turno, bloco, funcao, criado_em, rep_saiu, rep_entrou, alterado_por')
+      .select('id, data, turno, bloco, metade, funcao, criado_em, rep_saiu, rep_entrou, alterado_por')
       .gte('data', inicio)
       .lte('data', fim)
       .order('criado_em', { ascending: false }),
@@ -80,6 +80,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     data: string;
     turno: Turno;
     bloco: Bloco;
+    metade: Metade;
     funcao: Funcao;
     criado_em: string;
     rep_saiu: string | null;
@@ -97,6 +98,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       data: a.data,
       turno: a.turno,
       bloco: a.bloco,
+      metade: a.metade,
       funcao: a.funcao,
       repSaiu: saiu?.nome_curto ?? null,
       cargoSaiu: saiu?.cargo ?? null,
@@ -111,14 +113,21 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
 
   const valoresDaGrade: Record<string, string | null> = {};
   for (const s of shifts) {
-    valoresDaGrade[`${s.data}|${s.turno}|${s.bloco}|${s.funcao}`] = s.rep_id;
+    valoresDaGrade[`${s.data}|${s.turno}|${s.bloco}|${s.funcao}|${s.metade}`] = s.rep_id;
   }
 
-  // Agrupa por slot (data+turno+bloco) para achar o par regular/assist e
-  // computar a comissão exatamente como o /invoice faz.
+  // Muda quando dividir/juntar um turno recria a grade — a key nova remonta o
+  // componente, senão o useState continuaria com as células de antes.
+  const assinaturaDaGrade = Object.keys(valoresDaGrade)
+    .filter((k) => !k.endsWith('|0'))
+    .sort()
+    .join(',');
+
+  // Agrupa por slot (data+turno+bloco+metade) para achar o par regular/assist
+  // e computar a comissão exatamente como o /invoice faz.
   const porSlot = new Map<string, { regular?: LinhaShift; assist?: LinhaShift }>();
   for (const s of shifts) {
-    const chave = `${s.data}|${s.turno}|${s.bloco}`;
+    const chave = `${s.data}|${s.turno}|${s.bloco}|${s.metade}`;
     const par = porSlot.get(chave) ?? {};
     par[s.funcao] = s;
     porSlot.set(chave, par);
@@ -137,7 +146,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
       if (!regular || !log || !regular.reps) return null;
 
       const anteriores = await Promise.all(
-        log.shift_log_models.map(({ model_id }) => buscarAnterior(supabase, regular.turno, regular.data, model_id)),
+        log.shift_log_models.map(({ model_id }) => buscarAnterior(supabase, regular.turno, regular.data, model_id, regular.metade)),
       );
       const modelos: ModeloTrabalhada[] = log.shift_log_models.map(({ model_id }, i) => {
         const statement = log.statements.find((s) => s.model_id === model_id) ?? null;
@@ -164,6 +173,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
         data: regular.data,
         turno: regular.turno,
         bloco: regular.bloco,
+        metade: regular.metade,
         regular: {
           repId: regular.rep_id!,
           cargo: regular.reps.cargo,
@@ -213,7 +223,13 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
           componente ao trocar de semana e nunca reinicializa o useState
           interno com os valores novos — a grade fica presa nos valores da
           primeira semana que carregou, pra sempre, não importa a URL. */}
-      <GradeEscala key={inicio} dias={dias} reps={reps} valores={valoresDaGrade} podeEditar={podeEditar} />
+      <GradeEscala
+        key={`${inicio}|${assinaturaDaGrade}`}
+        dias={dias}
+        reps={reps}
+        valores={valoresDaGrade}
+        podeEditar={podeEditar}
+      />
 
       <LogAlteracoes entradas={entradasLog} />
 

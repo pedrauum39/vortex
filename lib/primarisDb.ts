@@ -10,7 +10,7 @@ import { buscarPeriodos, buscarPeriodosDeMeta } from './periodosDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
 import { buscarAnterior } from './statementDb';
 import { dataBRT, diasNoMes, somarDias } from './tempo';
-import type { Bloco, Cargo, Turno } from './tipos';
+import type { Bloco, Cargo, Metade, Turno } from './tipos';
 
 const arred = (valor: number) => Math.round(valor * 100) / 100;
 
@@ -44,6 +44,8 @@ export type VendaDeModelo = {
   modeloId: string;
   modeloBloco: Bloco;
   turno: Turno;
+  /** Metade de turno dividido (meta pela metade); 0 = turno inteiro. */
+  metade: Metade;
   /** Dia do statement (diaDoStatement) — usado pra resolver a meta mensal que
    *  valia na época (model_meta_periodos), não a atual. */
   data: string;
@@ -56,6 +58,7 @@ export type VendaDeModelo = {
 type LinhaShift = {
   data: string;
   turno: Turno;
+  metade: Metade;
   rep_id: string | null;
   conta_venda: boolean;
   reps: { cargo: Cargo } | null;
@@ -85,7 +88,7 @@ export async function buscarVendasDaEmpresa(
   const { data: shiftsData } = await db
     .from('shifts')
     .select(
-      'data, turno, rep_id, conta_venda, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
+      'data, turno, metade, rep_id, conta_venda, reps(cargo), shift_logs(shift_log_models(model_id, models(nome, bloco)), statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes))',
     )
     .eq('funcao', 'regular')
     .gte('data', inicioBusca)
@@ -125,7 +128,7 @@ export async function buscarVendasDaEmpresa(
   }
 
   const anteriores = await Promise.all(
-    tarefas.map((t) => buscarAnterior(db, t.shift.turno, t.shift.data, t.modeloId)),
+    tarefas.map((t) => buscarAnterior(db, t.shift.turno, t.shift.data, t.modeloId, t.shift.metade)),
   );
 
   tarefas.forEach((t, i) => {
@@ -152,6 +155,7 @@ export async function buscarVendasDaEmpresa(
       modeloId: t.modeloId,
       modeloBloco: bloco,
       turno: t.shift.turno,
+      metade: t.shift.metade,
       data: dia,
       vendidoTotal: totalDasLinhas(delta),
       vendidoComissionavel: baseComissao(delta),
@@ -209,6 +213,7 @@ export async function buscarVendasDaEmpresa(
       modeloId: e.model_id,
       modeloBloco: bloco,
       turno: e.turno,
+      metade: 0,
       data: dia,
       vendidoTotal: totalDasLinhas(delta),
       vendidoComissionavel: baseComissao(delta),
@@ -341,7 +346,12 @@ export async function buscarResumoPrimaris(
     // ritmo de vendas mesmo antes do mês fechar. Meta mensal resolvida NO DIA
     // da venda (não a atual) — mês passado com meta diferente da de hoje
     // continua correto (ex.: Joyce 71k em agosto, 61k em setembro).
-    const metaDaPagina = metaDiariaDaPagina(metaMensalNaData(periodosDeMeta, v.modeloId, v.data), v.turno, diasDoMes);
+    const metaDaPagina = metaDiariaDaPagina(
+      metaMensalNaData(periodosDeMeta, v.modeloId, v.data),
+      v.turno,
+      diasDoMes,
+      v.metade,
+    );
     metaPorRep.set(v.repId, (metaPorRep.get(v.repId) ?? 0) + metaDaPagina);
   }
 

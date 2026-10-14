@@ -4,13 +4,22 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import { diaLegivel } from '@/lib/tempo';
 import { INICIO_TIME3 } from '@/lib/escala';
-import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Rep, type Turno } from '@/lib/tipos';
-import { salvarGrade } from './actions';
+import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Funcao, type Metade, type Rep, type Turno } from '@/lib/tipos';
+import { dividirTurno, juntarTurno, salvarGrade } from './actions';
 
 type Valores = Record<string, string | null>;
 
-const chaveDe = (data: string, turno: Turno, bloco: Bloco, funcao: Funcao) =>
-  `${data}|${turno}|${bloco}|${funcao}`;
+const chaveDe = (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, metade: Metade = 0) =>
+  `${data}|${turno}|${bloco}|${funcao}|${metade}`;
+
+type OnChange = (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, metade: Metade, repId: string) => void;
+type OnDividir = (data: string, turno: Turno, bloco: Bloco, dividido: boolean) => void;
+
+/** Slot dividido em metades: tem alguma linha de metade 1 ou 2 gravada. */
+const estaDividido = (valores: Valores, data: string, turno: Turno, bloco: Bloco) =>
+  (['regular', 'assist'] as Funcao[]).some((f) =>
+    ([1, 2] as Metade[]).some((m) => chaveDe(data, turno, bloco, f, m) in valores),
+  );
 
 /**
  * A escala em grade, como a planilha: cada célula é um select com todo mundo
@@ -36,8 +45,8 @@ export function GradeEscala({
   const [erro, setErro] = useState<string | null>(null);
   const router = useRouter();
 
-  function alterar(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) {
-    const chave = chaveDe(data, turno, bloco, funcao);
+  function alterar(data: string, turno: Turno, bloco: Bloco, funcao: Funcao, metade: Metade, repId: string) {
+    const chave = chaveDe(data, turno, bloco, funcao, metade);
     const valor = repId || null;
     setValores((v) => ({ ...v, [chave]: valor }));
     setPendentes((p) => new Set(p).add(chave));
@@ -51,14 +60,35 @@ export function GradeEscala({
     try {
       await salvarGrade(
         [...pendentes].map((chave) => {
-          const [data, turno, bloco, funcao] = chave.split('|') as [string, Turno, Bloco, Funcao];
-          return { data, turno, bloco, funcao, repId: valores[chave] ?? null };
+          const [data, turno, bloco, funcao, metade] = chave.split('|') as [string, Turno, Bloco, Funcao, string];
+          return { data, turno, bloco, funcao, metade: Number(metade) as Metade, repId: valores[chave] ?? null };
         }),
       );
       setPendentes(new Set());
       router.refresh();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não deu para salvar.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  // Dividir/juntar grava na hora (preserva o ponto de quem já bateu) e
+  // recarrega a grade — por isso só com nada pendente, senão a recarga
+  // descartaria as trocas ainda não salvas.
+  async function alternarDivisao(data: string, turno: Turno, bloco: Bloco, dividido: boolean) {
+    if (pendentes.size > 0) {
+      setErro('Salve as alterações antes de dividir ou juntar um turno.');
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    try {
+      if (dividido) await juntarTurno(data, turno, bloco);
+      else await dividirTurno(data, turno, bloco);
+      router.refresh();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não deu para dividir o turno.');
     } finally {
       setSalvando(false);
     }
@@ -109,6 +139,7 @@ export function GradeEscala({
                 pendentes={pendentes}
                 salvando={salvando}
                 onChange={alterar}
+                onDividir={alternarDivisao}
                 podeEditar={podeEditar}
               />
             ))}
@@ -127,6 +158,7 @@ function BlocoDaGrade({
   pendentes,
   salvando,
   onChange,
+  onDividir,
   podeEditar,
 }: {
   bloco: Bloco;
@@ -135,7 +167,8 @@ function BlocoDaGrade({
   valores: Valores;
   pendentes: Set<string>;
   salvando: boolean;
-  onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
+  onChange: OnChange;
+  onDividir: OnDividir;
   podeEditar: boolean;
 }) {
   return (
@@ -158,6 +191,7 @@ function BlocoDaGrade({
             pendentes={pendentes}
             salvando={salvando}
             onChange={onChange}
+            onDividir={onDividir}
             podeEditar={podeEditar}
           />
           <LinhaDaGrade
@@ -191,6 +225,7 @@ function LinhaDaGrade({
   pendentes,
   salvando,
   onChange,
+  onDividir,
   podeEditar,
   fraco,
 }: {
@@ -203,7 +238,9 @@ function LinhaDaGrade({
   valores: Valores;
   pendentes: Set<string>;
   salvando: boolean;
-  onChange: (data: string, turno: Turno, bloco: Bloco, funcao: Funcao, repId: string) => void;
+  onChange: OnChange;
+  /** Só na linha do regular: o botão de dividir/juntar o turno do dia. */
+  onDividir?: OnDividir;
   podeEditar: boolean;
   fraco?: boolean;
 }) {
@@ -211,40 +248,73 @@ function LinhaDaGrade({
     <tr className={`border-b border-borda last:border-0 ${fraco ? 'bg-fundo/40' : ''}`}>
       <td className={`px-4 py-2 ${fraco ? 'text-xs text-texto-fraco' : 'text-texto-fraco'}`}>{rotulo}</td>
       {dias.map((dia) => {
-        const chave = chaveDe(dia, turno, bloco, funcao);
-        const valor = valores[chave] ?? '';
-        const pendente = pendentes.has(chave);
+        const dividido = estaDividido(valores, dia, turno, bloco);
+        const metades: Metade[] = dividido ? [1, 2] : [0];
+        const nomeDe = (m: Metade) =>
+          reps.find((r) => r.id === valores[chaveDe(dia, turno, bloco, funcao, m)])?.nome_curto ?? '—';
 
         if (!podeEditar) {
-          const nome = reps.find((r) => r.id === valor)?.nome_curto;
           return (
             <td key={dia} className="px-2.5 py-2.5 text-xs text-texto-fraco">
-              {nome ?? '—'}
+              {metades.map(nomeDe).join(' / ')}
             </td>
           );
         }
 
         return (
           <td key={dia} className="px-1.5 py-1.5">
-            <select
-              value={valor}
-              onChange={(e) => onChange(dia, turno, bloco, funcao, e.target.value)}
-              disabled={salvando}
-              className={`w-full rounded-lg border bg-fundo px-1.5 py-1.5 text-xs outline-none focus:border-accent disabled:opacity-50 ${
-                pendente
-                  ? 'border-amber-400/70'
-                  : valor
-                    ? 'border-borda'
-                    : 'border-dashed border-borda text-texto-fraco'
-              }`}
-            >
-              <option value="">—</option>
-              {reps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome_curto}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-start gap-1">
+              <div className="min-w-0 flex-1 space-y-1">
+                {metades.map((m) => {
+                  const chave = chaveDe(dia, turno, bloco, funcao, m);
+                  const valor = valores[chave] ?? '';
+                  const pendente = pendentes.has(chave);
+                  return (
+                    <div key={m} className="flex items-center gap-1">
+                      {m > 0 && (
+                        <span className="w-5 shrink-0 text-[10px] text-texto-fraco">{rotuloTurno(turno, m)}</span>
+                      )}
+                      <select
+                        value={valor}
+                        onChange={(e) => onChange(dia, turno, bloco, funcao, m, e.target.value)}
+                        disabled={salvando}
+                        className={`w-full min-w-0 rounded-lg border bg-fundo px-1.5 py-1.5 text-xs outline-none focus:border-accent disabled:opacity-50 ${
+                          pendente
+                            ? 'border-amber-400/70'
+                            : valor
+                              ? 'border-borda'
+                              : 'border-dashed border-borda text-texto-fraco'
+                        }`}
+                      >
+                        <option value="">—</option>
+                        {reps.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nome_curto}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+              {onDividir && (
+                <button
+                  type="button"
+                  disabled={salvando}
+                  onClick={() => onDividir(dia, turno, bloco, dividido)}
+                  title={
+                    dividido
+                      ? `Juntar ${rotuloTurno(turno, 1)} e ${rotuloTurno(turno, 2)} de volta num turno só`
+                      : `Dividir em ${rotuloTurno(turno, 1)} e ${rotuloTurno(turno, 2)} (alguém saiu no meio)`
+                  }
+                  className={`mt-1 shrink-0 rounded px-1 text-xs transition disabled:opacity-40 ${
+                    dividido ? 'text-accent hover:text-texto' : 'text-texto-fraco/60 hover:text-accent'
+                  }`}
+                >
+                  {dividido ? '⇥' : '✂'}
+                </button>
+              )}
+            </div>
           </td>
         );
       })}

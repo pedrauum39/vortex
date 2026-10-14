@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { ehAdmin, exigirRep } from '@/lib/auth';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { brtParaUtc } from '@/lib/tempo';
-import type { Bloco, Funcao, Turno } from '@/lib/tipos';
+import { rotuloTurno } from '@/lib/tipos';
+import type { Bloco, Funcao, Metade, Turno } from '@/lib/tipos';
 import { apagarTurnoExtra } from '@/lib/turnosExtraDb';
 
 async function exigirAdmin() {
@@ -48,6 +49,15 @@ export async function criarTurno(dados: {
   const admin = await exigirAdmin();
   const supabase = await criarClienteServidor();
 
+  const { count: metades } = await supabase
+    .from('shifts')
+    .select('id', { count: 'exact', head: true })
+    .eq('data', dados.data)
+    .eq('turno', dados.turno)
+    .eq('bloco', dados.bloco)
+    .gt('metade', 0);
+  if (metades) throw new Error('Esse turno está dividido em metades — edite pela grade da escala.');
+
   const { data: existente, error: erroBusca } = await supabase
     .from('shifts')
     .select('rep_id')
@@ -55,6 +65,7 @@ export async function criarTurno(dados: {
     .eq('turno', dados.turno)
     .eq('bloco', dados.bloco)
     .eq('funcao', dados.funcao)
+    .eq('metade', 0)
     .maybeSingle();
   if (erroBusca) throw new Error(erroBusca.message);
 
@@ -68,7 +79,7 @@ export async function criarTurno(dados: {
       origem: 'manual',
       conta_venda: dados.contaVenda ?? true,
     },
-    { onConflict: 'data,turno,bloco,funcao' },
+    { onConflict: 'data,turno,bloco,funcao,metade' },
   );
   if (error) throw new Error(error.message);
 
@@ -88,12 +99,13 @@ export async function criarTurno(dados: {
   revalidar();
 }
 
-type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; repId: string | null };
+type Slot = { data: string; turno: Turno; bloco: Bloco; funcao: Funcao; metade: Metade; repId: string | null };
 
 type Alteracao = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade?: Metade;
   funcao: Funcao;
   repSaiu: string | null;
   repEntrou: string | null;
@@ -110,6 +122,7 @@ async function registrarAlteracao(
     data: a.data,
     turno: a.turno,
     bloco: a.bloco,
+    metade: a.metade ?? 0,
     funcao: a.funcao,
     rep_saiu: a.repSaiu,
     rep_entrou: a.repEntrou,
@@ -141,6 +154,7 @@ async function aplicarSlot(
     .eq('turno', slot.turno)
     .eq('bloco', slot.bloco)
     .eq('funcao', slot.funcao)
+    .eq('metade', slot.metade)
     .maybeSingle();
   if (erroBusca) throw new Error(erroBusca.message);
 
@@ -158,6 +172,7 @@ async function aplicarSlot(
       turno: slot.turno,
       bloco: slot.bloco,
       funcao: slot.funcao,
+      metade: slot.metade,
       rep_id: slot.repId,
       origem: 'manual',
     });
@@ -168,6 +183,7 @@ async function aplicarSlot(
     data: slot.data,
     turno: slot.turno,
     bloco: slot.bloco,
+    metade: slot.metade,
     funcao: slot.funcao,
     repSaiu: repAntes,
     repEntrou: slot.repId,
@@ -191,6 +207,99 @@ export async function salvarGrade(alteracoes: Slot[]) {
   }
 }
 
+type LinhaDoSlot = { id: string; funcao: Funcao; metade: Metade; rep_id: string | null; shift_logs: { id: string }[] };
+
+async function linhasDoSlot(
+  supabase: Awaited<ReturnType<typeof criarClienteServidor>>,
+  data: string,
+  turno: Turno,
+  bloco: Bloco,
+): Promise<LinhaDoSlot[]> {
+  const { data: linhas, error } = await supabase
+    .from('shifts')
+    .select('id, funcao, metade, rep_id, shift_logs(id)')
+    .eq('data', data)
+    .eq('turno', turno)
+    .eq('bloco', bloco);
+  if (error) throw new Error(error.message);
+  return (linhas ?? []) as LinhaDoSlot[];
+}
+
+/**
+ * Divide o turno do dia em duas metades de 4h (ex.: T6 | T1) — pra quando
+ * alguém sai no meio e outro assume. A linha do turno inteiro vira a 1ª
+ * metade (um UPDATE, não apaga e recria: quem já bateu ponto nela continua
+ * com o ponto e o print) e ganha uma cópia como 2ª metade, com o mesmo rep,
+ * pro admin trocar quem precisar.
+ */
+export async function dividirTurno(data: string, turno: Turno, bloco: Bloco) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const linhas = await linhasDoSlot(supabase, data, turno, bloco);
+  if (linhas.some((l) => l.metade > 0)) throw new Error('Esse turno já está dividido.');
+  if (!linhas.some((l) => l.funcao === 'regular')) {
+    throw new Error('Escale alguém no turno antes de dividir.');
+  }
+
+  for (const l of linhas) {
+    const { error: erroUpdate } = await supabase.from('shifts').update({ metade: 1 }).eq('id', l.id);
+    if (erroUpdate) throw new Error(erroUpdate.message);
+
+    const { error: erroInsert } = await supabase.from('shifts').insert({
+      data,
+      turno,
+      bloco,
+      funcao: l.funcao,
+      metade: 2,
+      rep_id: l.rep_id,
+      origem: 'manual',
+    });
+    if (erroInsert) throw new Error(erroInsert.message);
+  }
+
+  revalidar();
+}
+
+/**
+ * Desfaz a divisão: volta a um turno inteiro só. Por função (regular/assist),
+ * fica a linha da 1ª metade (ou a da 2ª, se a 1ª não existir). Recusa se a
+ * linha que seria descartada já tem ponto batido — juntar apagaria o ponto e
+ * o print dela.
+ */
+export async function juntarTurno(data: string, turno: Turno, bloco: Bloco) {
+  await exigirAdmin();
+  const supabase = await criarClienteServidor();
+
+  const linhas = (await linhasDoSlot(supabase, data, turno, bloco)).filter((l) => l.metade > 0);
+
+  for (const funcao of ['regular', 'assist'] as Funcao[]) {
+    const primeira = linhas.find((l) => l.funcao === funcao && l.metade === 1);
+    const segunda = linhas.find((l) => l.funcao === funcao && l.metade === 2);
+    if (primeira && segunda?.shift_logs.length) {
+      throw new Error(
+        `A ${rotuloTurno(turno, 2)} já tem ponto batido${funcao === 'assist' ? ' (Assistant)' : ''} — apague o ponto dela antes de juntar.`,
+      );
+    }
+  }
+
+  for (const funcao of ['regular', 'assist'] as Funcao[]) {
+    const primeira = linhas.find((l) => l.funcao === funcao && l.metade === 1);
+    const segunda = linhas.find((l) => l.funcao === funcao && l.metade === 2);
+    const fica = primeira ?? segunda;
+    if (!fica) continue;
+
+    if (primeira && segunda) {
+      const { error } = await supabase.from('shifts').delete().eq('id', segunda.id);
+      if (error) throw new Error(error.message);
+    }
+    const { error } = await supabase.from('shifts').update({ metade: 0 }).eq('id', fica.id);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidar();
+}
+
 /** Apaga o turno. Em cascata some o ponto e os statements que estivessem nele. */
 export async function apagarTurno(shiftId: string) {
   const admin = await exigirAdmin();
@@ -198,7 +307,7 @@ export async function apagarTurno(shiftId: string) {
 
   const { data: alvo, error: erroBusca } = await supabase
     .from('shifts')
-    .select('data, turno, bloco, funcao, rep_id')
+    .select('data, turno, bloco, metade, funcao, rep_id')
     .eq('id', shiftId)
     .maybeSingle();
   if (erroBusca) throw new Error(erroBusca.message);
@@ -211,6 +320,7 @@ export async function apagarTurno(shiftId: string) {
       data: alvo.data,
       turno: alvo.turno as Turno,
       bloco: alvo.bloco as Bloco,
+      metade: alvo.metade as Metade,
       funcao: alvo.funcao as Funcao,
       repSaiu: alvo.rep_id,
       repEntrou: null,

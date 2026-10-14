@@ -1,10 +1,11 @@
-import type { Bloco, Cargo, Funcao, Turno } from '@/lib/tipos';
+import type { Bloco, Cargo, Funcao, Metade, Turno } from '@/lib/tipos';
 
 export type LinhaShift = {
   id: string;
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   funcao: Funcao;
   rep_id: string | null;
   origem: string;

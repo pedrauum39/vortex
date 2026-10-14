@@ -18,7 +18,7 @@ import {
   somarDias,
   somarMeses,
 } from '@/lib/tempo';
-import { HORARIOS, TURNOS, rotuloTurno, type Bloco, type Cargo, type Funcao, type Model, type Turno } from '@/lib/tipos';
+import { TURNOS, rotuloTurno, type Bloco, type Cargo, type Funcao, type Metade, type Model, type Turno } from '@/lib/tipos';
 import {
   MINUTOS_DE_ANTECEDENCIA,
   dataDoTurnoAtual,
@@ -40,6 +40,7 @@ type TurnoDoDia = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   funcao: Funcao;
   shift_logs: {
     id: string;
@@ -53,17 +54,23 @@ type TurnoDoDia = {
 export default async function TurnoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ turno?: string; data?: string; mes?: string; aba?: string }>;
+  searchParams: Promise<{ turno?: string; data?: string; metade?: string; mes?: string; aba?: string }>;
 }) {
   const rep = await exigirRep();
-  const { turno: turnoEscolhido, data: dataEscolhida, mes: mesParam, aba = 'meus' } = await searchParams;
+  const {
+    turno: turnoEscolhido,
+    data: dataEscolhida,
+    metade: metadeEscolhida,
+    mes: mesParam,
+    aba = 'meus',
+  } = await searchParams;
   const supabase = await criarClienteServidor();
 
   const CAMPOS_TURNO =
-    'id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
+    'id, data, turno, bloco, metade, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))';
   const CAMPOS_STATEMENTS =
     'statements(model_id, net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes)';
-  const CAMPOS_TURNO_COM_STATEMENTS = `id, data, turno, bloco, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), ${CAMPOS_STATEMENTS})`;
+  const CAMPOS_TURNO_COM_STATEMENTS = `id, data, turno, bloco, metade, funcao, shift_logs(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)), ${CAMPOS_STATEMENTS})`;
 
   const hoje = dataBRT();
 
@@ -95,7 +102,7 @@ export default async function TurnoPage({
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
+        'id, data, turno, bloco, metade, funcao, shift_logs!inner(id, clock_in_at, clock_out_at, saiu_antes, shift_log_models(model_id, models(nome)))',
       )
       .eq('rep_id', rep.id)
       .is('shift_logs.clock_out_at', null),
@@ -143,9 +150,10 @@ export default async function TurnoPage({
   // nenhum outro turno). Um turno de ontem esquecido aberto some da tela
   // enquanto ninguém troca de aba pra ele — e ninguém troca de aba pra algo
   // que nem sabe que existe.
-  const hojeCandidatos = ((paraIniciar ?? []) as unknown as TurnoDoDia[]).filter(
-    (t) => t.data === dataDoTurnoAtual(t.turno),
-  );
+  // Turno dividido em que o rep faz as duas metades: a 1ª vem antes.
+  const hojeCandidatos = ((paraIniciar ?? []) as unknown as TurnoDoDia[])
+    .filter((t) => t.data === dataDoTurnoAtual(t.turno))
+    .sort((a, b) => a.metade - b.metade);
 
   // Extras pras abas: mesmo critério de "precisa de atenção" do admin/turnos
   // (lib/turnoAberto.ts) — turno nunca aberto com a data já passada, ou
@@ -169,7 +177,7 @@ export default async function TurnoPage({
         .map(async (s) => {
           const log = s.shift_logs[0];
           const anteriores = await Promise.all(
-            log.shift_log_models.map(({ model_id }) => buscarAnterior(clienteAdmin, s.turno, s.data, model_id)),
+            log.shift_log_models.map(({ model_id }) => buscarAnterior(clienteAdmin, s.turno, s.data, model_id, s.metade)),
           );
           const modelos: ModeloTrabalhada[] = log.shift_log_models.map(({ model_id }, i) => {
             const statement = log.statements.find((st) => st.model_id === model_id) ?? null;
@@ -194,6 +202,7 @@ export default async function TurnoPage({
             data: s.data,
             turno: s.turno,
             bloco: s.bloco,
+            metade: s.metade,
             regular: {
               repId: rep.id,
               cargo: rep.cargo,
@@ -219,7 +228,7 @@ export default async function TurnoPage({
     if (!porId.has(s.id)) porId.set(s.id, s as unknown as TurnoDoDia);
   }
   const candidatosParaAbas = [...porId.values()].sort((a, b) =>
-    a.data < b.data ? -1 : a.data > b.data ? 1 : 0,
+    a.data < b.data ? -1 : a.data > b.data ? 1 : a.metade - b.metade,
   );
 
   const turno =
@@ -228,13 +237,17 @@ export default async function TurnoPage({
     // uma aba do mesmo tipo (ex.: 3 T6/T1 em dias diferentes), e casar só
     // pelo turno sempre resolvia pra primeira da lista, travando o clique
     // nas outras abas do mesmo tipo.
-    candidatosParaAbas.find((t) =>
-      dataEscolhida ? t.turno === turnoEscolhido && t.data === dataEscolhida : t.turno === turnoEscolhido,
+    candidatosParaAbas.find(
+      (t) =>
+        (dataEscolhida ? t.turno === turnoEscolhido && t.data === dataEscolhida : t.turno === turnoEscolhido) &&
+        (metadeEscolhida === undefined || t.metade === Number(metadeEscolhida)),
     ) ??
     // Sem escolha explícita, o turno de HOJE sempre vem primeiro — em
     // andamento (precisa fechar) antes do que ainda nem começou, mas
     // qualquer um dos dois na frente de um turno velho aberto de outro dia.
     hojeCandidatos.find((t) => t.shift_logs[0] && !t.shift_logs[0].clock_out_at) ??
+    // Metade 1 já fechada → a próxima é a metade 2, ainda não iniciada.
+    hojeCandidatos.find((t) => !t.shift_logs[0]) ??
     hojeCandidatos[0] ??
     // Só sobra pra um turno velho aberto quando não há NADA de hoje — aí sim
     // ele é o próximo passo de verdade, não uma trava escondendo o de hoje.
@@ -243,6 +256,8 @@ export default async function TurnoPage({
     candidatosPrioritarios[0];
   const data = turno ? turno.data : dataDoTurnoAtual(rep.turno);
   const turnoDoSlot = turno?.turno ?? rep.turno;
+  const metadeDoSlot: Metade = turno?.metade ?? 0;
+  const janela = janelaDoTurno(turnoDoSlot, data, metadeDoSlot);
 
   const [{ data: models }, { data: modelosExtras }] = await Promise.all([
     supabase.from('models').select('*').eq('ativa', true).eq('extra', false).order('nome'),
@@ -257,7 +272,7 @@ export default async function TurnoPage({
   const diasDoMes = diasNoMes(diaDoStatement(turnoDoSlot, data).slice(0, 7));
   const metasDiarias: Record<string, number> = {};
   for (const m of (models ?? []) as Model[]) {
-    metasDiarias[m.id] = metaDiariaDaPagina(m.meta_mensal, turnoDoSlot, diasDoMes);
+    metasDiarias[m.id] = metaDiariaDaPagina(m.meta_mensal, turnoDoSlot, diasDoMes, metadeDoSlot);
   }
 
   const log = turno?.shift_logs[0];
@@ -274,6 +289,7 @@ export default async function TurnoPage({
       .eq('data', turno.data)
       .eq('turno', turno.turno)
       .eq('bloco', turno.bloco)
+      .eq('metade', turno.metade)
       .eq('funcao', 'assist')
       .maybeSingle();
     temAssistente = !!(assistShift?.rep_id && (assistShift.shift_logs as { id: string }[] | null)?.length);
@@ -292,7 +308,7 @@ export default async function TurnoPage({
   const historico: LinhaHistorico[] = metas.linhas
     .filter((l) => l.trabalhado)
     .map((l) => {
-      const resumo = resumos.get(`${l.data}|${l.turno}`);
+      const resumo = resumos.get(`${l.data}|${l.turno}|${l.metade}`);
       return { ...l, resumo: resumo?.resumo ?? null, assistNome: resumo?.assistNome ?? null };
     });
 
@@ -301,8 +317,8 @@ export default async function TurnoPage({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Turnos</h1>
         <p className="mt-1 text-sm text-texto-fraco">
-          {diaLegivel(data)} · {rotuloTurno(turnoDoSlot)} · {HORARIOS[turnoDoSlot].inicio}–
-          {HORARIOS[turnoDoSlot].fim}
+          {diaLegivel(data)} · {rotuloTurno(turnoDoSlot, metadeDoSlot)} · {horaBRT(janela.inicio)}–
+          {horaBRT(janela.fim)}
         </p>
       </div>
 
@@ -337,14 +353,14 @@ export default async function TurnoPage({
               {candidatosParaAbas.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/turno?turno=${c.turno}&data=${c.data}`}
+                  href={`/turno?turno=${c.turno}&data=${c.data}&metade=${c.metade}`}
                   className={`rounded-lg border px-3 py-1.5 text-sm ${
                     turno?.id === c.id
                       ? 'border-accent bg-accent-fraco text-accent'
                       : 'border-borda text-texto-fraco hover:text-texto'
                   }`}
                 >
-                  {diaLegivel(c.data)} · {rotuloTurno(c.turno)}
+                  {diaLegivel(c.data)} · {rotuloTurno(c.turno, c.metade)}
                   {c.funcao === 'assist' && ' · Assistant'}
                 </Link>
               ))}
@@ -377,6 +393,8 @@ export default async function TurnoPage({
                         new Date(log.clock_in_at),
                         log.clock_out_at ? new Date(log.clock_out_at) : null,
                         log.saiu_antes,
+                        new Date(),
+                        metadeDoSlot,
                       ),
                     }
                   : null
@@ -391,12 +409,8 @@ export default async function TurnoPage({
               repId={rep.id}
               // Admin (e primaris) ignora a janela dos 15 minutos — precisa
               // testar o fluxo (OCR, comissão) sem esperar a hora certa do turno.
-              podeIniciar={ehAdmin(rep) || podeIniciar(turnoDoSlot, data)}
-              abreAs={horaBRT(
-                new Date(
-                  janelaDoTurno(turnoDoSlot, data).inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000,
-                ),
-              )}
+              podeIniciar={ehAdmin(rep) || podeIniciar(turnoDoSlot, data, new Date(), metadeDoSlot)}
+              abreAs={horaBRT(new Date(janela.inicio.getTime() - MINUTOS_DE_ANTECEDENCIA * 60_000))}
             />
           )}
 

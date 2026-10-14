@@ -9,7 +9,7 @@
 
 import { pagamentoDoSlot, type RegraComissao } from './comissao';
 import { baseComissao, deltaTurno, type LinhasNet } from './statement';
-import type { Bloco, Cargo, Turno } from './tipos';
+import type { Bloco, Cargo, Metade, Turno } from './tipos';
 import { horasDoTurno } from './turno';
 
 /** O que uma pessoa trabalhou numa modelo específica do slot. */
@@ -39,6 +39,9 @@ export type SlotResolvido = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  /** Metade de um turno dividido — cada uma é um slot à parte, com o próprio
+   * regular, assistente e print. Ausente = turno inteiro. */
+  metade?: Metade;
   regular: PessoaNoSlot | null;
   // O assistente não reporta modelo própria — leva uma fatia da comissão do
   // regular, então não precisa da cadeia de statements.
@@ -49,6 +52,7 @@ export type LinhaInvoice = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   repId: string;
   funcao: 'regular' | 'assist';
   horas: number;
@@ -99,6 +103,7 @@ export function linhasDoSlot(
     regular.clockOut,
     regular.saiuAntes,
     agora,
+    slot.metade,
   );
 
   const { base, pendente } = baseDoRegular(regular.modelos);
@@ -111,6 +116,7 @@ export function linhasDoSlot(
         slot.assist.clockOut,
         slot.assist.saiuAntes,
         agora,
+        slot.metade,
       )
     : 0;
 
@@ -125,6 +131,7 @@ export function linhasDoSlot(
       data: slot.data,
       turno: slot.turno,
       bloco: slot.bloco,
+      metade: slot.metade ?? 0,
       repId: regular.repId,
       funcao: 'regular',
       horas: horasRegular,
@@ -142,6 +149,7 @@ export function linhasDoSlot(
       data: slot.data,
       turno: slot.turno,
       bloco: slot.bloco,
+      metade: slot.metade ?? 0,
       repId: slot.assist.repId,
       funcao: 'assist',
       horas: horasAssist,

@@ -66,7 +66,7 @@ export function HistoricoTurnos({
                   }`}
                 >
                   <td className="px-3 py-3">{diaLegivel(l.data)}</td>
-                  <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno)}</td>
+                  <td className="px-3 py-3 text-texto-fraco">{rotuloTurno(l.turno, l.metade)}</td>
                   <td className="px-3 py-3 text-accent">{l.paginas.join(' + ')}</td>
                   <td className="px-3 py-3 text-right text-texto-fraco">{dinheiro(l.metaDoTurno)}</td>
                   <td className="px-3 py-3 text-right">

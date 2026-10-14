@@ -5,7 +5,7 @@ import { ehAdmin, exigirRep } from '@/lib/auth';
 import type { LinhasNet } from '@/lib/statement';
 import { buscarAnterior, type Anterior } from '@/lib/statementDb';
 import { criarClienteAdmin, criarClienteServidor } from '@/lib/supabase/server';
-import type { Turno } from '@/lib/tipos';
+import type { Metade, Turno } from '@/lib/tipos';
 import { MINUTOS_DE_ANTECEDENCIA, podeIniciar } from '@/lib/turno';
 import { lancarTurnoExtra } from '@/lib/turnosExtraDb';
 
@@ -30,13 +30,13 @@ export async function iniciarTurno(shiftId: string, modeloIds: string[]) {
   // janela — precisa poder testar o fluxo (OCR, comissão) a qualquer hora.
   const { data: shift } = await supabase
     .from('shifts')
-    .select('data, turno')
+    .select('data, turno, metade')
     .eq('id', shiftId)
     .eq('rep_id', rep.id)
     .single();
   if (!shift) throw new Error('Turno não encontrado.');
 
-  if (!ehAdmin(rep) && !podeIniciar(shift.turno as Turno, shift.data as string)) {
+  if (!ehAdmin(rep) && !podeIniciar(shift.turno as Turno, shift.data as string, new Date(), shift.metade as Metade)) {
     throw new Error(`O ponto só abre ${MINUTOS_DE_ANTECEDENCIA} minutos antes do turno.`);
   }
 
@@ -136,12 +136,18 @@ export async function statementAnterior(shiftId: string, modeloId: string): Prom
   // O RLS garante que o rep só alcança o próprio turno.
   const { data: meu } = await supabase
     .from('shifts')
-    .select('data, turno')
+    .select('data, turno, metade')
     .eq('id', shiftId)
     .single();
   if (!meu) throw new Error('Turno não encontrado.');
 
-  return buscarAnterior(criarClienteAdmin(), meu.turno as Turno, meu.data as string, modeloId);
+  return buscarAnterior(
+    criarClienteAdmin(),
+    meu.turno as Turno,
+    meu.data as string,
+    modeloId,
+    meu.metade as Metade,
+  );
 }
 
 export type ReportModelo = {

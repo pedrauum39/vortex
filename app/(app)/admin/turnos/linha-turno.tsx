@@ -69,7 +69,7 @@ export function LinhaTurno({
     <>
       <tr className="border-b border-borda last:border-0">
         <td className="px-4 py-2.5 text-base font-bold">{dataCurta(shift.data)}</td>
-        <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(shift.turno)}</td>
+        <td className="px-3 py-2.5 text-texto-fraco">{rotuloTurno(shift.turno, shift.metade)}</td>
         <td className="px-3 py-2.5 text-base font-bold">{shift.bloco === 'I' ? '1' : '2'}</td>
         <td className="px-3 py-2.5">
           {shift.funcao === 'assist' ? (
@@ -256,14 +256,14 @@ export function LinhaTurno({
               entradaAtual={
                 log
                   ? datetimeLocalBRT(new Date(log.clock_in_at))
-                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data).inicio)
+                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data, shift.metade).inicio)
               }
               saidaAtual={
                 log
                   ? log.clock_out_at
                     ? datetimeLocalBRT(new Date(log.clock_out_at))
                     : ''
-                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data).fim)
+                  : datetimeLocalBRT(janelaDoTurno(shift.turno, shift.data, shift.metade).fim)
               }
               pendente={pendente}
               onSalvar={(entrada, saida, modeloIds) =>

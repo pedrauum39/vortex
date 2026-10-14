@@ -13,7 +13,7 @@ import {
   somarMeses,
 } from '@/lib/tempo';
 import { INICIO_TIME3 } from '@/lib/escala';
-import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
+import { BLOCOS, TURNOS, rotuloTurno, type Bloco, type Metade, type Turno } from '@/lib/tipos';
 import { type DiaDoCalendario } from '../calendario-mes';
 import { BotaoGerar } from './botao-gerar';
 import { MeusTurnos, type MeuTurno } from './meus-turnos';
@@ -124,7 +124,7 @@ async function AbaMeus({
     supabase
       .from('shifts')
       .select(
-        'id, data, turno, bloco, funcao, origem, shift_logs(clock_in_at, clock_out_at, shift_log_models(models(nome)))',
+        'id, data, turno, bloco, metade, funcao, origem, shift_logs(clock_in_at, clock_out_at, shift_log_models(models(nome)))',
       )
       .eq('rep_id', repId)
       .gte('data', inicio)
@@ -186,6 +186,7 @@ type LinhaTime = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   funcao: 'regular' | 'assist';
   rep_nome: string | null;
   modelos_nome: string | null;
@@ -208,7 +209,7 @@ async function AbaTime({
   const supabase = await criarClienteServidor();
   const { data, error } = await supabase
     .from('escala_time')
-    .select('data, turno, bloco, funcao, rep_nome, modelos_nome')
+    .select('data, turno, bloco, metade, funcao, rep_nome, modelos_nome')
     .gte('data', inicio)
     .lte('data', fim);
 
@@ -220,9 +221,13 @@ async function AbaTime({
   const linhas = (data ?? []) as LinhaTime[];
   if (linhas.length === 0) return <Vazia admin={admin} inicio={inicio} fim={fim} />;
 
-  const busca = new Map(
-    linhas.map((l) => [`${l.data}|${l.turno}|${l.bloco}|${l.funcao}`, l]),
-  );
+  // Turno dividido tem duas linhas por slot (metade 1 e 2) — ficam juntas,
+  // em ordem, pra célula mostrar "T6 Fulano / T1 Ciclano".
+  const busca = new Map<string, LinhaTime[]>();
+  for (const l of [...linhas].sort((a, b) => a.metade - b.metade)) {
+    const chave = `${l.data}|${l.turno}|${l.bloco}|${l.funcao}`;
+    busca.set(chave, [...(busca.get(chave) ?? []), l]);
+  }
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie">
@@ -261,10 +266,16 @@ function BlocoDeLinhas({
 }: {
   bloco: Bloco;
   semana: string[];
-  busca: Map<string, LinhaTime>;
+  busca: Map<string, LinhaTime[]>;
   meuNome: string;
   hoje: string;
 }) {
+  const nomes = (linhas: LinhaTime[]) =>
+    linhas
+      .filter((l) => l.rep_nome)
+      .map((l) => (l.metade ? `${rotuloTurno(l.turno, l.metade)} ${l.rep_nome}` : l.rep_nome))
+      .join(' / ');
+
   return (
     <>
       <tr className="border-b border-borda bg-superficie-alta">
@@ -276,24 +287,25 @@ function BlocoDeLinhas({
         <tr key={turno} className="border-b border-borda last:border-0">
           <td className="px-4 py-4 text-left text-texto-fraco">{rotuloTurno(turno)}</td>
           {semana.map((dia) => {
-            const regular = busca.get(`${dia}|${turno}|${bloco}|regular`);
-            const assist = busca.get(`${dia}|${turno}|${bloco}|assist`);
-            const souEu = regular?.rep_nome === meuNome || assist?.rep_nome === meuNome;
+            const regulares = busca.get(`${dia}|${turno}|${bloco}|regular`) ?? [];
+            const assists = busca.get(`${dia}|${turno}|${bloco}|assist`) ?? [];
+            const souEu = [...regulares, ...assists].some((l) => l.rep_nome === meuNome);
+            const nomesRegular = nomes(regulares);
+            const nomesAssist = nomes(assists);
+            const modelos = [...new Set(regulares.map((l) => l.modelos_nome).filter(Boolean))].join(' / ');
             const ehHoje = dia === hoje;
             return (
               <td
                 key={dia}
                 className={`px-4 py-4 align-top ${souEu ? 'rounded-lg bg-accent-fraco' : ehHoje ? 'bg-superficie-alta' : ''}`}
               >
-                <div>{regular?.rep_nome ?? <span className="text-texto-fraco">—</span>}</div>
-                {regular?.modelos_nome && (
-                  <div className="mt-0.5 text-sm text-texto-fraco">{regular.modelos_nome}</div>
-                )}
+                <div>{nomesRegular || <span className="text-texto-fraco">—</span>}</div>
+                {modelos && <div className="mt-0.5 text-sm text-texto-fraco">{modelos}</div>}
                 {/* Espaço sempre reservado: o Time 2 nunca tem Assistant (regra
                     do project.md), então sem isto as linhas do Time 1 ficam mais
                     altas nas semanas com Assistant e os dois blocos desalinham. */}
                 <div className="mt-1 min-h-[1.25rem] text-sm text-accent">
-                  {assist?.rep_nome && `+ ${assist.rep_nome}`}
+                  {nomesAssist && `+ ${nomesAssist}`}
                 </div>
               </td>
             );

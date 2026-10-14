@@ -53,13 +53,26 @@ export async function materializarEscala(
   dataInicio: string,
   dataFim: string,
 ) {
-  const { data: reps } = await supabase.from('reps').select('*');
+  const [{ data: reps }, { data: divididos }] = await Promise.all([
+    supabase.from('reps').select('*'),
+    supabase
+      .from('shifts')
+      .select('data, turno, bloco')
+      .gt('metade', 0)
+      .gte('data', dataInicio)
+      .lte('data', dataFim),
+  ]);
 
-  const linhas = slotsParaLinhas(gerarEscala(dataInicio, dataFim), (reps ?? []) as Rep[]);
+  // Slot dividido pelo admin (metade 1/2) não ganha de volta a linha do turno
+  // inteiro — o índice único só barra a mesma metade, não o slot.
+  const jaDividido = new Set((divididos ?? []).map((s) => `${s.data}|${s.turno}|${s.bloco}`));
+  const linhas = slotsParaLinhas(gerarEscala(dataInicio, dataFim), (reps ?? []) as Rep[]).filter(
+    (l) => !jaDividido.has(`${l.data}|${l.turno}|${l.bloco}`),
+  );
 
   const { error } = await supabase
     .from('shifts')
-    .upsert(linhas, { onConflict: 'data,turno,bloco,funcao', ignoreDuplicates: true });
+    .upsert(linhas, { onConflict: 'data,turno,bloco,funcao,metade', ignoreDuplicates: true });
 
   if (error) throw error;
   return linhas.length;

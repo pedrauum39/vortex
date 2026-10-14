@@ -3,7 +3,7 @@
 // bloco antes de chamar aqui.
 
 import { dataBRT } from './tempo';
-import { BLOCOS, ROTULO_CARGO, rotuloTurno, TURNOS, type Bloco, type Cargo, type Funcao, type Turno } from './tipos';
+import { BLOCOS, ROTULO_CARGO, rotuloTurno, TURNOS, type Bloco, type Cargo, type Funcao, type Metade, type Turno } from './tipos';
 
 export type EntradaLog = {
   id: string;
@@ -11,6 +11,8 @@ export type EntradaLog = {
   data: string; // 'YYYY-MM-DD' do turno afetado
   turno: Turno;
   bloco: Bloco;
+  /** Metade de turno dividido (1/2); 0 ou ausente = turno inteiro. */
+  metade?: Metade;
   funcao: Funcao;
   repSaiu: string | null;
   cargoSaiu: Cargo | null;
@@ -36,9 +38,13 @@ export type GrupoLog = { diaMudanca: string; alteradoPor: string | null; turnos:
 const tituloDoTime = (e: EntradaLog): string =>
   e.modelosDoBloco.length > 0 ? e.modelosDoBloco.join(' + ') : `Time ${BLOCOS.indexOf(e.bloco) + 1}`;
 
-/** Assistant mostra "(Assistant)" no lugar do cargo; regular mostra o cargo. */
-const qualificador = (e: EntradaLog, cargo: Cargo | null): string | null =>
-  e.funcao === 'assist' ? 'Assistant' : cargo ? ROTULO_CARGO[cargo] : null;
+/** Assistant mostra "(Assistant)" no lugar do cargo; regular mostra o cargo.
+ *  Troca numa metade de turno dividido ganha o rótulo da metade (ex.: "T1"). */
+const qualificador = (e: EntradaLog, cargo: Cargo | null): string | null => {
+  const base = e.funcao === 'assist' ? 'Assistant' : cargo ? ROTULO_CARGO[cargo] : null;
+  if (!e.metade) return base;
+  return [base, rotuloTurno(e.turno, e.metade)].filter(Boolean).join(' · ');
+};
 
 /** Junta as entradas por chave, mantendo a ordem de primeira aparição. */
 function agrupar<T>(entradas: EntradaLog[], chave: (e: EntradaLog) => string, cria: (e: EntradaLog) => T) {

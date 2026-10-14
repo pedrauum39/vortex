@@ -3,7 +3,7 @@ import { ehAdmin, exigirRep } from '@/lib/auth';
 import { buscarPlanejamentos } from '@/lib/planejamentoDb';
 import { criarClienteServidor } from '@/lib/supabase/server';
 import { dataBRT } from '@/lib/tempo';
-import { rotuloTurno, type Bloco, type Turno } from '@/lib/tipos';
+import { rotuloTurno, type Bloco, type Metade, type Turno } from '@/lib/tipos';
 import { Planejador } from './planejador';
 
 type Busca = { rep?: string };
@@ -57,7 +57,7 @@ export default async function PlanejarTurno({ searchParams }: { searchParams: Pr
 
     const { data: shiftsData } = await supabase
       .from('shifts')
-      .select('data, turno, bloco, shift_logs(shift_log_models(models(id, nome)))')
+      .select('data, turno, bloco, metade, shift_logs(shift_log_models(models(id, nome)))')
       .eq('rep_id', rep.id)
       .gte('data', hoje)
       .order('data')
@@ -67,12 +67,13 @@ export default async function PlanejarTurno({ searchParams }: { searchParams: Pr
       data: string;
       turno: Turno;
       bloco: Bloco;
+      metade: Metade;
       shift_logs: { shift_log_models: { models: { id: string; nome: string } }[] }[];
     };
     turnosEscalados = ((shiftsData ?? []) as unknown as LinhaShift[]).map((s) => {
       const doLog = s.shift_logs[0]?.shift_log_models.map((m) => m.models) ?? [];
       const modelos = doLog.length > 0 ? doLog : (rosterPorBloco.get(s.bloco) ?? []);
-      return { data: s.data, rotulo: rotuloTurno(s.turno), modelos };
+      return { data: s.data, rotulo: rotuloTurno(s.turno, s.metade), modelos };
     });
   }
 

@@ -25,6 +25,7 @@ import {
   type Bloco,
   type Cargo,
   type Funcao,
+  type Metade,
   type Turno,
 } from '@/lib/tipos';
 import { INICIO_TIME3 } from '@/lib/escala';
@@ -45,6 +46,7 @@ type MeuTurno = {
   data: string;
   turno: Turno;
   bloco: Bloco;
+  metade: Metade;
   funcao: Funcao;
   shift_logs: { shift_log_models: { models: { nome: string } }[] }[];
 };
@@ -123,7 +125,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ] = await Promise.all([
     supabase
       .from('shifts')
-      .select('id, data, turno, bloco, funcao, shift_logs(shift_log_models(models(nome)))')
+      .select('id, data, turno, bloco, metade, funcao, shift_logs(shift_log_models(models(nome)))')
       .eq('rep_id', rep.id)
       .gte('data', hoje)
       .order('data')
@@ -314,7 +316,7 @@ function StatusHoje({
             {slots.map((t) => (
               <div key={t.id}>
                 <p className="text-lg font-medium">
-                  {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
+                  {rotuloTurno(t.turno, t.metade)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
                   {t.funcao === 'assist' && (
                     <span className="ml-2 rounded-md bg-accent-fraco px-2 py-0.5 text-sm text-accent">Assistant</span>
                   )}
@@ -476,7 +478,7 @@ function ProximosTurnos({
             <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
               <span>{diaLegivel(t.data)}</span>
               <span className="text-texto-fraco">
-                {rotuloTurno(t.turno)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
+                {rotuloTurno(t.turno, t.metade)} · <span className="text-accent">{nomeDoTurno(t, rosterPorBloco)}</span>
                 {t.funcao === 'assist' && ' · Assistant'}
               </span>
             </li>
