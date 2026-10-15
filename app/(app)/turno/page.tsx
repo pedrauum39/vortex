@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import { buscarCargosAnteriores, cargoNaData } from '@/lib/cargo';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { metaDiariaDaPagina } from '@/lib/meta';
@@ -161,6 +162,7 @@ export default async function TurnoPage({
   // acima da query).
   const regraVigente = await buscarRegraVigente(supabase, fimMesAtual);
   const clienteAdmin = criarClienteAdmin();
+  const cargosAnteriores = await buscarCargosAnteriores(clienteAdmin);
 
   const doMesFiltrado = (
     (doMesComoRegular ?? []) as unknown as (TurnoDoDia & {
@@ -205,7 +207,7 @@ export default async function TurnoPage({
             metade: s.metade,
             regular: {
               repId: rep.id,
-              cargo: rep.cargo,
+              cargo: cargoNaData(cargosAnteriores, rep.id, rep.cargo, s.data),
               valorHora: rep.valor_hora,
               clockIn: new Date(log.clock_in_at),
               clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,

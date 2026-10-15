@@ -4,6 +4,7 @@
 // venda própria, leva uma fatia da comissão do regular.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buscarCargosAnteriores, cargoNaData } from './cargo';
 import { metaDiariaDaPagina, percentualAtingido } from './meta';
 import { blocoNaData, diasDeCruzamento, inicioDaVida, metaMensalEfetiva, metaMensalNaData, metaProrateada, type Periodo, type PeriodoMeta } from './periodos';
 import { buscarPeriodos, buscarPeriodosDeMeta } from './periodosDb';
@@ -98,7 +99,7 @@ export async function buscarVendasDaEmpresa(
   const shifts = ((shiftsData ?? []) as unknown as LinhaShift[]).filter((s) =>
     dentroDoPeriodo(s.turno, s.data, inicio, fim),
   );
-  const periodos = await buscarPeriodos(db);
+  const [periodos, cargosAnteriores] = await Promise.all([buscarPeriodos(db), buscarCargosAnteriores(db)]);
   const vendas: VendaDeModelo[] = [];
 
   // Um shift+modelo por linha, com o statement já resolvido — a busca do
@@ -151,7 +152,7 @@ export async function buscarVendasDaEmpresa(
 
     vendas.push({
       repId: t.shift.rep_id!,
-      repCargo: t.shift.reps!.cargo,
+      repCargo: cargoNaData(cargosAnteriores, t.shift.rep_id!, t.shift.reps!.cargo, t.shift.data),
       modeloId: t.modeloId,
       modeloBloco: bloco,
       turno: t.shift.turno,
@@ -209,7 +210,7 @@ export async function buscarVendasDaEmpresa(
 
     vendas.push({
       repId: e.rep_id,
-      repCargo: e.reps.cargo,
+      repCargo: cargoNaData(cargosAnteriores, e.rep_id, e.reps.cargo, e.data),
       modeloId: e.model_id,
       modeloBloco: bloco,
       turno: e.turno,

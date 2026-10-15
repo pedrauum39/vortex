@@ -6,6 +6,7 @@
 // assistente, em slots diferentes — por isso duas buscas separadas. Um regular
 // pode ter trabalhado 1 ou 2 modelos (double) no mesmo turno.
 
+import { buscarCargosAnteriores, cargoNaData } from '@/lib/cargo';
 import { diaDoStatement } from '@/lib/statement';
 import { buscarAnterior } from '@/lib/statementDb';
 import { criarClienteAdmin } from '@/lib/supabase/server';
@@ -108,7 +109,7 @@ export async function buscarSlotsDoRep(
   // janela crua — a checagem de dentroDoPeriodo() filtra certo depois.
   const inicioBusca = somarDias(inicio, -1);
 
-  const [{ data: comoRegular }, { data: comoAssist }] = await Promise.all([
+  const [{ data: comoRegular }, { data: comoAssist }, anteriores] = await Promise.all([
     db
       .from('shifts')
       .select(CAMPOS)
@@ -123,6 +124,7 @@ export async function buscarSlotsDoRep(
       .eq('funcao', 'assist')
       .gte('data', inicioBusca)
       .lte('data', fim),
+    buscarCargosAnteriores(db),
   ]);
 
   const slots: SlotResolvido[] = [];
@@ -153,7 +155,7 @@ export async function buscarSlotsDoRep(
       metade: shift.metade,
       regular: {
         repId,
-        cargo,
+        cargo: cargoNaData(anteriores, repId, cargo, shift.data),
         valorHora,
         clockIn: new Date(log.clock_in_at),
         clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
@@ -164,7 +166,7 @@ export async function buscarSlotsDoRep(
         sibling?.rep_id && assistLog
           ? {
               repId: sibling.rep_id,
-              cargo: sibling.reps?.cargo ?? 'tertius',
+              cargo: cargoNaData(anteriores, sibling.rep_id, sibling.reps?.cargo ?? 'tertius', shift.data),
               valorHora: sibling.reps?.valor_hora ?? 0,
               clockIn: new Date(assistLog.clock_in_at),
               clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,
@@ -201,7 +203,7 @@ export async function buscarSlotsDoRep(
       metade: shift.metade,
       regular: {
         repId: sibling.rep_id,
-        cargo: sibling.reps?.cargo ?? 'tertius',
+        cargo: cargoNaData(anteriores, sibling.rep_id, sibling.reps?.cargo ?? 'tertius', shift.data),
         valorHora: sibling.reps?.valor_hora ?? 0,
         clockIn: new Date(regularLog.clock_in_at),
         clockOut: regularLog.clock_out_at ? new Date(regularLog.clock_out_at) : null,
@@ -210,7 +212,7 @@ export async function buscarSlotsDoRep(
       },
       assist: {
         repId,
-        cargo,
+        cargo: cargoNaData(anteriores, repId, cargo, shift.data),
         valorHora,
         clockIn: new Date(meuLog.clock_in_at),
         clockOut: meuLog.clock_out_at ? new Date(meuLog.clock_out_at) : null,

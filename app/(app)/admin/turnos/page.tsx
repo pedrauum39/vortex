@@ -1,4 +1,5 @@
 import { ehAdmin, exigirRep } from '@/lib/auth';
+import { buscarCargosAnteriores, cargoNaData } from '@/lib/cargo';
 import { buscarRegraVigente } from '@/lib/comissaoDb';
 import { linhasDoSlot, type LinhaInvoice, type ModeloTrabalhada, type SlotResolvido } from '@/lib/invoice';
 import { type EntradaLog } from '@/lib/logEscala';
@@ -165,7 +166,10 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
     porSlot.set(chave, par);
   }
 
-  const regra = await buscarRegraVigente(supabase, fim);
+  const [regra, cargosAnteriores] = await Promise.all([
+    buscarRegraVigente(supabase, fim),
+    buscarCargosAnteriores(supabase),
+  ]);
   const linhasPorShift = new Map<string, LinhaInvoice>();
 
   // Cada slot resolve os "anterior" das modelos dele em paralelo, e os slots
@@ -208,7 +212,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
         metade: regular.metade,
         regular: {
           repId: regular.rep_id!,
-          cargo: regular.reps.cargo,
+          cargo: cargoNaData(cargosAnteriores, regular.rep_id!, regular.reps.cargo, regular.data),
           valorHora: regular.reps.valor_hora,
           clockIn: new Date(log.clock_in_at),
           clockOut: log.clock_out_at ? new Date(log.clock_out_at) : null,
@@ -219,7 +223,7 @@ export default async function AdminTurnos({ searchParams }: { searchParams: Prom
           assist?.rep_id && assist.reps && assistLog
             ? {
                 repId: assist.rep_id,
-                cargo: assist.reps.cargo,
+                cargo: cargoNaData(cargosAnteriores, assist.rep_id, assist.reps.cargo, assist.data),
                 valorHora: assist.reps.valor_hora,
                 clockIn: new Date(assistLog.clock_in_at),
                 clockOut: assistLog.clock_out_at ? new Date(assistLog.clock_out_at) : null,

@@ -5,6 +5,7 @@
 // "vendido" é sempre o delta entre os dois (lib/statement.ts:deltaTurno).
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buscarCargosAnteriores, cargoNaData } from './cargo';
 import { comissaoTurnoExtra } from './comissao';
 import { buscarRegraVigente } from './comissaoDb';
 import { baseComissao, deltaTurno, diaDoStatement, totalDasLinhas, type LinhasNet } from './statement';
@@ -23,6 +24,7 @@ type LinhaCrua = {
   id: string;
   data: string;
   turno: Turno;
+  rep_id: string;
   model_id: string | null;
   nome_livre: string | null;
   models: { nome: string } | null;
@@ -35,7 +37,7 @@ type LinhaCrua = {
 };
 
 const CAMPOS =
-  'id, data, turno, model_id, nome_livre, models(nome), net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior';
+  'id, data, turno, rep_id, model_id, nome_livre, models(nome), net_assinaturas, net_gorjetas, net_publicacoes, net_mensagens, net_indicacoes, anterior';
 
 function linhasAtuais(l: LinhaCrua): LinhasNet {
   return {
@@ -63,14 +65,14 @@ async function montarLinha(
   data: string,
 ): Promise<LinhaTurnoExtra> {
   const delta = deltaTurno(linhasAtuais(l), l.anterior);
-  const regra = await buscarRegraVigente(db, data);
+  const [regra, anteriores] = await Promise.all([buscarRegraVigente(db, data), buscarCargosAnteriores(db)]);
   return {
     id: l.id,
     data: l.data,
     turno: l.turno,
     modeloNome: l.models?.nome ?? l.nome_livre ?? '',
     vendido: totalDasLinhas(delta),
-    comissao: comissaoTurnoExtra(baseComissao(delta), cargo, regra),
+    comissao: comissaoTurnoExtra(baseComissao(delta), cargoNaData(anteriores, l.rep_id, cargo, data), regra),
   };
 }
 
