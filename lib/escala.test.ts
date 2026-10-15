@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { INICIO_TIME3, fase, gerarEscala, mesclarOverrides, type SlotEscala } from './escala';
+import { INICIO_T2T3_SEM_SECUNDUS, INICIO_TIME3, fase, gerarEscala, mesclarOverrides, type SlotEscala } from './escala';
 import type { Papel, Turno } from './tipos';
 
 // Papéis por turno, conforme a tabela de project.md.
@@ -139,6 +139,7 @@ describe('Time 3', () => {
     for (const data of [...new Set(gerarEscala(deInteiro, ate).map((s) => s.data))]) {
       const f = fase(data);
       for (const turno of ['T2T3', 'T4T5', 'T6T1'] as Turno[]) {
+        if (turno === 'T2T3' && data >= INICIO_T2T3_SEM_SECUNDUS) continue;
         const fo = FOLGA_ANTIGA[turno];
         if (f === fo.A) esperado.push(`${data}|${turno}|I|B`);
         else if (f === fo.B) esperado.push(`${data}|${turno}|I|A`);
@@ -147,6 +148,7 @@ describe('Time 3', () => {
     }
     const obtido = gerarEscala(deInteiro, ate)
       .filter((s) => s.papel === 'A' || s.papel === 'B')
+      .filter((s) => !(s.turno === 'T2T3' && s.data >= INICIO_T2T3_SEM_SECUNDUS))
       .map((s) => `${s.data}|${s.turno}|${s.bloco}|${s.papel}`);
     expect(obtido).toEqual(esperado);
   });
@@ -161,10 +163,21 @@ describe('Time 3', () => {
   test('na folga de um titular, o de baixo sobe e o tertius entra no Vortex III', () => {
     const slots = gerarEscala(deInteiro, ate);
     for (const s of slots) {
-      if (s.turno === 'T2T3' && s.papel === 'C') expect(s.bloco).toBe('III');
       if (s.turno !== 'T2T3' && (s.papel === 'C' || s.papel === 'E')) expect(s.bloco).toBe('III');
       if (s.turno !== 'T2T3' && s.papel === 'D') expect(['II', 'III']).toContain(s.bloco);
     }
+  });
+
+  test('T2/T3 sem secundus no Time 2: Léo no I, Oliver no II, Leticia no III e Carol completa', () => {
+    // Fase → quem está em I/II/III. Papéis: A Carol, B Léo, C Oliver, E Leticia.
+    const ESPERADO: Record<number, string> = { 0: 'A C E', 1: 'B C E', 2: 'B A E', 3: 'B C A' };
+    const slots = gerarEscala(INICIO_T2T3_SEM_SECUNDUS, ate).filter((s) => s.turno === 'T2T3');
+    for (const dia of [...new Set(slots.map((s) => s.data))]) {
+      const papelDo = (bloco: string) => slots.find((s) => s.data === dia && s.bloco === bloco)?.papel;
+      expect(`${dia} ${papelDo('I')} ${papelDo('II')} ${papelDo('III')}`).toBe(`${dia} ${ESPERADO[fase(dia)]}`);
+    }
+    // A Leticia nunca vai pro Time 2.
+    expect(slots.some((s) => s.papel === 'E' && s.bloco !== 'III')).toBe(false);
   });
 
   test('Vortex I, II e III têm exatamente um regular todo dia, sem Assistant', () => {

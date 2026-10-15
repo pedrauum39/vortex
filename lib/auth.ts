@@ -36,9 +36,15 @@ export async function exigirRep(): Promise<Rep> {
   redirect(user ? '/aguardando' : '/login');
 }
 
-/** Admin de verdade (role='admin') ou qualquer primaris (GP/KP) — os dois administram o time. */
+/** Admin de verdade (role='admin') ou qualquer primaris (GP/KP/AP) — todos administram o time. */
 export function ehAdmin(rep: Rep | null): boolean {
-  return !!rep && (rep.role === 'admin' || rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris');
+  return (
+    !!rep &&
+    (rep.role === 'admin' ||
+      rep.cargo === 'grand_primaris' ||
+      rep.cargo === 'knight_primaris' ||
+      rep.cargo === 'adept_primaris')
+  );
 }
 
 /**

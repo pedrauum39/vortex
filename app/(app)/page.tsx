@@ -107,7 +107,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const mesCal = cal ?? mes;
 
   const cargoPrimaris: CargoPrimaris | null =
-    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' ? rep.cargo : null;
+    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' || rep.cargo === 'adept_primaris'
+      ? rep.cargo
+      : null;
 
   // rep_id explícito: o RLS filtra o rep comum, mas o admin enxerga tudo — sem
   // isto o dashboard do admin mostraria os turnos do time inteiro.
@@ -489,11 +491,12 @@ function ProximosTurnos({
   );
 }
 
-// Dourado pros dois níveis de Primaris, prata pro Secundus, bronze pro Tertius.
+// Dourado pros três níveis de Primaris, prata pro Secundus, bronze pro Tertius.
 // Admin 5C é cargo de acesso, não patente de comissão — azul do tema, fora da escala metálica.
 const ESTILO_CARGO: Record<Cargo, string> = {
   grand_primaris: 'bg-gradient-to-b from-amber-300 via-yellow-400 to-yellow-600 text-yellow-950',
   knight_primaris: 'bg-gradient-to-b from-amber-300 via-yellow-400 to-yellow-600 text-yellow-950',
+  adept_primaris: 'bg-gradient-to-b from-amber-300 via-yellow-400 to-yellow-600 text-yellow-950',
   secundus: 'bg-gradient-to-b from-slate-200 via-slate-300 to-slate-400 text-slate-900',
   tertius: 'bg-gradient-to-b from-orange-400 via-orange-600 to-orange-800 text-orange-50',
   admin_5c: 'bg-accent-fraco text-accent border border-accent/40',

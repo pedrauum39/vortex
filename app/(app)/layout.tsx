@@ -32,6 +32,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
             primaris={
               rep.cargo === 'grand_primaris' ||
               rep.cargo === 'knight_primaris' ||
+              rep.cargo === 'adept_primaris' ||
               rep.cargo === 'admin_5c' ||
               rep.observador
             }

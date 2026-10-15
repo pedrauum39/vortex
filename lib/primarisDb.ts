@@ -489,14 +489,15 @@ export async function buscarHistoricoModelos(
   return eventos;
 }
 
-export type CargoPrimaris = 'grand_primaris' | 'knight_primaris';
+export type CargoPrimaris = 'grand_primaris' | 'knight_primaris' | 'adept_primaris';
 
-/** GP é sempre dono do Time 1 (Vortex I), KP do Time 2 (Vortex II) — fixo, não
+/** GP é sempre dono do Time 1 (Vortex I), KP do Time 2 (Vortex II), AP do Time 3 (Vortex III) — fixo, não
  * depende de em qual turno o próprio GP/KP trabalha. O que decide é o bloco
  * da PÁGINA (modelo) trabalhada, não do rep que a trabalhou. */
 const TIME_DO_PRIMARIS: Record<CargoPrimaris, Bloco> = {
   grand_primaris: 'I',
   knight_primaris: 'II',
+  adept_primaris: 'III',
 };
 
 const PERCENTUAL_TEAM_ADDITION = 0.005;

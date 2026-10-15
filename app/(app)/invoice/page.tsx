@@ -32,7 +32,9 @@ export default async function InvoicePage({ searchParams }: { searchParams: Prom
   const agora = new Date();
 
   const cargoPrimaris: CargoPrimaris | null =
-    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' ? rep.cargo : null;
+    rep.cargo === 'grand_primaris' || rep.cargo === 'knight_primaris' || rep.cargo === 'adept_primaris'
+      ? rep.cargo
+      : null;
 
   const [slots, regra, bonus] = await Promise.all([
     buscarSlotsDoRep(rep.id, rep.cargo, rep.valor_hora, inicio, fim),

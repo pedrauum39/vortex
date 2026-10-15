@@ -68,6 +68,21 @@ const TRES_TIMES: Record<
   T6T1: { folgaA: 3, folgaB: 0, III: 'D', folgaIII: 2, cobre: 'E', folgaCobre: 1 },
 };
 
+/**
+ * T2/T3 a partir de 16/10/2026, enquanto o Time 2 não tem secundus nesse
+ * turno: Léo (B) é o titular do Vortex I, Oliver (C) fica no II e Leticia (E)
+ * no III — ela nunca vai pro II. Carol (A, Adept Primaris do Time 3) completa
+ * o time que sobrar. Continua 3x1: cada um folga numa fase, e é a fase que
+ * decide quem está onde.
+ */
+export const INICIO_T2T3_SEM_SECUNDUS = '2026-10-16';
+const T2T3_SEM_SECUNDUS: Record<number, Record<Bloco, Papel>> = {
+  0: { I: 'A', II: 'C', III: 'E' }, // folga do Léo: Carol sobe pro I
+  1: { I: 'B', II: 'C', III: 'E' }, // folga da Carol
+  2: { I: 'B', II: 'A', III: 'E' }, // folga do Oliver: Carol no II
+  3: { I: 'B', II: 'C', III: 'A' }, // folga da Leticia: Carol no III
+};
+
 // Aritmética de datas em dias inteiros de UTC: 'YYYY-MM-DD' entra e sai sem
 // passar por fuso nenhum.
 function emDias(data: string): number {
@@ -111,6 +126,14 @@ export function gerarEscala(dataInicio: string, dataFim: string): SlotEscala[] {
           por('I', 'assist', 'C');
           por('II', 'regular', 'B');
         }
+        continue;
+      }
+
+      if (turno === 'T2T3' && data >= INICIO_T2T3_SEM_SECUNDUS) {
+        const dia = T2T3_SEM_SECUNDUS[f];
+        por('I', 'regular', dia.I);
+        por('II', 'regular', dia.II);
+        por('III', 'regular', dia.III);
         continue;
       }
 
